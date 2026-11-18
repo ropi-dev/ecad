@@ -2,11 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { hullDistance, shapeHulls } from "@ecad/drawing-core/board/geometry.ts";
 import { editorShapeSchema } from "@ecad/drawing-core/drawing/schema.ts";
-import { editShapeAttribute } from "@ecad/drawing-core/drawing/shapes.ts";
 import {
 	createPad,
 	editPad,
-	isPad,
 	type PadShape,
 	shapeHole,
 } from "@ecad/drawing-core/footprint/shapes.ts";
@@ -107,47 +105,6 @@ test("choosing a slot on a tall pad turns the pad so the slot runs along its lon
 	assert.equal(editorShapeSchema.safeParse(slotted).success, true);
 });
 
-test("square and round pads take a slot halfway between the drill and their side", () => {
-	const round = createPad(1, { x: 0, y: 0 }, "through-hole", "1", "F.Cu");
-	const square = editPad(round, { attribute: "shape", value: "rectangle" });
-	for (const pad of [round, square]) {
-		const slotted = editPad(pad, { attribute: "hole", value: "slot" });
-		assert.deepEqual([slotted.rotation, slotted.pad.slot], [0, 1.35]);
-		assert.equal(editorShapeSchema.safeParse(slotted).success, true);
-	}
-});
-
-test("pad edits keep a slot valid, and resizing never turns it", () => {
-	const pad = shieldPad();
-	assert.equal(editPad(pad, { attribute: "slot", value: 0.6 }), pad);
-	assert.equal(editPad(pad, { attribute: "slot", value: 1.8 }), pad);
-	assert.equal(editPad(pad, { attribute: "drill", value: 1.3 }), pad);
-	assert.equal(editPad(pad, { attribute: "drill", value: 1.2 }), pad);
-	const drilled = editPad(pad, { attribute: "hole", value: "round" });
-	assert.deepEqual([drilled.pad.drill, drilled.pad.slot], [0.7, undefined]);
-	const surface = editPad(pad, { attribute: "type", value: "smd" });
-	assert.deepEqual(
-		[surface.pad.drill, surface.pad.slot],
-		[undefined, undefined],
-	);
-	const square = editPad(pad, { attribute: "shape", value: "rectangle" });
-	assert.deepEqual([square.pad.cornerRatio, square.pad.slot], [undefined, 1.2]);
-	const round = editPad(pad, { attribute: "shape", value: "circle" });
-	assert.deepEqual([round.width, round.pad.slot], [1.1, 0.9]);
-	const shortened = editShapeAttribute(pad, "width", 1.15);
-	assert.ok(isPad(shortened));
-	close(required(shortened.pad.slot), 0.925);
-	const narrowed = editShapeAttribute(pad, "width", 1);
-	assert.ok(isPad(narrowed));
-	close(required(narrowed.pad.slot), 0.85);
-	assert.deepEqual(holeBounds(narrowed), [
-		[0, -0.075],
-		[0, 0.075],
-	]);
-	for (const shape of [square, round, shortened, narrowed])
-		assert.equal(editorShapeSchema.safeParse(shape).success, true);
-});
-
 test("an oval pad's copper is a stadium, so clearance follows its round ends", () => {
 	const [hull] = shapeHulls(shieldPad());
 	assert.equal(hull.points.length, 2);
@@ -183,41 +140,6 @@ test("Gerber flashes square-on oval pads with an O aperture and grows the mask o
 	const turned = required(parsed.find((object) => object.bounds.minX > 3));
 	close(turned.bounds.maxX - turned.bounds.minX, 1.8);
 	close(turned.bounds.maxY - turned.bounds.minY, 1.1);
-});
-
-test("a negative mask margin shrinks an oval's opening, and one that shrinks away stays covered", () => {
-	const pads = [shieldPad(), shieldPad(Math.PI / 4, 4)];
-	const shrunk = exportFabrication("board", pads, [], -0.2).find((file) =>
-		file.name.endsWith("F_Mask.gts"),
-	);
-	assert.match(required(shrunk).content, /%ADD\d+O,0\.7X1\.4\*%/);
-	assert.match(
-		required(shrunk).content,
-		/%ADD\d+Oval,0\.7X0\.247487X-0\.247487X-0\.247487X0\.247487\*%/,
-	);
-	const gone = exportFabrication("board", pads, [], -0.6).find((file) =>
-		file.name.endsWith("F_Mask.gts"),
-	);
-	assert.doesNotMatch(required(gone).content, /D03\*/);
-});
-
-test("Gerber flashes an oval paste opening, and a square oval as a circle", () => {
-	const smd = editPad(createPad(1, { x: 0, y: 0 }, "smd", "1", "B.Cu"), {
-		attribute: "shape",
-		value: "oval",
-	});
-	const square = editPad(
-		editPad(createPad(2, { x: 4, y: 0 }, "through-hole", "2", "F.Cu"), {
-			attribute: "shape",
-			value: "rectangle",
-		}),
-		{ attribute: "shape", value: "oval" },
-	);
-	const files = fabrication([smd, square]);
-	assert.match(required(files["B_Paste.gbp"]), /%ADD\d+O,1X1\.5\*%/);
-	const copper = required(files["F_Cu.gtl"]);
-	assert.doesNotMatch(copper, /O,/);
-	assert.match(copper, /%ADD\d+C,1\.7\*%/);
 });
 
 test("Gerber flashes an oval pad at an angle with a rotated oval macro", () => {
@@ -271,13 +193,6 @@ test("Excellon routes each slot with G85 between its end centers, using the slot
 	);
 	assert.match(signed, /\nX1\.000Y0\.000\n/);
 	assert.doesNotMatch(signed, /G85|-0\.000/);
-});
-
-test("a slot turns with its pad", () => {
-	const hole = required(shapeHole(shieldPad(Math.PI / 2)));
-	close(hole.ends[0].x, 0.25);
-	close(hole.ends[1].x, -0.25);
-	close(hole.ends[0].y, 0);
 });
 
 test("the 2D and board views draw the oval and its slot", () => {

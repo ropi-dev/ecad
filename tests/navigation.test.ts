@@ -1,40 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-	handleViewerKeyDown,
-	isMouseWheel,
-	wheelDelta,
-} from "#/engine/navigation.ts";
-
-test("viewer shortcuts leave modified keys and camera-specific navigation to their owners", () => {
-	const calls: unknown[] = [];
-	const actions = {
-		fit: () => calls.push("fit"),
-		zoom: (factor: number) => calls.push(factor),
-	};
-	const key = (key: string, modifiers = {}) => ({
-		key,
-		ctrlKey: false,
-		metaKey: false,
-		altKey: false,
-		shiftKey: false,
-		preventDefault: () => calls.push("prevented"),
-		...modifiers,
-	});
-	for (const modifier of ["ctrlKey", "metaKey", "altKey"]) {
-		for (const name of ["+", "-", "0", "f", "F6", "ArrowRight"])
-			handleViewerKeyDown(key(name, { [modifier]: true }), actions);
-	}
-	for (const name of ["F6", "ArrowRight", "Escape"])
-		handleViewerKeyDown(key(name), actions);
-	assert.equal(calls.length, 0);
-	handleViewerKeyDown(key("F6"), { ...actions, fitOnF6: true });
-	handleViewerKeyDown(key("ArrowRight", { shiftKey: true }), {
-		...actions,
-		pan: (x, y) => calls.push([x, y]),
-	});
-	assert.deepEqual(calls, ["fit", "prevented", [240, 0], "prevented"]);
-});
+import { isMouseWheel, wheelDelta } from "#/engine/navigation.ts";
 
 test("wheel deltas normalize pixels, lines and viewport pages on each axis", () => {
 	const element = { clientWidth: 800, clientHeight: 600 };

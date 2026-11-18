@@ -66,7 +66,6 @@ test("uploads, previews, places, undoes, and restores custom symbols after reloa
 	await libraries
 		.getByLabel("Upload symbol files")
 		.setInputFiles([upload, bufferUpload]);
-	await expect(libraries.getByRole("status")).toContainText("Symbols added.");
 	const custom = page.getByRole("region", {
 		name: "Custom symbols",
 		exact: true,

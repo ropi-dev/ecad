@@ -292,33 +292,6 @@ test("batch import rejects invalid neighbors and duplicates before exposing resu
 	);
 });
 
-test("symbol files and saved libraries reject multi-symbol containers", () => {
-	const {
-		format: _format,
-		version: _version,
-		units: _units,
-		...symbol
-	} = source();
-	const container = JSON.stringify({
-		format: "ecad-symbols",
-		version: 1,
-		units: "mm",
-		symbols: [symbol],
-	});
-	assert.throws(() => parseSymbolFile(container), /Invalid symbol file/);
-	assert.throws(() => parseSavedSymbolLibrary(container));
-});
-
-test("pin files reject a stored radius", () => {
-	const data = source();
-	const pin = data.shapes.find(
-		(shape: { kind: string }) => shape.kind === "pin",
-	);
-	pin.radius = 5;
-	assert.throws(() => parseSymbolFile(JSON.stringify(data)), /radius/);
-	assert.throws(() => parseSavedSymbolLibrary(JSON.stringify([data])));
-});
-
 test("pin names and numbers survive symbol file and library round trips, with legacy pins", () => {
 	const data = source();
 	const pin = data.shapes.find(

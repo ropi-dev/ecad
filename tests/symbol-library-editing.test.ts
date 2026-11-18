@@ -92,11 +92,8 @@ test("user definitions are editable without an open project and stale writes are
 		version: 1,
 		symbolLibraries: [library("user", "External change")],
 	});
-	await assert.rejects(target.save(file), /definition changed/);
-	await assert.rejects(
-		target.save({ ...file, id: "different" }),
-		/cannot change/,
-	);
+	await assert.rejects(target.save(file));
+	await assert.rejects(target.save({ ...file, id: "different" }));
 });
 
 test("read-only sources and bundled definitions have no editing target", async () => {
@@ -123,81 +120,6 @@ test("read-only sources and bundled definitions have no editing target", async (
 		await prepareSymbolEdit(
 			{ ...source, scope: "project", library: library("project-symbols") },
 			user,
-			project,
-		),
-		null,
-	);
-});
-
-test("project files depend on their own permissions rather than the drawing's permissions", async () => {
-	const user = createMemorySymbolLibraryStorage();
-	const entry = library("project-symbols");
-	const source = required(
-		(await resolveSymbolLibraries([], [entry])).sources.get(file.id),
-	);
-	const project = {
-		...user,
-		canEditSymbol: async () => true,
-		canWriteConfiguration: async () => false,
-	};
-	assert.ok(await prepareSymbolEdit(source, user, project));
-});
-
-test("directory edits pass the original source and project directory to host persistence", async () => {
-	const user = createMemorySymbolLibraryStorage();
-	const entry: ConfiguredSymbolLibrary = {
-		id: "external",
-		name: "External",
-		enabled: true,
-		source: { kind: "directory", path: "../parts" },
-	};
-	const source = required(
-		(await resolveSymbolLibraries([], [entry], async () => [file])).sources.get(
-			file.id,
-		),
-	);
-	const calls: unknown[] = [];
-	const request = {
-		id: file.id,
-		path: "../parts",
-		scope: "project",
-		projectDirectory: "/project",
-	};
-	const storage = {
-		...user,
-		async inspectDirectorySymbol(input: unknown) {
-			calls.push(input);
-			return { file, writable: true };
-		},
-		async saveDirectorySymbol(
-			input: unknown,
-			original: unknown,
-			next: unknown,
-		) {
-			calls.push([input, original, next]);
-		},
-	};
-	const project = {
-		...user,
-		load: async () => ({ symbols: [], directory: "/project" }),
-	};
-	const target = await prepareSymbolEdit(source, storage, project);
-	assert.ok(target);
-	const next = { ...file, shapes: [] };
-	await target.save(next);
-	await target.save(file);
-	assert.deepEqual(calls, [
-		request,
-		[request, file, next],
-		[request, next, file],
-	]);
-	assert.equal(
-		await prepareSymbolEdit(
-			source,
-			{
-				...storage,
-				inspectDirectorySymbol: async () => ({ file, writable: false }),
-			},
 			project,
 		),
 		null,

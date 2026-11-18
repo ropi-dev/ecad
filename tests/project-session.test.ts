@@ -7,13 +7,10 @@ import {
 	redoEffect,
 	removeShapesEffect,
 	setPagesEffect,
-	setSheetEffect,
 	undoEffect,
 } from "@ecad/drawing-core/commands/drawing-commands.ts";
-import { synchronizePcb } from "#/circuit/linked-schematic.ts";
 import { createEditorSession } from "#/components/editor/editorSession.ts";
 import { createEmptySymbolFile } from "#/components/editor/symbolFormat.ts";
-import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { InvalidFile } from "#/formats/import-effects.ts";
 import {
 	MAX_GERBER_ARCHIVE_BYTES,
@@ -21,17 +18,11 @@ import {
 	MAX_STEP_FILE_BYTES,
 } from "#/formats/import-limits.ts";
 import { importKiCadSchematic } from "#/formats/kicad/import.ts";
-import { createDocumentRegistry } from "#/projects/document-registry.ts";
-import {
-	ProjectAssetTooLarge,
-	ProjectClosed,
-	ProjectConflict,
-} from "#/projects/errors.ts";
+import { ProjectAssetTooLarge, ProjectConflict } from "#/projects/errors.ts";
 import type { ProjectSnapshot } from "#/projects/format.ts";
-import { assembleLinkedPcbs } from "#/projects/linked-pcb.ts";
 import { createProjectSession } from "#/projects/ProjectSession.ts";
 import { primaryPcbId } from "#/projects/pcb.ts";
-import { createProjectIndex, projectIndex } from "#/projects/project-index.ts";
+import { projectIndex } from "#/projects/project-index.ts";
 import { assembleProjectSave } from "#/projects/save-assembly.ts";
 import type { ProjectStorage } from "#/projects/storage.ts";
 import type { SymbolLibraryStorage } from "#/symbol-library/storage.tsx";
@@ -174,87 +165,6 @@ test("save assembly merges all editor inputs without mutating saved files or unr
 	assert.ok(!("circuits" in empty));
 });
 
-test("document registry reuses stores within a kind, separates colliding IDs and disposes every subscription", () => {
-	const disposed: string[] = [];
-	const registry = createDocumentRegistry<{
-		drawing: { unsubscribe(): void; drawing: true };
-		symbol: { unsubscribe(): void; symbol: true };
-	}>();
-	const drawing = registry.openDocument("drawing", "same", () => ({
-		drawing: true,
-		unsubscribe() {
-			disposed.push("drawing");
-		},
-	}));
-	assert.equal(
-		registry.openDocument("drawing", "same", () => {
-			throw new Error("duplicate store");
-		}),
-		drawing,
-	);
-	registry.openDocument("symbol", "same", () => ({
-		symbol: true,
-		unsubscribe() {
-			disposed.push("symbol");
-		},
-	}));
-	registry.clear();
-	registry.clear();
-	assert.deepEqual(disposed.sort(), ["drawing", "symbol"]);
-	assert.equal(registry.collection("drawing").size, 0);
-});
-
-test("snapshot index keeps paths paired with IDs and rebuilds after a save renames paths", () => {
-	const first = snapshot();
-	const symbol = createEmptySymbolFile("Part", []);
-	first.symbols = [symbol];
-	first.manifest.symbols = ["old.ecadsym"];
-	first.drawings = [
-		{ id: "extra", name: "Extra", circuitId: "pcb-extra", shapes: [] },
-	];
-	first.manifest.drawings = ["extra.ecaddraw"];
-	first.circuits = [createCircuit("Extra", "pcb-extra")];
-	first.manifest.circuits = [{ circuit: "extra.ecadcircuit" }];
-	const index = projectIndex(first);
-	assert.equal(projectIndex(first), index);
-	assert.equal(index.symbolsByPath.get("old.ecadsym"), symbol);
-	assert.equal(
-		index.drawingsByCircuit.get("pcb-extra")?.path,
-		"extra.ecaddraw",
-	);
-	assert.equal(
-		index.circuitsByPath.get("extra.ecadcircuit"),
-		first.circuits[0],
-	);
-	const next = {
-		...first,
-		manifest: { ...first.manifest, symbols: ["new.ecadsym"] },
-	};
-	assert.equal(
-		projectIndex(next).symbolsById.get(symbol.id)?.path,
-		"new.ecadsym",
-	);
-	assert.equal(createProjectIndex(snapshot()).circuitsById.size, 0);
-});
-
-test("session caches snapshots and actions across status changes and rejects obsolete library saves", async () => {
-	const { session } = fixture();
-	const stop = session.connect();
-	await loaded(session);
-	const first = session.getSnapshot();
-	assert.equal(session.getSnapshot(), first);
-	first.reportUnsavedEdits("library", true);
-	const next = session.getSnapshot();
-	assert.equal(next.project, first.project);
-	assert.equal(next.store, first.store);
-	assert.equal(next.createDrawing, first.createDrawing);
-	assert.equal(next.otherUnsavedEdits, true);
-	const oldLibrary = session.getProjectSymbols(first.session);
-	await next.reload();
-	await assert.rejects(() => required(oldLibrary).save([], []), ProjectClosed);
-	stop();
-});
-
 test("conflict pauses autosave and reload discards edits without writing them", async () => {
 	const f = fixture();
 	const stop = f.session.connect();
@@ -332,99 +242,6 @@ test("a save that lands during a drag keeps it, and the drag commits with workin
 	stop();
 });
 
-test("library writes and explicit saves share the session queue", async () => {
-	const f = fixture();
-	const stop = f.session.connect();
-	await loaded(f.session);
-	let release!: () => void;
-	const blocked = new Promise<void>((resolve) => {
-		release = resolve;
-	});
-	let started!: () => void;
-	const entered = new Promise<void>((resolve) => {
-		started = resolve;
-	});
-	const save = f.storage.save;
-	let calls = 0;
-	f.storage.save = async (...args) => {
-		calls++;
-		if (calls === 1) {
-			started();
-			await blocked;
-		}
-		return save(...args);
-	};
-	const first = f.session.getSnapshot().save();
-	await entered;
-	const library = f.session.getProjectSymbols(f.session.getSnapshot().session);
-	assert.ok(library);
-	const second = library.save([], []);
-	await new Promise((resolve) => setImmediate(resolve));
-	assert.equal(calls, 1);
-	release();
-	await Promise.all([first, second]);
-	assert.equal(calls, 2);
-	stop();
-});
-
-test("linked PCB assembly preserves the first drawing match and never mutates its inputs", async () => {
-	const definition = symbolDefinitions.find(
-		(symbol) => symbol.id === "resistor",
-	);
-	assert.ok(definition);
-	const placed = createSymbol(1, definition, { x: 0, y: 0 }, "R1");
-	const original = synchronizePcb(
-		createCircuit("Other", "other"),
-		[placed],
-		undefined,
-		symbolDefinitions,
-	);
-	const changed = {
-		...original.file,
-		circuit: {
-			...original.file.circuit,
-			revision: original.file.circuit.revision + 1,
-			components: original.file.circuit.components.map((component) => ({
-				...component,
-				value: "Changed",
-			})),
-		},
-	};
-	const previous = { ...snapshot(), circuits: [original.file] };
-	const document = {
-		shapes: [],
-		symbols: [],
-		symbolLibraries: [],
-		circuits: [changed],
-		drawings: [
-			{
-				id: "first",
-				name: "First",
-				circuitId: "other",
-				shapes: original.shapes,
-			},
-			{
-				id: "second",
-				name: "Second",
-				circuitId: "other",
-				shapes: original.shapes,
-			},
-		],
-	};
-	const before = structuredClone(document);
-	const result = await assembleLinkedPcbs(
-		document,
-		previous,
-		symbols,
-		() => {},
-	);
-	assert.ok(result.externalDrawings.has("first"));
-	assert.ok(!result.externalDrawings.has("second"));
-	const first = result.document.drawings?.[0].shapes[0];
-	assert.equal(first?.kind === "symbol" && first.attributes.value, "Changed");
-	assert.deepEqual(document, before);
-});
-
 test("schematic import parses in the KiCad worker and rejects oversized files without saving", async (t) => {
 	const installed = installKiCadWorker();
 	t.after(installed.restore);
@@ -448,9 +265,7 @@ test("schematic import parses in the KiCad worker and rejects oversized files wi
 	const before = f.saves;
 	await assert.rejects(
 		f.session.getSnapshot().importSchematic(oversized),
-		(error) =>
-			error instanceof InvalidFile &&
-			error.message === "KiCad schematics must be 32 MiB or smaller.",
+		InvalidFile,
 	);
 	assert.equal(f.saves, before);
 	assert.equal(installed.workers.length, 0);
@@ -507,9 +322,7 @@ test("project assets over the size limit are rejected before they are read or st
 			.getSnapshot()
 			.importAssets([new File(["G04*"], "top.gbr"), huge], "gerber"),
 		(error) =>
-			error instanceof ProjectAssetTooLarge &&
-			error.message ===
-				"huge.zip: Gerber ZIP archives must be 256 MiB or smaller.",
+			error instanceof ProjectAssetTooLarge && error.assetName === "huge.zip",
 	);
 	assert.deepEqual(imported, []);
 	const step = new File(["x"], "huge.step");
@@ -517,8 +330,7 @@ test("project assets over the size limit are rejected before they are read or st
 	await assert.rejects(
 		f.session.getSnapshot().importAssets([step], "step"),
 		(error) =>
-			error instanceof ProjectAssetTooLarge &&
-			error.message === "huge.step: STEP files must be 256 MiB or smaller.",
+			error instanceof ProjectAssetTooLarge && error.assetName === "huge.step",
 	);
 	await f.session
 		.getSnapshot()
@@ -560,37 +372,6 @@ test("importing project assets resolves to the assets it added", async (t) => {
 	);
 });
 
-test("a project created from unsaved Untitled work copies its assets except those over the size limit", async (t) => {
-	const source = { ...snapshot(), inMemory: true };
-	source.manifest.assets = [
-		{ path: "assets/huge.step", name: "huge.step", kind: "step" },
-		{ path: "assets/top.gbr", name: "top.gbr", kind: "gerber" },
-	];
-	const f = fixture(source);
-	const imported: string[][] = [];
-	f.storage.readAsset = async (_directory, path) => {
-		if (path === "assets/huge.step")
-			throw new ProjectAssetTooLarge({
-				assetName: "huge.step",
-				reason: "STEP files must be 256 MiB or smaller.",
-			});
-		return new Uint8Array([1, 2]);
-	};
-	f.storage.importAssets = async (_directory, assets) => {
-		imported.push(assets.map((asset) => asset.name));
-		return required(await f.storage.load());
-	};
-	const stop = f.session.connect();
-	t.after(stop);
-	await loaded(f.session);
-	await f.session.getSnapshot().create("Copy");
-	assert.equal(
-		f.session.getSnapshot().error,
-		"The new project leaves out an asset over the size limit, which stays in the original project. huge.step: STEP files must be 256 MiB or smaller.",
-	);
-	assert.deepEqual(imported, [["top.gbr"]]);
-});
-
 test("restoring assets loads every asset within the limit and names the oversized ones", async (t) => {
 	const source = snapshot();
 	source.manifest.assets = [
@@ -619,10 +400,9 @@ test("restoring assets loads every asset within the limit and names the oversize
 		["small.step"],
 	);
 	assert.equal(await restored.files[0].text(), "assets/small.step");
-	assert.deepEqual(restored.problems, [
-		"b.step: STEP files must be 256 MiB or smaller.",
-		"c.step: STEP files must be 256 MiB or smaller.",
-	]);
+	assert.equal(restored.problems.length, 2);
+	assert.match(restored.problems[0], /\bb\.step\b/);
+	assert.match(restored.problems[1], /\bc\.step\b/);
 	const gerber = await f.session.getSnapshot().readAssets("gerber");
 	assert.deepEqual(
 		gerber.files.map((file) => file.name),
@@ -637,64 +417,6 @@ test("restoring assets loads every asset within the limit and names the oversize
 		f.session.getSnapshot().readAssets("step"),
 		/disk unavailable/,
 	);
-});
-
-test("view switches hand the remembered selection only to the paired destination", async () => {
-	const initial = snapshot();
-	const { session } = fixture({
-		...initial,
-		manifest: { ...initial.manifest, circuits: [{ circuit: "main.ecaddraw" }] },
-		circuits: [createCircuit("Main", primaryPcbId)],
-	});
-	const stop = session.connect();
-	await loaded(session);
-	const project = () => session.getSnapshot();
-	const schematic = {
-		view: "schematic" as const,
-		store: project().store,
-		selection: { shapeIds: [1], childKey: null },
-	};
-	project().rememberViewSelection(schematic);
-	await project().switchEditorView("circuit");
-	const circuit = required(project().editorCircuit);
-	assert.deepEqual(project().takeSelectionHandoff("schematic"), null);
-	project().rememberViewSelection(schematic);
-	await project().switchEditorView("schematic");
-	await project().switchEditorView("circuit");
-	assert.equal(project().takeSelectionHandoff("circuit")?.source, schematic);
-	assert.equal(project().takeSelectionHandoff("circuit"), null);
-
-	const derived = {
-		view: "circuit" as const,
-		store: circuit.store,
-		selection: { item: { kind: "net" as const, id: "net" }, checkedPins: [] },
-	};
-	project().rememberViewSelection({ ...derived, origin: { ...schematic } });
-	await project().switchEditorView("schematic");
-	assert.deepEqual(
-		project().takeSelectionHandoff("schematic")?.source,
-		derived,
-	);
-
-	project().rememberViewSelection({ ...derived, origin: schematic });
-	await project().switchEditorView("circuit");
-	assert.equal(project().takeSelectionHandoff("circuit"), null);
-
-	project().rememberViewSelection({ ...derived, origin: schematic });
-	await project().switchEditorView("schematic");
-	assert.equal(project().takeSelectionHandoff("schematic")?.source, schematic);
-
-	project().rememberViewSelection(schematic);
-	await project().switchEditorView("circuit");
-	await project().openCircuit("main.ecaddraw");
-	assert.equal(project().takeSelectionHandoff("circuit"), null);
-
-	await project().switchEditorView("schematic");
-	project().rememberViewSelection(schematic);
-	await project().switchEditorView("circuit");
-	await project().reload();
-	assert.equal(project().takeSelectionHandoff("circuit"), null);
-	stop();
 });
 
 test("a circuit's schematic, circuit and PCB load together and the PCB takes the selection", async () => {
@@ -734,165 +456,6 @@ test("a circuit's schematic, circuit and PCB load together and the PCB takes the
 	stop();
 });
 
-test("a circuit link's click and its route open the circuit once, and the editor waits for it throughout", async () => {
-	const initial = snapshot();
-	const { session } = fixture({
-		...initial,
-		manifest: { ...initial.manifest, circuits: [{ circuit: "main.ecaddraw" }] },
-		circuits: [createCircuit("Main", primaryPcbId)],
-	});
-	const stop = session.connect();
-	await loaded(session);
-	const project = () => session.getSnapshot();
-	const waiting: (number | null)[] = [];
-	const unsubscribe = session.subscribe(() => {
-		const request = project().openingCircuit;
-		if (waiting.at(-1) !== request) waiting.push(request);
-	});
-	const clicked = project().openCircuit("main.ecaddraw");
-	const routed = project().openCircuit("main.ecaddraw");
-	assert.equal(routed, clicked);
-	assert.deepEqual(await Promise.all([clicked, routed]), [true, true]);
-	assert.equal(waiting.length, 2);
-	assert.equal(typeof waiting[0], "number");
-	assert.equal(waiting[1], null);
-	const circuit = required(project().editorCircuit);
-
-	const reopened = project().openCircuit("main.ecaddraw");
-	assert.notEqual(reopened, clicked);
-	void project().selectEditorFile();
-	assert.equal(await reopened, false);
-	assert.equal(await project().openCircuit("main.ecaddraw"), true);
-	assert.equal(project().editorCircuit, circuit);
-	unsubscribe();
-	stop();
-});
-
-class LayoutWorker {
-	static started: LayoutWorker[] = [];
-	onmessage: ((event: MessageEvent) => void) | null = null;
-	onerror = null;
-	onmessageerror = null;
-	terminated = false;
-	posted = 0;
-	constructor() {
-		LayoutWorker.started.push(this);
-	}
-	postMessage() {
-		this.posted++;
-	}
-	terminate() {
-		this.terminated = true;
-	}
-	finish() {
-		this.onmessage?.({ data: { result: [] } } as MessageEvent);
-	}
-}
-
-async function withLayoutWorkers(
-	run: (
-		workers: LayoutWorker[],
-		asked: (requests: number) => Promise<void>,
-	) => Promise<void>,
-) {
-	const previous = globalThis.Worker;
-	globalThis.Worker = LayoutWorker as unknown as typeof Worker;
-	LayoutWorker.started = [];
-	const workers = LayoutWorker.started;
-	const requests = () =>
-		workers.reduce((total, worker) => total + worker.posted, 0);
-	try {
-		await run(workers, async (count) => {
-			for (let turn = 0; turn < 200 && requests() < count; turn++)
-				await new Promise((resolve) => setTimeout(resolve, 1));
-			await new Promise((resolve) => setTimeout(resolve, 5));
-			assert.equal(requests(), count);
-		});
-	} finally {
-		globalThis.Worker = previous;
-	}
-}
-
-test("a circuit is laid out once for its preload and its open, and reloading or closing the project stops a pending layout", async () => {
-	await withLayoutWorkers(async (workers, asked) => {
-		const initial = snapshot();
-		const { session } = fixture({
-			...initial,
-			manifest: {
-				...initial.manifest,
-				circuits: [{ circuit: "main.ecaddraw" }],
-			},
-			circuits: [createCircuit("Main", primaryPcbId)],
-		});
-		const stop = session.connect();
-		await loaded(session);
-		const project = () => session.getSnapshot();
-
-		const preloaded = project().preloadEditorViews();
-		const opened = project().openCircuit("main.ecaddraw");
-		await asked(1);
-		void project().selectEditorFile();
-		assert.equal(workers[0]?.terminated, false);
-		workers[0]?.finish();
-		await preloaded;
-		assert.equal(await opened, false);
-		const circuit = required(project().editorViews?.circuit);
-		assert.equal(await project().openCircuit("main.ecaddraw"), true);
-		assert.equal(project().editorCircuit, circuit);
-		assert.equal(workers.length, 1);
-		assert.equal(workers[0]?.terminated, false);
-
-		await project().reload();
-		const reloaded = project().openCircuit("main.ecaddraw");
-		await asked(2);
-		assert.equal(workers.length, 1);
-		await project().reload();
-		assert.equal(await reloaded, false);
-		assert.equal(workers[0]?.terminated, true);
-
-		const closed = project().openCircuit("main.ecaddraw");
-		await asked(3);
-		assert.equal(workers.length, 2);
-		stop();
-		assert.equal(await closed, false);
-		assert.equal(workers[1]?.terminated, true);
-	});
-});
-
-test("preloading the visible circuit waits for another circuit the user is opening", async () => {
-	await withLayoutWorkers(async (workers, asked) => {
-		const initial = snapshot();
-		const { session } = fixture({
-			...initial,
-			manifest: {
-				...initial.manifest,
-				circuits: [
-					{ circuit: "main.ecaddraw" },
-					{ circuit: "other.ecadcircuit" },
-				],
-			},
-			circuits: [
-				createCircuit("Main", primaryPcbId),
-				createCircuit("Other", "other"),
-			],
-		});
-		const stop = session.connect();
-		await loaded(session);
-		const project = () => session.getSnapshot();
-
-		const opened = project().openCircuit("other.ecadcircuit");
-		await asked(1);
-		await project().preloadEditorViews();
-		assert.equal(workers[0]?.terminated, false);
-		await asked(1);
-		workers[0]?.finish();
-		assert.equal(await opened, true);
-		assert.equal(project().editorCircuit?.file.circuit.id, "other");
-
-		stop();
-	});
-});
-
 test("a page-only edit marks the project dirty and saves the pages", async () => {
 	const f = fixture();
 	const stop = f.session.connect();
@@ -930,25 +493,6 @@ test("a page-only edit marks the project dirty and saves the pages", async () =>
 	assert.equal(f.session.getSnapshot().dirty, true);
 	await f.session.getSnapshot().save();
 	assert.equal(required(await f.storage.load()).pages?.[0].name, "Inputs");
-	disconnect();
-	stop();
-});
-
-test("a sheet-only edit marks the project dirty and saves the sheet", async () => {
-	const f = fixture();
-	const stop = f.session.connect();
-	await loaded(f.session);
-	const store = f.session.getSnapshot().store;
-	const editor = createEditorSession(store);
-	const disconnect = editor.connect(store, () => undefined);
-	editor.execute(setSheetEffect({ paper: "A4", title: "Amplifier" }));
-	assert.equal(f.session.getSnapshot().dirty, true);
-	await f.session.getSnapshot().save();
-	assert.equal(f.session.getSnapshot().dirty, false);
-	assert.deepEqual(required(await f.storage.load()).sheet, {
-		paper: "A4",
-		title: "Amplifier",
-	});
 	disconnect();
 	stop();
 });

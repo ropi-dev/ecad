@@ -1,15 +1,4 @@
 import { required } from "../helpers/required.ts";
-/** A deterministic example built from Gerber source, using the same import path as user files. */
-export const demoName = "Atlas sensor board";
-
-export const demoPalette: Record<string, string> = {
-	"atlas-F_Cu.gbr": "#e77967",
-	"atlas-B_Cu.gbr": "#658fe3",
-	"atlas-F_Mask.gbr": "#6aa991",
-	"atlas-F_Silkscreen.gbr": "#d9e4e4",
-	"atlas-Edge_Cuts.gbr": "#899ba4",
-	"atlas-Components_Top.gbr": "#d5ac63",
-};
 
 type Point = readonly [number, number];
 type Pad = {

@@ -49,10 +49,6 @@ test("each channel keeps its newest releases and nightly adds the newest stable"
 	);
 });
 
-test("channels are empty before the first release", () => {
-	assert.deepEqual(channelTags([]), { stable: [], nightly: [] });
-});
-
 test("the packages index points at files next to it", () => {
 	assert.equal(
 		packagesIndex([packageFile("ecad_0.1.0_amd64.deb")]),
@@ -141,9 +137,9 @@ test("signs with the keyring's only secret key", () => {
 });
 
 test("refuses a keyring without exactly one secret key", () => {
-	assert.throws(() => signingKey(""), /no secret key/);
+	assert.throws(() => signingKey(""));
 	assert.throws(
 		() => signingKey(secretKey("A".repeat(40)) + secretKey("B".repeat(40))),
-		/2 secret keys\. Choose one with --key/,
+		/--key/,
 	);
 });

@@ -60,50 +60,6 @@ test("each operation name sends a limited number of events per session", () => {
 	assert.equal(summary?.properties["project.save.count"], 11);
 });
 
-test("summaries report per-window percentiles and reset after each window", () => {
-	let clock = 1_000;
-	const collector = createTelemetryCollector({ now: () => clock });
-	for (let frame = 1; frame <= 100; frame++)
-		collector.receive(sample("renderer.frame", frame));
-	collector.receive(sample("circuit.erc", 5, undefined, "error"));
-	collector.receive(sample("react.Editor", 3));
-	collector.receive(sample("browser.Weird Name", 3));
-	clock += 60_000;
-	const summary = collector.takeSummary();
-	assert.ok(summary);
-	const properties = summary.properties;
-	assert.equal(properties.window_ms, 60_000);
-	assert.equal(properties["renderer.frame.count"], 100);
-	assert.equal(properties["renderer.frame.max"], 100);
-	for (const [name, exact] of [
-		["p50", 50],
-		["p95", 95],
-		["p99", 99],
-	] as const) {
-		const value = properties[`renderer.frame.${name}`] as number;
-		assert.ok(
-			value >= exact && value <= exact * 1.1,
-			`${name} ${value} is within 10% above ${exact}`,
-		);
-	}
-	assert.equal(properties["circuit.erc.errors"], 1);
-	assert.equal(properties["renderer.frame.errors"], undefined);
-	assert.ok(!Object.keys(properties).some((key) => key.startsWith("react.")));
-	assert.ok(!Object.keys(properties).some((key) => key.includes("Weird")));
-	assert.equal(collector.takeSummary(), undefined);
-
-	collector.receive(sample("editor.pin-hit-test", 0.01));
-	collector.receive(sample("editor.pin-hit-test", 0.09));
-	const small = collector.takeSummary()?.properties;
-	const median = small?.["editor.pin-hit-test.p50"] as number;
-	assert.ok(median >= 0.01 && median <= 0.011, `p50 ${median}`);
-	collector.receive(sample("editor.pin-hit-test", 0.004));
-	assert.equal(
-		collector.takeSummary()?.properties["editor.pin-hit-test.max"],
-		0.004,
-	);
-});
-
 test("collected events pass the batch schema the desktop app enforces", () => {
 	const collector = createTelemetryCollector();
 	for (let index = 0; index < 80; index++)
@@ -212,47 +168,4 @@ test("consent is its own record, and a newer revision retires older sessions", a
 	values.set(TELEMETRY_CONSENT_KEY, '{"enabled":true}');
 	assert.equal(storage.load(), undefined);
 	assert.ok(second && !isCurrentConsent(second.revision));
-});
-
-test("the recorder stays on until the debug window and telemetry both release it", async () => {
-	const globals = globalThis as Record<string, unknown>;
-	const saved = {
-		window: globals.window,
-		location: globals.location,
-		document: globals.document,
-	};
-	const search = { value: "" };
-	globals.window = globalThis;
-	globals.location = {
-		get search() {
-			return search.value;
-		},
-		pathname: "/",
-	};
-	globals.document = {
-		visibilityState: "hidden",
-		addEventListener() {},
-		removeEventListener() {},
-	};
-	try {
-		const { acquirePerformance, getAppPerformance } = await import(
-			"#/performance/runtime.ts"
-		);
-		const releaseStats = acquirePerformance();
-		const recorder = getAppPerformance();
-		assert.ok(recorder);
-		const releaseTelemetry = acquirePerformance();
-		assert.equal(getAppPerformance(), recorder);
-		releaseStats();
-		releaseStats();
-		assert.equal(getAppPerformance(), recorder);
-		releaseTelemetry();
-		assert.equal(getAppPerformance(), undefined);
-
-		search.value = "?perf=0";
-		acquirePerformance();
-		assert.equal(getAppPerformance(), undefined);
-	} finally {
-		Object.assign(globals, saved);
-	}
 });

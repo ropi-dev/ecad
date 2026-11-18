@@ -5,10 +5,6 @@ import {
 	buildCircuitGraph,
 } from "@ecad/drawing-core/circuit/graph.ts";
 import {
-	CIRCUIT_GRID_SPACING,
-	circuitGridStep,
-} from "@ecad/drawing-core/circuit/grid.ts";
-import {
 	circuitFileSchema,
 	createCircuit,
 	parseCircuit,
@@ -18,12 +14,9 @@ import {
 } from "@ecad/drawing-core/circuit/model.ts";
 import { instantiateCircuitPart } from "@ecad/drawing-core/circuit/parts.ts";
 import {
-	applyCircuitCommand,
-	type CircuitCommand,
 	CircuitCommandError,
 	type CircuitCommandErrorReason,
 	createCircuitStore,
-	unknownCircuitCommand,
 } from "@ecad/drawing-core/circuit/store.ts";
 import {
 	circuitLayoutQuality,
@@ -161,14 +154,11 @@ test("splitting keeps selected pins connected while disconnecting leaves them in
 function assertCommandError(
 	run: () => unknown,
 	reason: CircuitCommandErrorReason,
-	message?: string,
 ) {
 	assert.throws(run, (error) => {
 		assert.ok(error instanceof CircuitCommandError);
 		assert.equal(error._tag, "CircuitCommandError");
 		assert.equal(error.reason, reason);
-		assert.ok(error.message);
-		if (message !== undefined) assert.equal(error.message, message);
 		return true;
 	});
 }
@@ -182,7 +172,6 @@ test("invalid commands publish nothing, preserve history, and fail with a typed 
 	assertCommandError(
 		() => store.execute({ type: "connect", pinIds: ["missing"] }),
 		"invalid-pins",
-		"Choose distinct pins belonging to this circuit.",
 	);
 	assertCommandError(
 		() =>
@@ -192,7 +181,6 @@ test("invalid commands publish nothing, preserve history, and fail with a typed 
 				netId: "missing-net",
 			}),
 		"net-not-found",
-		"Net no longer exists.",
 	);
 	assertCommandError(
 		() =>
@@ -220,7 +208,6 @@ test("invalid commands publish nothing, preserve history, and fail with a typed 
 	assertCommandError(
 		() => store.execute({ type: "remove-component", id: "missing" }),
 		"component-not-found",
-		"Component no longer exists.",
 	);
 	assertCommandError(
 		() =>
@@ -253,113 +240,13 @@ test("invalid commands publish nothing, preserve history, and fail with a typed 
 		(error) => {
 			assert.ok(error instanceof CircuitCommandError);
 			assert.equal(error.reason, "invalid-circuit");
-			assert.equal(error.message, "Duplicate component reference: J1");
+			assert.match(error.message, /\bJ1\b/);
 			assert.ok(error.cause instanceof z.ZodError);
 			return true;
 		},
 	);
 	assert.equal(store.getSnapshot(), before);
 	assert.equal(notifications, 0);
-});
-
-test("the command switch is exhaustive at compile time and rejects forged command types", () => {
-	const file = createTestCircuit();
-	const forged = {
-		type: "rotate",
-		id: file.circuit.components[0].id,
-	} as unknown as CircuitCommand;
-	assertCommandError(
-		() => applyCircuitCommand(file, forged),
-		"unknown-command",
-		"Unknown circuit command: rotate.",
-	);
-	const store = createCircuitStore(file);
-	const before = store.getSnapshot();
-	assertCommandError(() => store.execute(forged), "unknown-command");
-	assert.equal(store.getSnapshot(), before);
-	assert.equal(store.getSnapshot().circuit.revision, file.circuit.revision);
-	const handleOnlyMoves = (command: CircuitCommand) => {
-		if (command.type === "move") return command.positions.length;
-		// @ts-expect-error Every unhandled command type is still possible here, so the guard does not compile.
-		return unknownCircuitCommand(command);
-	};
-	assertCommandError(
-		() => handleOnlyMoves({ type: "remove-net", id: "spare" }),
-		"unknown-command",
-		"Unknown circuit command: remove-net.",
-	);
-});
-
-test("an injected ID generator makes commands that create nets deterministic", () => {
-	const file = createTestCircuit();
-	const [first, second] = file.circuit.nets;
-	const edit = () => {
-		let next = 0;
-		const store = createCircuitStore(file, { createId: () => `net-${++next}` });
-		store.execute({ type: "disconnect", pinIds: second.pinIds });
-		store.execute({ type: "connect", pinIds: second.pinIds });
-		store.execute({
-			type: "split-net",
-			netId: first.id,
-			pinIds: [first.pinIds[0]],
-		});
-		return store.getSnapshot();
-	};
-	const snapshot = edit();
-	assert.deepEqual(
-		snapshot.circuit.nets.find((net) => net.id === "net-1")?.pinIds,
-		second.pinIds,
-	);
-	assert.deepEqual(
-		snapshot.circuit.nets.find((net) => net.id === "net-2")?.pinIds,
-		[first.pinIds[0]],
-	);
-	assert.deepEqual(edit(), snapshot);
-	let applied = 0;
-	assert.deepEqual(
-		applyCircuitCommand(
-			file,
-			{ type: "split-net", netId: first.id, pinIds: [first.pinIds[0]] },
-			{ createId: () => `split-${++applied}` },
-		).circuit.nets.at(-1)?.id,
-		"split-1",
-	);
-	assert.equal(
-		createCircuitStore(undefined, {
-			createId: () => "fixed-circuit",
-		}).getSnapshot().circuit.id,
-		"fixed-circuit",
-	);
-	assert.throws(
-		() => createCircuitStore(undefined, { createId: () => "" }),
-		(error) => {
-			assert.ok(error instanceof CircuitCommandError);
-			assert.equal(error.reason, "invalid-circuit");
-			assert.ok(error.cause instanceof z.ZodError);
-			return true;
-		},
-	);
-	const colliding = createCircuitStore(file, { createId: () => first.id });
-	assertCommandError(
-		() =>
-			colliding.execute({
-				type: "split-net",
-				netId: first.id,
-				pinIds: [first.pinIds[0]],
-			}),
-		"invalid-circuit",
-		`Duplicate circuit identity: ${first.id}`,
-	);
-	const random = createCircuitStore(file);
-	random.execute({
-		type: "split-net",
-		netId: first.id,
-		pinIds: [first.pinIds[0]],
-	});
-	assert.match(
-		required(random.getSnapshot().circuit.nets.at(-1)).id,
-		/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
-	);
 });
 
 test("standalone nets survive disconnection, component deletion, serialization, and arrangement", () => {
@@ -516,27 +403,6 @@ test("no-connect declarations and component deletion clean up memberships and la
 	);
 });
 
-test("large nets produce one membership edge per pin and layouts accommodate tall components", () => {
-	const file = createCircuit("Large net");
-	for (let index = 0; index < 100; index++)
-		file.circuit.components.push(
-			createTestComponent("connector-8", file.circuit.components),
-		);
-	file.circuit.nets.push({
-		id: "ground",
-		names: ["GND"],
-		pinIds: file.circuit.components.flatMap((component) =>
-			component.pins.map((pin) => pin.id),
-		),
-	});
-	file.graph.positions = arrangeCircuitGraph(file);
-	const graph = buildCircuitGraph(circuitFileSchema.parse(file));
-	assert.equal(graph.edges.length, 800);
-	assert.ok(
-		graph.components[4].y > graph.components[0].y + graph.components[0].height,
-	);
-});
-
 test("collapsed components hide every pin and share one endpoint per side without changing electrical identities", () => {
 	const file = createCircuit("Large component");
 	const component = instantiateCircuitPart(
@@ -631,109 +497,6 @@ test("collapsed components hide every pin and share one endpoint per side withou
 	);
 });
 
-test("collapse validation, empty compact components, and deletion preserve graph integrity", () => {
-	const file = createCircuit("Compact");
-	const component = createTestComponent("connector-8", []);
-	file.circuit.components.push(component);
-	const store = createCircuitStore(file);
-	const original = store.getSnapshot();
-	assert.throws(() =>
-		store.execute({
-			type: "set-component-collapsed",
-			id: "missing",
-			collapsed: true,
-		}),
-	);
-	assert.equal(store.getSnapshot(), original);
-	assert.throws(() =>
-		circuitFileSchema.parse({
-			...file,
-			graph: { ...file.graph, collapsedComponentIds: ["missing"] },
-		}),
-	);
-	assert.throws(() =>
-		parseGraphLayout(
-			JSON.stringify({
-				...file.graph,
-				collapsedComponentIds: [component.id, component.id],
-			}),
-		),
-	);
-	store.execute({
-		type: "set-component-collapsed",
-		id: component.id,
-		collapsed: true,
-	});
-	const graph = buildCircuitGraph(store.getSnapshot());
-	assert.equal(graph.components[0].height, 84);
-	assert.equal(graph.components[0].hiddenPinCount, 8);
-	assert.equal(graph.pinNodes.size, 8);
-	assert.doesNotThrow(() =>
-		circuitFileSchema.parse({
-			circuit: store.getSnapshot().circuit,
-			graph: {
-				...store.getSnapshot().graph,
-				positions: arrangeCircuitGraph(store.getSnapshot()),
-			},
-		}),
-	);
-	store.execute({ type: "remove-component", id: component.id });
-	assert.equal(store.getSnapshot().graph.collapsedComponentIds, undefined);
-	store.undo();
-	assert.deepEqual(store.getSnapshot().graph.collapsedComponentIds, [
-		component.id,
-	]);
-});
-
-test("untangling lays out on the base grid however far the view is zoomed out", () => {
-	// The circuit-untangle performance workload: 32 resistors on one ground net
-	// and 16 paired signal nets.
-	const file = createCircuit("Zoomed out");
-	for (let index = 0; index < 32; index++)
-		file.circuit.components.push(
-			createTestComponent("resistor", file.circuit.components),
-		);
-	const components = file.circuit.components;
-	file.circuit.nets.push({
-		id: "ground",
-		names: ["GND"],
-		pinIds: components.map((component) => component.pins[0].id),
-	});
-	for (let index = 0; index < 32; index += 2)
-		file.circuit.nets.push({
-			id: `signal-${index}`,
-			names: [`SIGNAL_${index}`],
-			pinIds: [components[index].pins[1].id, components[index + 1].pins[1].id],
-		});
-	file.graph.positions = arrangeCircuitGraph(file);
-	// Fitting the untangled layout, about 5,000 units tall, zooms the view out
-	// until its grid step is 160. Snapping the layout to that step left
-	// 11 overlapping nodes.
-	const viewStep = circuitGridStep(0.14);
-	assert.equal(viewStep, 160);
-	for (let round = 0; round < 3; round++) {
-		const [source, target] = file.graph.positions
-			.filter((position) => position.kind === "component")
-			.sort((a, b) => a.y - b.y || a.x - b.x);
-		file.graph.positions = file.graph.positions.map((position) =>
-			position.id === source.id
-				? { ...position, x: target.x, y: target.y }
-				: position,
-		);
-		assert.ok(circuitLayoutQuality(file).overlaps > 0);
-		// @ts-expect-error Untangle takes no grid step, so the view's cannot reach it.
-		file.graph.positions = untangleCircuitGraph(file, viewStep);
-		assert.equal(circuitLayoutQuality(file).overlaps, 0);
-		assert.ok(
-			file.graph.positions.every(
-				(position) =>
-					position.x % CIRCUIT_GRID_SPACING === 0 &&
-					position.y % CIRCUIT_GRID_SPACING === 0,
-			),
-		);
-	}
-});
-
 for (const layout of ["files", "revisions"] as const) {
 	test(`only electrical circuit data is persisted with ${layout} storage`, async () => {
 		const memory = memoryDirectory();
@@ -819,10 +582,9 @@ test("desktop circuit saves reject external electrical circuit edits", async () 
 		required(saved.manifest.circuits)[0].circuit,
 		new TextEncoder().encode("{}"),
 	);
-	await assert.rejects(
-		repository.save({ shapes: [], symbols: [] }),
-		/changed on disk/,
-	);
+	await assert.rejects(repository.save({ shapes: [], symbols: [] }), {
+		_tag: "ProjectConflict",
+	});
 });
 
 test("untangling reduces crossings, separates overlapping nodes, and leaves connectivity intact", () => {
@@ -894,41 +656,6 @@ test("untangling reduces crossings, separates overlapping nodes, and leaves conn
 	assert.equal(circuitLayoutQuality(ledLayout).obstructions, 0);
 	assert.equal(circuitLayoutQuality(ledLayout).crossings, 0);
 });
-
-for (const layout of ["files", "revisions"] as const)
-	test(`legacy PCB identities and names receive valid paired drawing files with ${layout} storage`, async () => {
-		const memory = memoryDirectory();
-		const repository = new ProjectRepository(memory.directory, { layout });
-		await repository.create("Legacy");
-		const files = [
-			createCircuit("Board", "Board_1"),
-			createCircuit("Power / analog", "board-1"),
-			createCircuit("CON", "board_1"),
-		];
-		const saved = await repository.save({
-			shapes: [],
-			symbols: [],
-			circuits: files,
-		});
-		assert.deepEqual(
-			required(saved.circuits)
-				.slice(0, 3)
-				.map((file) => [file.circuit.id, file.circuit.name]),
-			files.map((file) => [file.circuit.id, file.circuit.name]),
-		);
-		const drawings = required(saved.drawings);
-		assert.equal(new Set(drawings.map((drawing) => drawing.id)).size, 3);
-		assert.ok(
-			drawings.every((drawing) => /^[a-z0-9][a-z0-9_-]*$/.test(drawing.id)),
-		);
-		const reopened = await new ProjectRepository(memory.directory, {
-			layout,
-		}).load();
-		assert.deepEqual(
-			required(reopened.circuits).map((file) => file.circuit),
-			required(saved.circuits).map((file) => file.circuit),
-		);
-	});
 
 test("renaming a net to an existing name merges memberships and aliases in one undo step", () => {
 	const file = createTestCircuit();

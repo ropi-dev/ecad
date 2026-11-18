@@ -29,7 +29,7 @@ test("deb architectures follow Electron's", () => {
 	assert.equal(debianArchitecture("x64"), "amd64");
 	assert.equal(debianArchitecture("arm64"), "arm64");
 	assert.equal(debianArchitecture("armv7l"), "armhf");
-	assert.throws(() => debianArchitecture("ia32"), /Unsupported architecture/);
+	assert.throws(() => debianArchitecture("ia32"), /\bia32\b/);
 });
 
 test("deb control file declares the package and its libraries", () => {

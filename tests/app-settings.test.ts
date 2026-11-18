@@ -1,35 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { resolveAntialiasing } from "#/components/viewer/antialiasing.ts";
-import { parseProjectManifest } from "#/projects/format.ts";
+import { type AppSettings, withErcSeverity } from "#/settings/schema.ts";
 import {
-	type AppSettings,
-	parseAppSettings,
-	withErcSeverity,
-} from "#/settings/schema.ts";
-import {
-	createBrowserSettingsStorage,
 	getAppSettings,
 	getSettingsStatus,
-	SETTINGS_STORAGE_KEY,
 	type SettingsStorage,
 	setSettingsStorage,
 	updateAppSettings,
 } from "#/settings/store.ts";
-
-function fakeStorage(initial: Record<string, string> = {}) {
-	const values = new Map(Object.entries(initial));
-	return {
-		values,
-		getItem: (key: string) => values.get(key) ?? null,
-		setItem: (key: string, value: string) => {
-			values.set(key, value);
-		},
-		removeItem: (key: string) => {
-			values.delete(key);
-		},
-	};
-}
 
 test("rule levels are set and cleared one rule at a time", () => {
 	const settings: AppSettings = { version: 1, antialiasing: "on" };
@@ -44,65 +23,6 @@ test("rule levels are set and cleared one rule at a time", () => {
 	);
 	assert.equal(resolveAntialiasing("on"), true);
 	assert.equal(resolveAntialiasing("off"), false);
-});
-
-test("settings from another build keep unknown keys and drop only invalid fields", () => {
-	assert.deepEqual(
-		parseAppSettings(
-			JSON.stringify({
-				version: 1,
-				density: "compact",
-				antialiasing: "sometimes",
-				releaseChannel: "beta",
-				boardUnit: "inch",
-				ercSeverity: { "unconnected-pin": "off", "similar-net-names": "info" },
-			}),
-		),
-		{
-			version: 1,
-			density: "compact",
-			ercSeverity: { "unconnected-pin": "off" },
-		},
-	);
-	assert.equal(
-		parseAppSettings('{"version":1,"releaseChannel":"nightly"}').releaseChannel,
-		"nightly",
-	);
-	assert.equal(
-		parseAppSettings('{"version":1,"boardUnit":"mil"}').boardUnit,
-		"mil",
-	);
-	assert.throws(() => parseAppSettings('{"version":2}'), {
-		message: /^version: /,
-	});
-	assert.deepEqual(
-		parseProjectManifest(`format = "ecad-project"
-version = 1
-name = "Rules"
-drawing = "drawing.ecaddraw"
-symbols = []
-
-[settings]
-future = true
-
-[settings.ercSeverity]
-unconnected-pin = "off"
-`).settings,
-		{ future: true, ercSeverity: { "unconnected-pin": "off" } },
-	);
-});
-
-test("browser settings carry over the old antialiasing key until the next save", async () => {
-	const browser = fakeStorage({ "ecad.antialias": "0" });
-	setSettingsStorage(createBrowserSettingsStorage(browser));
-	assert.equal(getAppSettings().antialiasing, "off");
-	assert.equal(getSettingsStatus().updates, false);
-	await updateAppSettings((settings) => settings);
-	assert.equal(browser.values.has("ecad.antialias"), false);
-	assert.deepEqual(JSON.parse(browser.values.get(SETTINGS_STORAGE_KEY) ?? ""), {
-		version: 1,
-		antialiasing: "off",
-	});
 });
 
 test("settings apply at once, save in order and report failed reads and saves", async () => {

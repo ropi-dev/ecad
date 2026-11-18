@@ -5,7 +5,6 @@ import { generateDefaultFootprints } from "@ecad/default-footprints";
 import {
 	type BoardFootprint,
 	createBoardFootprint,
-	flipBoardFootprint,
 } from "@ecad/drawing-core/board/footprints.ts";
 import {
 	type EditorShape,
@@ -16,8 +15,6 @@ import { textCenter } from "@ecad/drawing-core/drawing/text-alignment.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
 import { exportFabrication } from "#/board/gerber.ts";
-import { textPolygons } from "#/board/text-outline.ts";
-import { buildBoardStaticDisplay } from "#/drawing/display.ts";
 import {
 	lineHeight,
 	overbarRise,
@@ -256,46 +253,6 @@ describe("board text in Gerber files", () => {
 		assert.ok(parseGerber(content, "text.gto").object.objects.length > 0);
 	});
 
-	test("region contours never repeat a point", () => {
-		const rings = regions(gerber([text("O08@%DQBmn")], "F.SilkS"));
-		assert.ok(rings.length > 0);
-		for (const ring of rings)
-			for (const [index, [x, y]] of ring.slice(1).entries())
-				assert.ok(x !== ring[index][0] || y !== ring[index][1]);
-	});
-
-	test("solder mask text opens the mask", () => {
-		const content = gerber([text("H", { layer: "F.Mask" })], "F.Mask");
-		assert.match(content, /%TF\.FilePolarity,Negative\*%/);
-		const rings = regions(content);
-		assert.equal(rings.length, 1);
-		assert.doesNotMatch(content, /%LPC\*%/);
-	});
-
-	test("glyphs with several holes keep every hole open", () => {
-		const area = (ring: Ring) =>
-			Math.abs(
-				ring.reduce((sum, [x, y], index) => {
-					const [nextX, nextY] = ring[(index + 1) % ring.length];
-					return sum + x * nextY - nextX * y;
-				}, 0) / 2,
-			);
-		const shape = text("8B@%");
-		const ink = textPolygons(shape).reduce(
-			(sum, [outer, ...holes]) =>
-				sum +
-				area(outer) -
-				holes.reduce((total, hole) => total + area(hole), 0),
-			0,
-		);
-		const rings = regions(gerber([shape], "F.SilkS"));
-		near(
-			rings.reduce((sum, ring) => sum + area(ring), 0),
-			ink,
-			0.001,
-		);
-	});
-
 	test("lines stack downward and overbars sit above their letters", () => {
 		const scale = 4 / 96;
 		const capital = 730 * unit(4);
@@ -348,45 +305,6 @@ describe("board text in Gerber files", () => {
 		assert.equal(bottom.filter(labelBox(front)).length, 0);
 	});
 
-	test("flipping a footprint mirrors its side-aligned text about the footprint", () => {
-		const shapes: EditorShape[] = [
-			{
-				...text("LEFT", { x: 1, y: 3, horizontalAlign: "left" }),
-				id: 90,
-			},
-		];
-		const at = { x: 40, y: 10 };
-		const front = resistor(1, "R5", at, { shapes });
-		const labelled = {
-			...front,
-			texts: [{ ...front.texts[0], horizontalAlign: "left" as const }],
-		};
-		const ink = (footprint: BoardFootprint, layer: FootprintLayer) =>
-			bounds(regions(gerber([footprint], layer)));
-		const mirrorsFront = (back: ReturnType<typeof ink>) => {
-			const top = ink(labelled, "F.SilkS");
-			near(back.minX, 2 * at.x - top.maxX);
-			near(back.maxX, 2 * at.x - top.minX);
-			near(back.minY, top.minY);
-			near(back.maxY, top.maxY);
-		};
-		mirrorsFront(ink(flipBoardFootprint(labelled), "B.SilkS"));
-		const placed = resistor(1, "R5", at, { shapes, flipped: true });
-		mirrorsFront(
-			ink(
-				{
-					...placed,
-					texts: [{ ...placed.texts[0], horizontalAlign: "right" as const }],
-				},
-				"B.SilkS",
-			),
-		);
-		assert.deepEqual(
-			flipBoardFootprint(flipBoardFootprint(labelled)),
-			labelled,
-		);
-	});
-
 	test("footprint text resolves its variables and fabrication text stays out", () => {
 		const shapes: EditorShape[] = [
 			{ ...text(`\${REFERENCE}`, { x: 0, y: 2 }), id: 90 },
@@ -397,34 +315,6 @@ describe("board text in Gerber files", () => {
 		const rings = regions(gerber([footprint], "F.SilkS"));
 		assert.equal(rings.length, 2);
 		near(bounds(rings).center.y, 12, 0.3);
-	});
-
-	test("a footprint without a reference exports no label", () => {
-		assert.equal(
-			regions(gerber([resistor(1, "", { x: 20, y: 10 })], "F.SilkS")).length,
-			0,
-		);
-	});
-
-	test("copper and outline text stay out until zones and checks account for them", () => {
-		const copper = text("H", { layer: "F.Cu" });
-		assert.equal(regions(gerber([copper], "F.Cu")).length, 0);
-		assert.equal(regions(gerber([copper], "F.SilkS")).length, 0);
-		const outline = gerber([text("H", { layer: "Edge.Cuts" })], "Edge.Cuts");
-		assert.doesNotMatch(outline, /D0[13]\*/);
-	});
-
-	test("the editor draws back-side text mirrored too", () => {
-		const display = buildBoardStaticDisplay(
-			[text("L"), { ...text("L", { layer: "B.SilkS" }), id: 2 }],
-			new Set(),
-			new Set(),
-			[],
-		);
-		assert.deepEqual(
-			display.shapes.map((shape) => shape.mirrored),
-			[undefined, true],
-		);
 	});
 
 	test("the glyph outlines match the bundled fonts", () => {

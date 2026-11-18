@@ -15,6 +15,17 @@ Use the `#/components/editor/Editor2D.tsx` import format, instead of `../../src/
 
 - If the authenticated account belongs to a group authorized to bypass pull request approval requirements, you may always use that bypass without asking for additional confirmation.
 
+## Tests
+
+- Write a test only for behaviour a user of the app, the CLI or the MCP server would notice if it broke: a workflow, a file that must open or save, an export a fab reads, an error they have to see. One test per behaviour.
+- Do not write a test that restates the request in the negative, such as "does not rebuild the hints on every frame" or "does not save repeatedly". For a bug fix, cover the workflow the bug broke, and only when no existing test already does.
+- Do not test implementation details: caches, object identity, subscriptions, resource release, call counts, one-off migrations, validation of states the UI cannot produce, or another variant of a case that is already covered.
+- Do not pin cosmetics: an icon's class or glyph, a literal colour, a pixel position or CSS value of the app chrome, or the wording of a message, label or tooltip. Assert the error's class, tag or code, the count, or the name the user needs to see in it, such as the rejected file. To tell two visual states apart, compare them with each other.
+- Do not test development tooling such as the sandbox, the perf runner or the release scripts beyond the one path each tool exists for.
+- Prefer a Node test in `tests/*.test.ts`. Add a browser test only for a workflow that needs a real browser, and extend an existing scenario before adding one. Each browser test costs 4 to 15 seconds on CI.
+- A CLI process takes over a second to start. Call the modules in-process unless the test is about the process itself, and put several assertions behind one spawn.
+- When a change makes a test obsolete, delete the test.
+
 ## Test failures
 
 - Fix every failing test or scenario you run into on your branch, including ones that also fail on main or come from someone else's change. Don't report a failure as pre-existing and leave it. Say in the pull request what you fixed and which change broke it.

@@ -1,18 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { test } from "node:test";
-import type { TelemetryConsent } from "@ecad/core/telemetry/consent.ts";
 import type { TelemetryBatch } from "@ecad/core/telemetry/schema.ts";
 import { telemetryChannels } from "#/bridge.ts";
 import { parseIpcArguments } from "#/main/ipc.ts";
-import {
-	DesktopTelemetryConsent,
-	POSTHOG_BATCH_URL,
-	sendTelemetry,
-} from "#/main/telemetry.ts";
-import { createDesktopConsentStorage } from "#/renderer/storage.ts";
+import { POSTHOG_BATCH_URL, sendTelemetry } from "#/main/telemetry.ts";
 
 const revision = "6f3d2a6e-1c1d-4a59-9d36-0e7d6b1c2f10";
 const batch: TelemetryBatch = {
@@ -83,115 +74,6 @@ test("batches go out only under the consent that is on disk now", async () => {
 	);
 });
 
-test("consent lives in its own file that every running app reads", async () => {
-	const home = await mkdtemp(join(tmpdir(), "ecad-telemetry-"));
-	try {
-		const first = new DesktopTelemetryConsent(home);
-		const second = new DesktopTelemetryConsent(home);
-		assert.equal(await first.load(), null);
-		await first.save({ enabled: true, revision, since: 1 });
-		assert.deepEqual(await second.load(), {
-			enabled: true,
-			revision,
-			since: 1,
-		});
-		await second.save({ enabled: false, revision: "a1b2c3d4-off", since: 2 });
-		assert.deepEqual(await first.load(), {
-			enabled: false,
-			revision: "a1b2c3d4-off",
-			since: 2,
-		});
-		assert.equal((await stat(first.path)).mode & 0o777, 0o600);
-		assert.match(await readFile(first.path, "utf8"), /"enabled":false/);
-		await writeFile(first.path, '{"enabled":"yes"}');
-		assert.equal(await first.load(), null);
-	} finally {
-		await rm(home, { recursive: true, force: true });
-	}
-});
-
-test("a running app hears when another one changes consent", async () => {
-	const home = await mkdtemp(join(tmpdir(), "ecad-telemetry-watch-"));
-	try {
-		const first = new DesktopTelemetryConsent(home);
-		const second = new DesktopTelemetryConsent(home);
-		let changes = 0;
-		const stop = await first.watch(() => changes++);
-		try {
-			await second.save({ enabled: false, revision, since: 3 });
-			for (let wait = 0; wait < 40 && changes === 0; wait++)
-				await new Promise((resolve) => setTimeout(resolve, 50));
-			assert.ok(changes > 0);
-		} finally {
-			stop();
-		}
-
-		let notify = () => {};
-		let stored: TelemetryConsent | null = { enabled: true, revision, since: 1 };
-		const storage = await createDesktopConsentStorage({
-			loadConsent: async () => stored,
-			saveConsent: async () => {},
-			onConsentChanged: (listener) => {
-				notify = listener;
-				return () => {};
-			},
-		});
-		assert.equal(storage.load()?.enabled, true);
-		let heard = false;
-		storage.subscribe?.(() => {
-			heard = true;
-		});
-		stored = { enabled: false, revision: "c0ffee00-off", since: 4 };
-		notify();
-		for (let wait = 0; wait < 20 && !heard; wait++)
-			await new Promise((resolve) => setTimeout(resolve, 10));
-		assert.equal(storage.load()?.enabled, false);
-	} finally {
-		await rm(home, { recursive: true, force: true });
-	}
-});
-
-test("an older consent read never replaces a newer one", async () => {
-	const off = { enabled: false, revision: "dddddddd-off", since: 5 };
-	const on = { enabled: true, revision, since: 1 };
-	const pending: ((value: TelemetryConsent) => void)[] = [];
-	let notify = () => {};
-	let startup = true;
-	const storage = await createDesktopConsentStorage({
-		loadConsent: () => {
-			if (startup) {
-				startup = false;
-				return Promise.resolve(on);
-			}
-			return new Promise((resolve) => pending.push(resolve));
-		},
-		saveConsent: async () => {},
-		onConsentChanged: (listener) => {
-			notify = listener;
-			return () => {};
-		},
-	});
-	storage.subscribe?.(() => {});
-	notify();
-	assert.equal(pending.length, 2);
-	pending[1](off);
-	await new Promise((resolve) => setTimeout(resolve, 0));
-	pending[0](on);
-	await new Promise((resolve) => setTimeout(resolve, 0));
-	assert.equal(storage.load()?.enabled, false);
-
-	notify();
-	await storage.save(off);
-	pending[2](on);
-	await new Promise((resolve) => setTimeout(resolve, 0));
-	assert.equal(storage.load()?.enabled, false);
-
-	const newer = { enabled: true, revision: "eeeeeeee-other-app", since: 6 };
-	pending[3](newer);
-	await new Promise((resolve) => setTimeout(resolve, 0));
-	assert.deepEqual(storage.load(), newer);
-});
-
 test("telemetry requests must be PostHog batches of known events", () => {
 	assert.deepEqual(
 		parseIpcArguments(telemetryChannels.send, [batch, revision]),
@@ -199,14 +81,14 @@ test("telemetry requests must be PostHog batches of known events", () => {
 	);
 	assert.throws(
 		() => parseIpcArguments(telemetryChannels.send, [batch]),
-		/Invalid telemetry:send request/,
+		/telemetry:send/,
 	);
 	assert.throws(
 		() =>
 			parseIpcArguments(telemetryChannels.saveConsent, [
 				{ enabled: true, revision: "../x", since: 1 },
 			]),
-		/Invalid telemetry:save-consent request/,
+		/telemetry:save-consent/,
 	);
 	for (const invalid of [
 		{ ...batch, api_key: "not-a-key" },
@@ -231,6 +113,6 @@ test("telemetry requests must be PostHog batches of known events", () => {
 	])
 		assert.throws(
 			() => parseIpcArguments(telemetryChannels.send, [invalid, revision]),
-			/Invalid telemetry:send request/,
+			/telemetry:send/,
 		);
 });

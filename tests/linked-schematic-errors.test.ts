@@ -15,15 +15,15 @@ const resistor = required(
 	symbolDefinitions.find((definition) => definition.id === "resistor"),
 );
 
-const invalidCircuit = (message: string) => (error: unknown) => {
+const invalidCircuit = (fragment: RegExp) => (error: unknown) => {
 	assert.ok(error instanceof CircuitCommandError);
 	assert.ok(error instanceof Error);
 	assert.equal(error.reason, "invalid-circuit");
-	assert.equal(error.message, message);
+	assert.match(error.message, fragment);
 	return true;
 };
 
-test("duplicate schematic references report the circuit rule instead of raw schema issues", () => {
+test("duplicate schematic references report an invalid circuit naming the reference", () => {
 	const original = createCircuit("Board");
 	const shapes = [
 		createSymbol(1, resistor, { x: 0, y: 0 }, "R1"),
@@ -31,11 +31,11 @@ test("duplicate schematic references report the circuit rule instead of raw sche
 	];
 	assert.throws(
 		() => synchronizePcb(original, shapes, original, symbolDefinitions),
-		invalidCircuit("Duplicate component reference: R1"),
+		invalidCircuit(/\bR1\b/),
 	);
 });
 
-test("an oversized schematic value reports the field limit instead of raw schema issues", () => {
+test("an oversized schematic value reports an invalid circuit with the field limit", () => {
 	const original = createCircuit("Board");
 	const symbol = createSymbol(1, resistor, { x: 0, y: 0 }, "R1");
 	const oversized = {
@@ -44,7 +44,7 @@ test("an oversized schematic value reports the field limit instead of raw schema
 	};
 	assert.throws(
 		() => synchronizePcb(original, [oversized], original, symbolDefinitions),
-		invalidCircuit("Too big: expected string to have <=200 characters"),
+		invalidCircuit(/\b200\b/),
 	);
 });
 
@@ -65,14 +65,7 @@ test("a linked symbol without its library asks for the library", () => {
 				linked.file,
 				symbolDefinitions,
 			),
-		(error) => {
-			assert.ok(error instanceof MissingSymbolLibraryError);
-			assert.equal(
-				error.message,
-				"Load the missing symbol library before saving the linked PCB.",
-			);
-			return true;
-		},
+		MissingSymbolLibraryError,
 	);
 });
 

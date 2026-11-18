@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { openProjectFiles, projectRail } from "../browser/project-files.ts";
+import { openProjectFiles } from "../browser/project-files.ts";
 import { toolbarButton } from "../browser/toolbar.ts";
 
 // Runs against `vite build` output served by `vite preview`.
@@ -24,17 +24,13 @@ async function editorReady(page: Page) {
 	);
 }
 
-test("the built web app opens a drawing, keeps it across a reload and offers no MCP or schematic editor rail button", async ({
+test("the built web app opens a drawing and keeps it across a reload", async ({
 	page,
 }) => {
 	await page.goto("/?perf=1");
 	await expect(
 		page.getByLabel("Workspace instructions", { exact: true }),
 	).toBeVisible();
-	await expect(
-		projectRail(page).getByRole("link", { name: "Schematic editor" }),
-	).toHaveCount(0);
-
 	await (await openProjectFiles(page))
 		.getByRole("link", { name: /^Open .+\.ecaddraw$/ })
 		.first()
@@ -60,8 +56,4 @@ test("the built web app opens a drawing, keeps it across a reload and offers no 
 			.getByRole("toolbar", { name: /^(Schematic|Symbol) tools$/ })
 			.getByRole("button", { name: "Delete", exact: true }),
 	).toBeEnabled();
-
-	await expect(
-		projectRail(page).getByRole("button", { name: /MCP/ }),
-	).toHaveCount(0);
 });

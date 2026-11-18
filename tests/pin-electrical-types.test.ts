@@ -14,7 +14,6 @@ import {
 } from "#/components/editor/symbolFormat.ts";
 import {
 	applySelectionEdit,
-	editsFixedPin,
 	type SelectionEditContext,
 } from "#/drawing/selection-edit.ts";
 import { libraryDefinitions } from "#/drawing/symbol-file.ts";
@@ -74,23 +73,8 @@ test("the Attributes panel edit changes a pin's type in one step", () => {
 			editContext([pin()]),
 		),
 	);
-	assert.equal(result.label, "Change pin type");
 	const [edited] = result.replacements;
 	assert.equal(edited.kind === "pin" && edited.electricalType, "power-out");
-});
-
-test("a pin fixed to its placed symbol accepts only type, active level and label visibility edits", () => {
-	assert.ok(
-		editsFixedPin({
-			kind: "pin",
-			attribute: "electricalType",
-			value: "input",
-		}),
-	);
-	for (const attribute of ["showName", "showNumber"] as const)
-		assert.ok(editsFixedPin({ kind: "pin", attribute, value: false }));
-	assert.ok(!editsFixedPin({ kind: "pin", attribute: "name", value: "X" }));
-	assert.ok(!editsFixedPin({ kind: "attribute", attribute: "x", value: 1 }));
 });
 
 test("circuit pins take the symbol's types, including an instance override", () => {

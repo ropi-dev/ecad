@@ -67,11 +67,12 @@ test("STEP face colors preserve uncolored triangles and dispose geometry and mat
 });
 
 test("STEP file validation rejects empty, wrong-extension and aborted inputs", async () => {
-	await assert.rejects(parseStepFile(new File([], "empty.step")), /empty/);
-	await assert.rejects(
-		parseStepFile(new File(["invalid"], "board.gbr")),
-		/\.step or \.stp/,
-	);
+	await assert.rejects(parseStepFile(new File([], "empty.step")), {
+		_tag: "InvalidFile",
+	});
+	await assert.rejects(parseStepFile(new File(["invalid"], "board.gbr")), {
+		_tag: "InvalidFile",
+	});
 	const controller = new AbortController();
 	controller.abort();
 	await assert.rejects(

@@ -1,16 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-	createSymbolFromSelectionEffect,
-	placeShapesEffect,
-	redoEffect,
-	undoEffect,
-} from "@ecad/drawing-core/commands/drawing-commands.ts";
-import {
-	createDrawingStore,
-	DrawingStore,
-} from "@ecad/drawing-core/commands/drawing-store.ts";
-import {
 	drawShape,
 	editShapeAttribute,
 	hitShape,
@@ -22,8 +12,6 @@ import {
 	symbolShapes,
 	wireConnectionPoints,
 } from "@ecad/drawing-core/drawing/shapes.ts";
-import { drawingShapeSchema } from "@ecad/drawing-core/mcp/drawing-protocol.ts";
-import { Effect, Either } from "effect";
 import {
 	libraryDefinitions,
 	parseSymbolFile,
@@ -124,53 +112,6 @@ test("lines do not merge or connect to wires, and their render width follows the
 	} finally {
 		geometry.dispose();
 	}
-});
-
-test("lines pass command and protocol validation and group into undoable symbols", () => {
-	const store = createDrawingStore();
-	const run = <A, E>(program: Effect.Effect<A, E, DrawingStore>) =>
-		Effect.runSync(program.pipe(Effect.provideService(DrawingStore, store)));
-	const line = drawShape(1, "line", { x: 10, y: 20 }, { x: 40, y: 60 });
-	assert.equal(drawingShapeSchema.safeParse(line).success, true);
-	run(placeShapesEffect([line, { ...line, id: 2, x: 80 }], "Draw lines"));
-	const original = store.getSnapshot();
-	assert.ok(
-		Either.isLeft(
-			run(
-				Effect.either(placeShapesEffect([{ ...line, width: 0 }], "Empty line")),
-			),
-		),
-	);
-	assert.strictEqual(store.getSnapshot(), original);
-	run(createSymbolFromSelectionEffect([1, 2]));
-	const grouped = store.getSnapshot().shapes[0];
-	assert.equal(grouped.kind, "symbol");
-	if (grouped.kind === "symbol")
-		assert.deepEqual(symbolShapes(grouped), original.shapes);
-	run(undoEffect);
-	assert.deepEqual(store.getSnapshot().shapes, original.shapes);
-	run(redoEffect);
-	assert.deepEqual(store.getSnapshot().shapes, [grouped]);
-});
-
-test("symbol files accept decorative lines and preserve their angles", () => {
-	const file = parseSymbolFile(
-		JSON.stringify({
-			format: "ecad-symbol",
-			version: 1,
-			units: "mm",
-			id: "custom.lines",
-			name: "Lines",
-			description: "",
-			prefix: "U",
-			value: "",
-			shapes: [{ kind: "line", x1: -3, y1: -4, x2: 3, y2: 4 }],
-		}),
-	);
-	const child = libraryDefinitions([file])[0].children[0];
-	assert.equal(child.kind, "line");
-	close(child.width, 10);
-	close(child.rotation, Math.atan2(8, 6));
 });
 
 test("saving a named selection preserves its reusable geometry and stroke widths", () => {

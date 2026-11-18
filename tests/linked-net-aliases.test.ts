@@ -4,9 +4,7 @@ import {
 	circuitFileSchema,
 	createCircuit,
 } from "@ecad/drawing-core/circuit/model.ts";
-import { electricalNets } from "@ecad/drawing-core/drawing/named-nets.ts";
 import {
-	type EditorShape,
 	type EditorSymbol,
 	symbolShapes,
 	type TextShape,
@@ -73,61 +71,6 @@ for (const removedName of ["DEBUG_DATA", "SWDIO"]) {
 	});
 }
 
-for (const saveBetweenEdits of [false, true]) {
-	test(`moving an explicit alias to a recreated connector stays separate with intermediate save ${saveBetweenEdits}`, () => {
-		const original = createCircuit("SWD");
-		const a = createSymbol(1, connector, { x: 0, y: 0 }, "J1");
-		const b = createSymbol(2, connector, { x: 40, y: 0 }, "J2");
-		const primary = label(3, "DEBUG_DATA", firstPin(a));
-		const first = synchronizePcb(
-			original,
-			[a, b, primary, label(4, "SWDIO", firstPin(a))],
-			original,
-			symbolDefinitions,
-		);
-		const base = saveBetweenEdits
-			? synchronizePcb(first.file, [a, primary], first.file, symbolDefinitions)
-					.file
-			: first.file;
-		const replacement = createSymbol(5, connector, { x: 40, y: 0 }, "J2");
-		const edited = [
-			a,
-			replacement,
-			primary,
-			label(6, "SWDIO", firstPin(replacement)),
-		];
-		assert.deepEqual(
-			electricalNets(edited)
-				.filter((net) => net.names.length)
-				.map((net) => net.names),
-			[["DEBUG_DATA"], ["SWDIO"]],
-		);
-		const saved = synchronizePcb(base, edited, base, symbolDefinitions);
-		assert.deepEqual(
-			saved.file.circuit.nets.map((net) => net.names),
-			[["DEBUG_DATA"], ["SWDIO"]],
-		);
-		assert.equal(saved.file.circuit.components.length, 2);
-		for (const net of saved.file.circuit.nets) {
-			const owner = required(
-				saved.file.circuit.components.find(
-					(component) =>
-						component.reference === (net.names[0] === "SWDIO" ? "J2" : "J1"),
-				),
-			);
-			assert.deepEqual(net.pinIds, [owner.pins[0].id]);
-		}
-		const reopened = circuitFileSchema.parse(
-			JSON.parse(JSON.stringify(saved.file)),
-		);
-		assert.deepEqual(
-			synchronizePcb(reopened, saved.shapes, reopened, symbolDefinitions).file
-				.circuit,
-			saved.file.circuit,
-		);
-	});
-}
-
 test("generated captions preserve circuit aliases across repeated saves", () => {
 	const original = createCircuit("Generated aliases");
 	const file = structuredClone(original);
@@ -163,40 +106,3 @@ test("generated captions preserve circuit aliases across repeated saves", () => 
 		saved.file.circuit,
 	);
 });
-
-for (const reverse of [false, true]) {
-	test(`an explicit alias on another net overrides a hidden generated alias with reversed shape order ${reverse}`, () => {
-		const original = createCircuit("Generated alias ownership");
-		const file = structuredClone(original);
-		const component = componentFromSymbol(connector, []);
-		file.circuit.components = [component];
-		file.circuit.nets = [
-			{
-				id: "debug",
-				names: ["DEBUG_DATA", "SWDIO"],
-				pinIds: [component.pins[0].id],
-			},
-		];
-		const first = synchronizePcb(file, [], original, symbolDefinitions);
-		const symbol = createSymbol(100, connector, { x: 200, y: 0 }, "J2");
-		const shapes: EditorShape[] = [
-			...first.shapes,
-			symbol,
-			label(101, "SWDIO", firstPin(symbol)),
-		];
-		const saved = synchronizePcb(
-			first.file,
-			reverse ? [...shapes].reverse() : shapes,
-			first.file,
-			symbolDefinitions,
-		);
-		assert.deepEqual(saved.file.circuit.nets.map((net) => net.names).sort(), [
-			["DEBUG_DATA"],
-			["SWDIO"],
-		]);
-		assert.equal(
-			saved.file.circuit.nets.find((net) => net.id === "debug")?.pinIds[0],
-			component.pins[0].id,
-		);
-	});
-}

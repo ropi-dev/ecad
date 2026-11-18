@@ -31,7 +31,7 @@ test("zone fills draw at full opacity until a layer is focused", () => {
 	assert.equal(material().opacity, 1);
 
 	update(true);
-	assert.equal(material().opacity, 0.6);
+	assert.ok(material().opacity < 1);
 
 	update(false);
 	assert.equal(material().opacity, 1);

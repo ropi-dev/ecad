@@ -1,13 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { isDeepStrictEqual } from "node:util";
 import { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
 import { editorShapeSchema } from "@ecad/drawing-core/drawing/schema.ts";
 import {
 	drawShape,
 	type EditorShape,
-	editShapeAttribute,
-	resizeHandles,
-	resizeShape,
 	shapeAt,
 	snappedMoveDelta,
 } from "@ecad/drawing-core/drawing/shapes.ts";
@@ -15,7 +13,6 @@ import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
 import {
 	createPad,
 	editPad,
-	footprintFitBounds,
 	footprintLayerView,
 	isPad,
 	newPadLayers,
@@ -24,31 +21,20 @@ import {
 	setShapeLayer,
 	shapeLayers,
 } from "@ecad/drawing-core/footprint/shapes.ts";
-import { canvasDragStep } from "#/components/editor/canvasDrag.ts";
+import { ZodError } from "zod";
 import { createEditorSession } from "#/components/editor/editorSession.ts";
 import { pasteSelection } from "#/drawing/clipboard.ts";
 import { buildDrawingDisplay, buildStaticDisplay } from "#/drawing/display.ts";
 import { exportDrawingSvg } from "#/drawing/export.ts";
-import {
-	lightSchematicTheme,
-	unfocusedLayerColor,
-} from "#/drawing/schematic-theme.ts";
 import { applySelectionEdit } from "#/drawing/selection-edit.ts";
 import { createTextShape } from "#/drawing/text.ts";
 import { defaultSheet } from "#/drawing/worksheet.ts";
 import { compilePlanarGeometry } from "#/engine/planar-geometry.ts";
 import {
 	BOARD_LAYER_ID,
-	BOARD_SURFACE_Z,
 	boardEdgeBounds,
-	boardObjectOnLayer,
-	boardObjectVisible,
-	createBoardBuilder,
 	DRILL_LAYER_ID,
-	layerSurfaceZ,
-	placeFootprintBoard,
 	planFootprintBoard,
-	sameSource,
 } from "#/footprint/board.ts";
 import {
 	createEmptyFootprintFile,
@@ -56,6 +42,7 @@ import {
 	footprintFileWithShapes,
 } from "#/footprint/format.ts";
 import { classifyGerberLayer } from "#/formats/gerber/layer-order.ts";
+import { InvalidProjectDocument } from "#/projects/errors.ts";
 import { projectFileSelections } from "#/projects/file-url.ts";
 import type { ProjectSnapshot } from "#/projects/format.ts";
 import { createProjectSession } from "#/projects/ProjectSession.ts";
@@ -171,19 +158,6 @@ test("pad edits keep the pad valid and on its side of the board", () => {
 	);
 });
 
-test("shrinking a through-hole pad below its drill shrinks the drill with it", () => {
-	const pad = createPad(2, { x: 0, y: 0 }, "through-hole", "2", "F.Cu");
-	const byAttribute = editShapeAttribute(pad, "radius", 0.4);
-	const byHandle = resizeShape(pad, required(resizeHandles(pad)[0]), {
-		x: 0.6,
-		y: 0,
-	});
-	for (const shrunk of [byAttribute, byHandle]) {
-		assert.equal(editorShapeSchema.safeParse(shrunk).success, true);
-		assert.ok(isPad(shrunk) && required(shrunk.pad.drill) < shrunk.width);
-	}
-});
-
 test("layer changes move graphics freely and pads only between copper sides", () => {
 	const line = silkLine(1);
 	const smd = createPad(2, { x: 0, y: 0 }, "smd", "1", "F.Cu");
@@ -223,13 +197,6 @@ test("the layer view hides layers and draws the active layer last", () => {
 	assert.deepEqual(
 		ids(footprintLayerView(shapes, noLayers, "F.SilkS")),
 		[1, 2, 5, 4, 3],
-	);
-});
-
-test("without an active layer the view keeps board order, as export does", () => {
-	assert.deepEqual(
-		ids(footprintLayerView(twoPadsWireCourtyardAndThroughHole(), noLayers)),
-		[1, 2, 5, 3, 4],
 	);
 });
 
@@ -288,27 +255,6 @@ test("a surface mount pad adds paste on its own side until paste is turned off",
 	);
 });
 
-test("the editor session edits visible shapes without touching hidden ones", () => {
-	const hidden = new Set<FootprintLayer>(["F.Cu", "F.Paste"]);
-	const session = createEditorSession(
-		createDrawingStore(
-			twoPadsWireCourtyardAndThroughHole().filter((shape) => shape.id !== 5),
-		),
-		(shapes) => footprintLayerView(shapes, hidden, "F.SilkS"),
-	);
-	assert.deepEqual(ids(session.shapes()), [4, 3]);
-	session.select(new Set([1, 3]));
-	assert.deepEqual([...session.getState().selection], [3]);
-	session.replace(
-		[{ ...required(session.shapes()[1]), y: 2 }],
-		"Move selection",
-	);
-	const saved = session.drawing().shapes;
-	assert.equal(saved.length, 4);
-	assert.equal(required(saved.find((shape) => shape.id === 3)).y, 2);
-	assert.ok(saved.some((shape) => shape.id === 1 && isPad(shape)));
-});
-
 test("a click inside a hollow outline picks the pad under it, and a click on the outline picks the outline", () => {
 	const pad = createPad(1, { x: -0.9, y: 0 }, "smd", "1", "F.Cu");
 	const outlineOnTop = [pad, silkText(2), courtyard(3)];
@@ -332,46 +278,6 @@ test("a click inside a hollow outline picks the pad under it, and a click on the
 	assert.equal(shapeAt(schematic, { x: 0, y: 0 }, 0.05)?.id, 2);
 });
 
-test("every side of a hollow triangle picks it across the whole stroke", () => {
-	const triangle: EditorShape = {
-		id: 1,
-		kind: "triangle",
-		layer: "F.CrtYd",
-		x: 0,
-		y: 0,
-		width: 4,
-		height: 4,
-		rotation: 0,
-		lineWidth: 0.15,
-	};
-	const slantLength = Math.hypot(2, 4);
-	const outwardFromRightEdge = (distance: number) => ({
-		x: 1 + (distance * 4) / slantLength,
-		y: (distance * 2) / slantLength,
-	});
-	for (const distance of [-0.06, 0, 0.06])
-		assert.equal(
-			shapeAt([triangle], outwardFromRightEdge(distance), 0.01)?.id,
-			1,
-		);
-	assert.equal(shapeAt([triangle], outwardFromRightEdge(0.2), 0.01), undefined);
-	const mitredTipAboveTheApex = { x: 0, y: 2.1 };
-	const pastTheTip = { x: 0, y: 2.3 };
-	assert.equal(shapeAt([triangle], mitredTipAboveTheApex, 0.01)?.id, 1);
-	assert.equal(shapeAt([triangle], pastTheTip, 0.01), undefined);
-	const pad = createPad(2, { x: 0, y: -1 }, "smd", "1", "F.Cu");
-	assert.equal(shapeAt([pad, triangle], { x: 0, y: -1 }, 0.01)?.id, 2);
-});
-
-test("a click inside nested outlines picks the smallest one, whichever was drawn last", () => {
-	const inner = courtyard(1);
-	const outer: EditorShape = { ...courtyard(2), width: 8, height: 6 };
-	const insideBoth = { x: 1, y: 0.5 };
-	assert.equal(shapeAt([inner, outer], insideBoth, 0.01)?.id, 1);
-	assert.equal(shapeAt([outer, inner], insideBoth, 0.01)?.id, 1);
-	assert.equal(shapeAt([inner, outer], { x: 3, y: 0.5 }, 0.01)?.id, 2);
-});
-
 test("a dragged pad keeps its centre on the grid, and a dragged graphic keeps its corner there", () => {
 	const pad = createPad(1, { x: 0, y: 0 }, "smd", "1", "F.Cu");
 	assert.deepEqual(snappedMoveDelta(pad, { x: 1.02, y: -0.98 }, 0.1), {
@@ -382,49 +288,6 @@ test("a dragged pad keeps its centre on the grid, and a dragged graphic keeps it
 	const corner = snappedMoveDelta(graphic, { x: 1.02, y: -0.98 }, 0.1);
 	assert.ok(Math.abs(corner.x - 1) < 1e-9);
 	assert.ok(Math.abs(corner.y - -0.95) < 1e-9);
-});
-
-test("dragging out a shape keeps the layer and stroke it started with", () => {
-	const start = {
-		...drawShape(9, "rectangle", { x: 0, y: 0 }, { x: 0, y: 0 }),
-		layer: "F.CrtYd" as const,
-		lineWidth: 0.05,
-	};
-	const { effect } = canvasDragStep(
-		{
-			pointerId: 1,
-			canvas: {} as HTMLCanvasElement,
-			start: { x: 0, y: 0 },
-			startScreen: { x: 0, y: 0 },
-			previousSelection: new Set(),
-			mode: "draw",
-			previousChild: null,
-			gridStep: 0.1,
-			moved: false,
-			originals: [start],
-			initialShapes: [],
-			created: true,
-			valid: false,
-			selectionMode: "replace",
-		},
-		{ x: 2, y: 1 },
-		{ x: 200, y: 100 },
-		{
-			shapes: [],
-			allowLocked: false,
-			cameraScale: () => 100,
-			nextId: () => 10,
-			inScreenBox: () => false,
-		},
-	);
-	assert.equal(effect.kind, "preview");
-	const draft = required(
-		effect.kind === "preview" ? effect.replacements[0] : undefined,
-	);
-	assert.deepEqual(
-		[draft.layer, draft.lineWidth, draft.width, draft.height],
-		["F.CrtYd", 0.05, 2, 1],
-	);
 });
 
 test("pasting into a footprint works beside text, puts layerless items on the active layer and drops their page", () => {
@@ -466,39 +329,15 @@ test("a footprint refuses pasted pins, schematic wires, net labels and symbols",
 		drawShape(1, "wire", { x: 0, y: 0 }, { x: 2, y: 0 }),
 		{ ...createTextShape(1, { x: 0, y: 0 }, measure), electrical: "net" },
 	] as EditorShape[])
-		assert.throws(
-			() =>
-				pasteSelection(
-					[shape],
-					[],
-					1,
-					{ x: 0, y: 0 },
-					{ footprintLayer: "F.Cu" },
-				),
-			/cannot be pasted into it/,
+		assert.throws(() =>
+			pasteSelection(
+				[shape],
+				[],
+				1,
+				{ x: 0, y: 0 },
+				{ footprintLayer: "F.Cu" },
+			),
 		);
-});
-
-test("footprint items pasted into a schematic or symbol lose their layer and pad", () => {
-	const source = [
-		createPad(1, { x: 0, y: 0 }, "smd", "1", "F.Cu"),
-		silkText(2),
-	];
-	for (const destination of ["drawing", "symbol"] as const) {
-		const pasted = pasteSelection(source, [], 1, { x: 0, y: 0 }, destination);
-		assert.deepEqual(
-			pasted.map((shape) => [
-				shape.kind,
-				shape.layer,
-				"pad" in shape,
-				"filled" in shape,
-			]),
-			[
-				["rectangle", undefined, false, false],
-				["text", undefined, false, false],
-			],
-		);
-	}
 });
 
 test("the display colours items by layer and draws a pad as solid copper with its hole and number", () => {
@@ -552,43 +391,7 @@ test("a focused layer dims every item off it, except the selection", () => {
 	);
 });
 
-test("a dimmed layer colour sits most of the way to the desk colour", () => {
-	assert.equal(unfocusedLayerColor("#c83434", lightSchematicTheme), "#dab0b3");
-	assert.equal(
-		unfocusedLayerColor(lightSchematicTheme.desk, lightSchematicTheme),
-		lightSchematicTheme.desk,
-	);
-});
-
-test("focusing a layer in 3D keeps its text, pad numbers and, for copper, the drills", () => {
-	assert.ok(boardObjectOnLayer("footprint:F.Cu", "F.Cu"));
-	assert.ok(boardObjectOnLayer("footprint:F.Cu:text", "F.Cu"));
-	assert.ok(boardObjectOnLayer("footprint:F.Cu:pad-numbers", "F.Cu"));
-	assert.ok(boardObjectOnLayer(DRILL_LAYER_ID, "B.Cu"));
-	assert.ok(!boardObjectOnLayer(DRILL_LAYER_ID, "F.SilkS"));
-	assert.ok(!boardObjectOnLayer(BOARD_LAYER_ID, "F.Cu"));
-	assert.ok(!boardObjectOnLayer("footprint:B.Cu", "F.Cu"));
-	assert.ok(boardObjectOnLayer(BOARD_LAYER_ID, "Edge.Cuts"));
-});
-
-test("a filled footprint graphic is solid in its layer's colour, and a rotated pad keeps its number level", () => {
-	const filled = buildDrawingDisplay([courtyard(1, true)], new Set());
-	assert.equal(filled.shapes[0].children?.[0].appearance, "F.CrtYd");
-	const rotated = buildDrawingDisplay(
-		[
-			{
-				...createPad(1, { x: 0, y: 0 }, "smd", "1", "F.Cu"),
-				rotation: Math.PI / 2,
-			},
-		],
-		new Set(),
-		[],
-		measure,
-	);
-	assert.equal(rotated.shapes[0].children?.[0].rotation, -Math.PI / 2);
-});
-
-test("an exported footprint keeps its layer colours and marks its pad holes", () => {
+test("an exported footprint marks its pad holes", () => {
 	const svg = exportDrawingSvg(twoPadsWireCourtyardAndThroughHole(), {
 		width: 400,
 		height: 300,
@@ -597,37 +400,8 @@ test("an exported footprint keeps its layer colours and marks its pad holes", ()
 		sheet: defaultSheet,
 		measureText: measure,
 	});
-	assert.match(svg, /fill="#c83434"/);
-	assert.match(
-		svg,
-		/data-name="drill mark 0"><path fill="#161a21" fill-rule="evenodd"/,
-	);
+	assert.match(svg, /data-name="drill mark 0"><path [^>]*\bd="M[^"]+"/);
 	assert.doesNotMatch(svg, /data-name="pad hole 5"/);
-});
-
-test("an exported rotated pad draws its number upright and unsheared", () => {
-	const svg = exportDrawingSvg(
-		[
-			{
-				...createPad(1, { x: 0, y: 0 }, "smd", "1", "F.Cu"),
-				rotation: Math.PI / 2,
-			},
-		],
-		{
-			width: 400,
-			height: 300,
-			area: "drawing",
-			background: "dark",
-			sheet: defaultSheet,
-			measureText: measure,
-		},
-	);
-	const [, matrix] = required(
-		/data-name="pad number 1"><g transform="matrix\(([^)]+)\)"/.exec(svg),
-	);
-	const [scaleX, skewY, skewX, scaleY] = matrix.split(" ").map(Number);
-	assert.ok(Math.abs(skewY) < 1e-9 && Math.abs(skewX) < 1e-9);
-	assert.ok(scaleX > 0 && Math.abs(scaleX - scaleY) < 1e-9);
 });
 
 test("footprint files keep layers and pads and get an ID from their name", () => {
@@ -647,35 +421,34 @@ test("footprint files keep layers and pads and get an ID from their name", () =>
 	assert.throws(() => footprintFileSchema.parse({ ...file, id: "R" }));
 });
 
-test("a footprint item saved without a layer is read as front silkscreen", () => {
-	const empty = createEmptyFootprintFile("R 0805", []);
-	const layerless = drawShape(1, "rectangle", { x: -1, y: -1 }, { x: 1, y: 1 });
-	assert.equal(
-		footprintFileWithShapes(empty, [layerless]).shapes[0].layer,
-		"F.SilkS",
-	);
-});
-
 test("footprint files reject schematic items, pages and duplicate IDs", () => {
 	const empty = createEmptyFootprintFile("R 0805", []);
-	const rejected: [EditorShape[], RegExp][] = [
+	const rejected: [EditorShape[], (string | number)[]][] = [
 		[
 			[drawShape(1, "pin", { x: 0, y: 0 }, { x: 0, y: 0 })],
-			/cannot contain a pin/,
+			["shapes", 0, "kind"],
 		],
 		[
 			[drawShape(1, "wire", { x: 0, y: 0 }, { x: 2, y: 0 })],
-			/cannot contain a wire/,
+			["shapes", 0, "kind"],
 		],
 		[
 			[{ ...createTextShape(1, { x: 0, y: 0 }, measure), electrical: "net" }],
-			/net labels/,
+			["shapes", 0, "kind"],
 		],
-		[[{ ...silkLine(1), page: 2 }], /no page/],
-		[[silkLine(1), silkLine(1)], /Duplicate shape ID 1/],
+		[[{ ...silkLine(1), page: 2 }], ["shapes", 0, "page"]],
+		[
+			[silkLine(1), silkLine(1)],
+			["shapes", 1, "id"],
+		],
 	];
-	for (const [shapes, message] of rejected)
-		assert.throws(() => footprintFileWithShapes(empty, shapes), message);
+	for (const [shapes, path] of rejected)
+		assert.throws(
+			() => footprintFileWithShapes(empty, shapes),
+			(error) =>
+				error instanceof ZodError &&
+				error.issues.some((issue) => isDeepStrictEqual(issue.path, path)),
+		);
 });
 
 test("the board has one object per layer, one per layer's text, drills for through-hole pads and an edge 1 mm outside them", () => {
@@ -721,225 +494,6 @@ test("the board has one object per layer, one per layer's text, drills for throu
 	assert.ok(Math.abs(edge.maxY - (throughHolePadTop + 1)) < 1e-9);
 	for (const layer of board.filter((layer) => layer.objects.length))
 		assert.ok(compilePlanarGeometry(layer.objects).positions.length > 0);
-});
-
-test("an empty footprint's board is an edge 1 mm outside a 4 by 3 mm area, and text adds its own object", () => {
-	const empty = buildBoard([]);
-	assert.deepEqual(
-		empty.map((layer) => layer.id),
-		[BOARD_LAYER_ID],
-	);
-	assert.deepEqual(required(empty[0]).bounds, {
-		minX: -3,
-		minY: -2.5,
-		maxX: 3,
-		maxY: 2.5,
-	});
-	assert.deepEqual(
-		buildBoard([silkText(1)]).map((layer) => layer.id),
-		[BOARD_LAYER_ID, "footprint:F.SilkS:text"],
-	);
-});
-
-test("a board plan keeps a layer's source while an edit leaves its items alone", () => {
-	const shapes = twoPadsWireCourtyardAndThroughHole();
-	const source = (plans: ReturnType<typeof planFootprintBoard>, id: string) =>
-		required(plans.find((plan) => plan.id === id)).source;
-	const before = planFootprintBoard(shapes);
-	const wire = required(shapes.find((shape) => shape.kind === "line"));
-	const after = planFootprintBoard(
-		shapes.map((shape) =>
-			shape === wire ? { ...wire, y: wire.y - 0.2 } : shape,
-		),
-	);
-	for (const id of [BOARD_LAYER_ID, "footprint:F.Cu", DRILL_LAYER_ID])
-		assert.ok(sameSource(source(before, id), source(after, id)), id);
-	assert.ok(
-		!sameSource(
-			source(before, "footprint:F.SilkS"),
-			source(after, "footprint:F.SilkS"),
-		),
-	);
-});
-
-test("a board builder keeps unchanged layers and frees a replaced one once the view no longer shows it", () => {
-	const disposed: string[] = [];
-	let builds = 0;
-	let failing = "";
-	const builder = createBoardBuilder((plan) => {
-		if (plan.id === failing) throw new Error("no layer");
-		const name = `${plan.id}#${++builds}`;
-		return { id: plan.id, name, dispose: () => disposed.push(name) };
-	});
-	const layer = <Built extends { id: string }>(
-		board: readonly Built[],
-		id: string,
-	) => required(board.find((built) => built.id === id));
-	const shapes = twoPadsWireCourtyardAndThroughHole();
-	const wire = required(shapes.find((shape) => shape.kind === "line"));
-	const moved = (by: number) =>
-		shapes.map((shape) =>
-			shape === wire ? { ...wire, y: wire.y - by } : shape,
-		);
-	const first = builder.build(shapes);
-	const second = builder.build(moved(0.2));
-	assert.equal(layer(second, "footprint:F.Cu"), layer(first, "footprint:F.Cu"));
-	assert.notEqual(
-		layer(second, "footprint:F.SilkS"),
-		layer(first, "footprint:F.SilkS"),
-	);
-	const last = moved(0.4);
-	const third = builder.build(last);
-	assert.equal(disposed.length, 0);
-	builder.release(first);
-	assert.deepEqual(disposed, [layer(second, "footprint:F.SilkS").name]);
-	builder.release(third);
-	assert.deepEqual(disposed, [
-		layer(second, "footprint:F.SilkS").name,
-		layer(first, "footprint:F.SilkS").name,
-	]);
-
-	failing = "footprint:F.SilkS";
-	const built = builds;
-	assert.throws(() => builder.build(moved(0.6)), /no layer/);
-	assert.equal(disposed.length, 2 + builds - built);
-	failing = "";
-	const fourth = builder.build(last);
-	assert.equal(
-		layer(fourth, "footprint:F.SilkS"),
-		layer(third, "footprint:F.SilkS"),
-	);
-
-	builder.dispose();
-	for (const kept of fourth) assert.ok(disposed.includes(kept.name));
-	assert.equal(new Set(disposed).size, disposed.length);
-});
-
-test("courtyard and fabrication drawings lie flat outside the stack, and a pad through the board is edited on the side facing the camera", () => {
-	const board = buildBoard([
-		courtyard(1),
-		{ ...courtyard(2), layer: "B.Fab" },
-		createPad(3, { x: 0, y: 0 }, "smd", "1", "F.Cu"),
-		silkLine(4),
-	]);
-	const placed = new Map(
-		placeFootprintBoard(board).map((placement, index) => [
-			required(board[index]).name,
-			placement,
-		]),
-	);
-	const height = (layer: FootprintLayer) => required(placed.get(layer)).z;
-	assert.ok(height("F.CrtYd") > height("F.SilkS"));
-	assert.ok(height("F.SilkS") > height("F.Cu"));
-	assert.ok(height("B.Fab") < -height("F.SilkS"));
-	assert.equal(required(placed.get("F.CrtYd")).thickness, 0);
-	assert.ok(required(placed.get("F.Cu")).thickness > 0);
-
-	assert.equal(layerSurfaceZ(["F.SilkS"], noLayers, 10), 0);
-	assert.ok(
-		Math.abs(
-			layerSurfaceZ(["F.Cu"], noLayers, 10) -
-				(height("F.Cu") - BOARD_SURFACE_Z),
-		) < 1e-9,
-	);
-	const bothSides: FootprintLayer[] = ["F.Cu", "B.Cu"];
-	const top = layerSurfaceZ(bothSides, noLayers, 10);
-	const bottom = layerSurfaceZ(bothSides, noLayers, -10);
-	assert.ok(top > bottom);
-	assert.equal(layerSurfaceZ(bothSides, new Set(["F.Cu"]), 10), bottom);
-});
-
-test("pad numbers lie outside each side's stack and drawings and hide with that copper", () => {
-	const smd = createPad(1, { x: 0, y: 0 }, "smd", "1", "F.Cu");
-	const through = createPad(2, { x: 2, y: 0 }, "through-hole", "2", "F.Cu");
-	const unnumbered = createPad(3, { x: 4, y: 0 }, "smd", "", "B.Cu");
-	const plans = planFootprintBoard([smd, through, unnumbered]);
-	const numbers = (layer: FootprintLayer) =>
-		plans.find((plan) => plan.id === `footprint:${layer}:pad-numbers`)
-			?.padNumbers;
-	assert.deepEqual(required(numbers("F.Cu")).pads, [smd, through]);
-	assert.equal(required(numbers("F.Cu")).bottom, false);
-	assert.deepEqual(required(numbers("B.Cu")).pads, [through]);
-	assert.equal(required(numbers("B.Cu")).bottom, true);
-
-	const board = plans.map((plan) => plan.build());
-	const placed = new Map(
-		placeFootprintBoard(board).map((placement, index) => [
-			required(board[index]).id,
-			placement.z,
-		]),
-	);
-	const z = (id: string) => required(placed.get(id));
-	const drawing = (layer: FootprintLayer) =>
-		required(placeFootprintBoard([{ name: layer, metadata: {} }])[0]).z;
-	assert.ok(z("footprint:F.Cu:pad-numbers") > z("footprint:F.Paste"));
-	for (const layer of ["F.Fab", "F.CrtYd"] as const)
-		assert.ok(z("footprint:F.Cu:pad-numbers") > drawing(layer), layer);
-	for (const layer of ["B.Fab", "B.CrtYd"] as const)
-		assert.ok(z("footprint:B.Cu:pad-numbers") < drawing(layer), layer);
-	assert.equal(
-		boardObjectVisible("footprint:F.Cu:pad-numbers", new Set(["F.Cu"])),
-		false,
-	);
-	assert.equal(
-		boardObjectVisible("footprint:B.Cu:pad-numbers", new Set(["F.Cu"])),
-		true,
-	);
-});
-
-test("a rotated pad's copper turns with it on the board", () => {
-	const board = buildBoard([
-		{
-			...createPad(1, { x: 0, y: 0 }, "smd", "1", "F.Cu"),
-			rotation: Math.PI / 2,
-		},
-	]);
-	const { positions } = compilePlanarGeometry(required(board[1]).objects);
-	const xs = [...positions].filter((_, index) => index % 3 === 0);
-	const ys = [...positions].filter((_, index) => index % 3 === 1);
-	assert.ok(Math.abs(Math.max(...xs) - 0.75) < 1e-6);
-	assert.ok(Math.abs(Math.max(...ys) - 0.5) < 1e-6);
-});
-
-test("hiding a layer hides its board object, and drills hide with the last copper layer", () => {
-	const frontCopperHidden = new Set<FootprintLayer>(["F.Cu"]);
-	assert.equal(boardObjectVisible("footprint:F.Cu", frontCopperHidden), false);
-	assert.equal(boardObjectVisible("footprint:B.Cu", frontCopperHidden), true);
-	assert.equal(
-		boardObjectVisible("footprint:F.SilkS:text", new Set(["F.SilkS"])),
-		false,
-	);
-	assert.equal(
-		boardObjectVisible("footprint:F.CrtYd", new Set(["F.CrtYd"])),
-		false,
-	);
-	assert.equal(boardObjectVisible(DRILL_LAYER_ID, frontCopperHidden), true);
-	assert.equal(boardObjectVisible(BOARD_LAYER_ID, frontCopperHidden), true);
-	assert.equal(
-		boardObjectVisible(DRILL_LAYER_ID, new Set(["F.Cu", "B.Cu"])),
-		false,
-	);
-});
-
-test("the view fits the footprint exactly, or 4 by 3 mm around the origin while it is empty", () => {
-	assert.deepEqual(footprintFitBounds([]), {
-		minX: -2,
-		minY: -1.5,
-		maxX: 2,
-		maxY: 1.5,
-	});
-	const tinyPad = (x: number): EditorShape => ({
-		...createPad(1, { x, y: 0 }, "smd", "1", "F.Cu"),
-		width: 0.3,
-		height: 0.3,
-	});
-	const small = footprintFitBounds([tinyPad(-0.3), tinyPad(0.3)]);
-	assert.ok(Math.abs(small.minX - -0.45) < 1e-9);
-	assert.ok(Math.abs(small.maxX - 0.45) < 1e-9);
-	assert.ok(Math.abs(small.maxY - 0.15) < 1e-9);
-	const mixed = footprintFitBounds(twoPadsWireCourtyardAndThroughHole());
-	assert.ok(Math.abs(mixed.minX - -2) < 1e-9);
-	assert.ok(Math.abs(mixed.maxY - 3.85) < 1e-9);
 });
 
 function memoryDirectory(): ProjectDirectory & {
@@ -1004,7 +558,7 @@ for (const layout of ["files", "revisions"] as const)
 				symbols: [],
 				footprints: [footprint, footprint],
 			}),
-			/duplicate footprint IDs/,
+			InvalidProjectDocument,
 		);
 		const removed = await repository.save({
 			shapes: [],

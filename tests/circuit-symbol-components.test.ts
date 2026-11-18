@@ -51,30 +51,6 @@ test("symbol placement snapshots library identity and all pins with independent 
 	assert.ok(!serializeCircuit(circuit).includes('"children"'));
 });
 
-test("unnumbered legacy pins receive numbers and source definitions remain independent", () => {
-	const definition = structuredClone(
-		required(
-			symbolDefinitions.find((definition) => definition.id === "resistor"),
-		),
-	);
-	const component = componentFromSymbol(definition, [
-		{ ...componentFromSymbol(definition, []), reference: "R1" },
-	]);
-	assert.equal(component.reference, "R2");
-	assert.deepEqual(
-		component.pins.map((pin) => pin.number),
-		["1", "2"],
-	);
-	const original = structuredClone(component);
-	const pin = required(
-		definition.children.find((child) => child.kind === "pin"),
-	);
-	pin.name = "Changed";
-	pin.number = "99";
-	required(definition.library).id = "Changed";
-	assert.deepEqual(component, original);
-});
-
 test("nested project symbols use the same resolved pins and project precedence as schematic symbols", async () => {
 	const child = parseSymbolFile(
 		JSON.stringify({

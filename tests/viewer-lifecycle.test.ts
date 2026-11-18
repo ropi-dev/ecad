@@ -43,39 +43,3 @@ test("failed viewport setup releases earlier resources and listeners in reverse 
 	lifecycle.dispose();
 	assert.deepEqual(released, ["controls", "display", "renderer"]);
 });
-
-test("a failed finalizer does not strand the remaining viewport resources", () => {
-	const lifecycle = createLifecycle();
-	const released: string[] = [];
-	lifecycle.acquire(
-		() => "renderer",
-		(value) => released.push(value),
-	);
-	lifecycle.addFinalizer(() => {
-		throw new Error("Control cleanup failed");
-	});
-	lifecycle.acquire(
-		() => "hover",
-		(value) => released.push(value),
-	);
-	assert.throws(lifecycle.dispose, /Control cleanup failed/);
-	assert.deepEqual(released, ["hover", "renderer"]);
-	lifecycle.dispose();
-});
-
-test("a closed viewport lifecycle cannot acquire a new resource", () => {
-	const lifecycle = createLifecycle();
-	lifecycle.dispose();
-	let acquired = false;
-	assert.throws(
-		() =>
-			lifecycle.acquire(
-				() => {
-					acquired = true;
-				},
-				() => {},
-			),
-		/already disposed/,
-	);
-	assert.equal(acquired, false);
-});

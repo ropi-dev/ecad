@@ -65,151 +65,6 @@ test("Ctrl shows separate hints for every visible button and activates a group",
 	await expect(page.locator(hints)).toHaveCount(0);
 });
 
-test("hints reset on blur and disabled buttons cannot activate", async ({
-	page,
-}) => {
-	await page.keyboard.down("Control");
-	await expect(page.locator(hints).first()).toBeVisible();
-	const disabled = page.locator(`${hints}[data-disabled="true"]`).first();
-	await expect(disabled).toBeVisible();
-	const key = await disabled.getAttribute("data-shortcut");
-	const before = await page.locator("#editor-document").textContent();
-	await page.keyboard.press(required(key));
-	expect(await page.locator("#editor-document").textContent()).toBe(before);
-	await page.evaluate(() => window.dispatchEvent(new Event("blur")));
-	await expect(page.locator(hints)).toHaveCount(0);
-	await page.keyboard.up("Control");
-	await page.keyboard.down("Control");
-	await expect(page.locator(hints).first()).toBeVisible();
-	await page.keyboard.press("Escape");
-	await expect(page.locator(hints)).toHaveCount(0);
-	await page.keyboard.up("Control");
-});
-
-test("sidebar needs Ctrl+Shift while Ctrl reveals both scopes", async ({
-	page,
-}) => {
-	await page.goto("/tests/browser/projects.html");
-	await expect(
-		page.getByLabel("Workspace instructions", { exact: true }),
-	).toBeVisible();
-	await page.mouse.move(900, 400);
-	const addFile = page.getByRole("menu", { name: "Add file", exact: true });
-	await page.keyboard.down("Control");
-	const hint = page.locator(`${hints}[title="Add file"]`);
-	await expect(hint).toBeVisible();
-	await expect(hint.locator('[data-slot="shift-icon"]')).toBeVisible();
-	await expect(hint.locator('[data-slot="modifier-icon"]')).toBeVisible();
-	await expect(hint.locator('[data-slot="modifier-icon"]')).toHaveClass(
-		/lucide-chevron-up/,
-	);
-	await expect(hint.locator('[data-slot="shift-icon"]')).toHaveClass(
-		/lucide-arrow-big-up/,
-	);
-	const centers = await hint.locator("svg path").evaluateAll((paths) =>
-		paths.map((path) => {
-			const shape = path as SVGPathElement;
-			const bounds = shape.getBBox();
-			return new DOMPoint(
-				bounds.x,
-				bounds.y + bounds.height / 2,
-			).matrixTransform(
-				shape.getScreenCTM() ??
-					(() => {
-						throw new Error("Expected a value");
-					})(),
-			).y;
-		}),
-	);
-	expect(Math.abs(centers[0] - centers[1])).toBeLessThan(0.1);
-	const middle = await hint.evaluate((element) => {
-		const bounds = element.getBoundingClientRect();
-		return bounds.top + bounds.height / 2;
-	});
-	for (const center of centers)
-		expect(Math.abs(center - middle)).toBeLessThan(0.1);
-	const letterMiddle = await hint
-		.locator(":scope > span")
-		.evaluate((element) => {
-			const bounds = element.getBoundingClientRect();
-			return bounds.top + bounds.height / 2;
-		});
-	expect(Math.abs(letterMiddle - middle)).toBeLessThan(0.1);
-	const key = await hint.getAttribute("data-shortcut");
-	await page.keyboard.press(required(key));
-	await expect(addFile).toHaveCount(0);
-	await page.keyboard.down("Shift");
-	await page.keyboard.press(required(key));
-	await expect(addFile).toBeVisible();
-	await page.keyboard.up("Shift");
-	await expect(page.locator(hints).first()).toBeVisible();
-	await page.keyboard.up("Control");
-	await expect(page.locator(hints)).toHaveCount(0);
-	await page.keyboard.press("Escape");
-	await expect(addFile).toHaveCount(0);
-});
-
-test("single-key hints fit beside each other and stay aligned with each toolbar row", async ({
-	page,
-}) => {
-	await page.setViewportSize({ width: 1440, height: 950 });
-	await page.goto("/tests/browser/projects.html");
-	const { openProjectFiles } = await import("./project-files");
-	const sidebar = await openProjectFiles(page);
-	await sidebar
-		.getByRole("link", { name: "Open Untitled.ecaddraw", exact: true })
-		.click();
-	await page.getByRole("button", { name: "Shapes", exact: true }).click();
-	await page.mouse.move(600, 300);
-	await page.keyboard.down("Control");
-	await expect(page.locator(`${hints}[title="Rectangle"]`)).toHaveAttribute(
-		"data-shortcut",
-		"R",
-	);
-	const layout = await page.locator(hints).evaluateAll((elements) => {
-		const boxes = elements.map((element) => element.getBoundingClientRect());
-		const overlaps = [];
-		for (let i = 0; i < boxes.length; i++) {
-			for (let j = i + 1; j < boxes.length; j++) {
-				const a = boxes[i],
-					b = boxes[j];
-				if (
-					a.left < b.right &&
-					a.right > b.left &&
-					a.top < b.bottom &&
-					a.bottom > b.top
-				)
-					overlaps.push([
-						elements[i].getAttribute("title"),
-						elements[j].getAttribute("title"),
-					]);
-			}
-		}
-		return {
-			overlaps,
-			keys: elements.map((element) => element.getAttribute("data-shortcut")),
-			text: elements.map((element) => element.textContent),
-		};
-	});
-	expect(layout.overlaps).toEqual([]);
-	// Once single characters run out, the last buttons take function keys.
-	expect(
-		layout.keys.every((key) => key?.length === 1 || /^F\d+$/.test(key ?? "")),
-	).toBe(true);
-	expect(layout.keys.filter((key) => key?.length !== 1).length).toBeLessThan(3);
-	expect(layout.text.every((text) => !text?.includes("Ctrl"))).toBe(true);
-	await page.keyboard.up("Control");
-});
-
-test("Ctrl+Plus zooms the editor when Shift produces the plus character", async ({
-	page,
-}) => {
-	const fit = page.getByRole("button", { name: "Fit drawing", exact: true });
-	const before = await fit.textContent();
-	await page.keyboard.press("Control+Shift+Equal");
-	await expect(fit).not.toHaveText(required(before));
-});
-
 test("Undo and Redo follow the key labels on a QWERTZ layout", async ({
 	page,
 }) => {
@@ -238,259 +93,47 @@ test("Undo and Redo follow the key labels on a QWERTZ layout", async ({
 	await page.keyboard.up("Control");
 });
 
-test("Radix dialogs hide background hints and block background Delete", async ({
-	page,
-}) => {
-	await page.goto("/tests/browser/projects.html");
-	const { openProjectFiles } = await import("./project-files");
-	const sidebar = await openProjectFiles(page);
-	await sidebar
-		.getByRole("link", { name: "Open Untitled.ecaddraw", exact: true })
-		.click();
-	await (await toolbarButton(page, "Rectangle")).click();
-	await page.mouse.move(600, 300);
-	await page.mouse.down();
-	await page.mouse.move(710, 400);
-	await page.mouse.up();
-	await expect(
-		page.getByRole("button", { name: "Delete", exact: true }),
-	).toBeEnabled();
-	const shapes = async () =>
-		JSON.parse(required(await page.locator("#project-document").textContent()))
-			.editorShapes;
-	const before = await shapes();
-	expect(before).toHaveLength(1);
-	await page
-		.getByRole("navigation", { name: "Sidebar shortcuts", exact: true })
-		.getByRole("button", { name: "Add file", exact: true })
-		.click();
-	await page
-		.getByRole("menuitem", { name: "New drawing", exact: true })
-		.click();
-	const dialog = page.getByRole("dialog");
-	await expect(dialog).toBeVisible();
-	await expect(dialog).not.toHaveAttribute("aria-modal");
-	await page.keyboard.down("Control");
-	await expect(page.locator(hints).first()).toBeVisible();
-	await expect(page.locator(`${hints}[title="Delete"]`)).toHaveCount(0);
-	await expect(page.locator(hints)).toHaveCount(
-		await dialog.getByRole("button").count(),
-	);
-	await page
-		.locator("body")
-		.dispatchEvent("keydown", { key: "d", code: "KeyD", ctrlKey: true });
-	expect(await shapes()).toEqual(before);
-	await page.keyboard.up("Control");
-});
-
-for (const label of ["Add file", "Project actions", "Open project"]) {
-	test(`sidebar shortcut opens the ${label} dropdown`, async ({ page }) => {
-		await page.goto("/tests/browser/projects.html");
-		await expect(
-			page.getByLabel("Workspace instructions", { exact: true }),
-		).toBeVisible();
-		await page.mouse.move(900, 400);
-		const rail = page.getByRole("navigation", {
-			name: "Sidebar shortcuts",
-			exact: true,
-		});
-		await page.keyboard.down("Control");
-		const hint = page.locator(`${hints}[title="${label}"]`);
-		await expect(hint).toBeVisible();
-		const key = await hint.getAttribute("data-shortcut");
-		await page.keyboard.down("Shift");
-		await page.keyboard.press(required(key));
-		await expect(
-			page.getByRole("menu", { name: label, exact: true }),
-		).toBeVisible();
-		await expect(
-			rail.getByRole("button", { name: label, exact: true }),
-		).toHaveAttribute("aria-expanded", "true");
-		await page.keyboard.up("Shift");
-		await page.keyboard.up("Control");
-	});
-}
-
-// Every non-Mac platform takes the same branch as Win32.
-for (const platform of ["MacIntel", "Win32"]) {
-	test(`${platform} uses its primary modifier for hints and actions`, async ({
-		page,
-	}) => {
-		await page.addInitScript((platform) => {
-			Object.defineProperty(navigator, "platform", { value: platform });
-		}, platform);
-		await page.reload();
-		const mac = platform === "MacIntel";
-		const modifier = mac ? "Meta" : "Control";
-		const other = mac ? "Control" : "Meta";
-		await expect(
-			page.getByRole("button", { name: "Shapes", exact: true }),
-		).toBeEnabled();
-		await page.keyboard.down(other);
-		await expect(page.locator(hints)).toHaveCount(0);
-		await page.keyboard.up(other);
-		await page.keyboard.down(modifier);
-		const shapes = page.locator(`${hints}[title="Shapes"]`);
-		await expect(shapes).toHaveAttribute("aria-label", `${modifier}+S`);
-		await expect(shapes.locator('[data-slot="modifier-icon"]')).toHaveClass(
-			mac ? /lucide-command/ : /lucide-chevron-up/,
-		);
-		await page.keyboard.press("s");
-		await expect(
-			page.getByRole("toolbar", { name: "Shapes toolbar", exact: true }),
-		).toBeVisible();
-		await expect(page.locator(`${hints}[title="Rectangle"]`)).toBeVisible();
-		await page.screenshot({
-			path: `/tmp/ecad-shortcuts-${platform.split(" ")[0]}.png`,
-		});
-		await page.keyboard.up(modifier);
-		await expect(page.locator(hints)).toHaveCount(0);
-		await page.keyboard.down(modifier);
-		await expect(shapes).toBeVisible();
-		await page.evaluate(() => window.dispatchEvent(new Event("blur")));
-		await expect(page.locator(hints)).toHaveCount(0);
-		await page.keyboard.up(modifier);
-
-		await page.goto("/tests/browser/projects.html");
-		await expect(
-			page.getByLabel("Workspace instructions", { exact: true }),
-		).toContainText(mac ? "⌘+Shift+N" : "Ctrl+Shift+N");
-		const sidebar = page.getByRole("complementary", {
-			name: "Project files",
-			exact: true,
-			includeHidden: true,
-		});
-		const addFile = page.getByRole("menu", { name: "Add file", exact: true });
-		await page.keyboard.press(`${other}+Shift+n`);
-		await expect(addFile).toHaveCount(0);
-		await page.keyboard.press(`${modifier}+Shift+n`);
-		await expect(addFile).toBeVisible();
-		await page.keyboard.press("Escape");
-		await expect(addFile).toHaveCount(0);
-		await expect(sidebar).toHaveAttribute("data-open", "false");
-	});
-}
-
-test("macOS reserves Quit, Hide and Minimize in preferred and fallback assignments", async ({
-	page,
-}) => {
+test("macOS uses Cmd for hints and actions", async ({ page }) => {
 	await page.addInitScript(() => {
 		Object.defineProperty(navigator, "platform", { value: "MacIntel" });
 	});
 	await page.reload();
+	const modifier = "Meta";
+	const other = "Control";
 	await expect(
 		page.getByRole("button", { name: "Shapes", exact: true }),
 	).toBeEnabled();
-	await page.getByRole("button", { name: "Pan", exact: true }).click();
-	await page.keyboard.down("Meta");
-	await expect(page.locator(`${hints}[title="Select"]`)).toHaveAttribute(
-		"data-shortcut",
-		"2",
-	);
-	await expect(page.locator(`${hints}[title="Export"]`)).toHaveAttribute(
-		"data-shortcut",
-		"B",
-	);
-	await page.keyboard.press("b");
+	await page.keyboard.down(other);
+	await expect(page.locator(hints)).toHaveCount(0);
+	await page.keyboard.up(other);
+	await page.keyboard.down(modifier);
+	const shapes = page.locator(`${hints}[title="Shapes"]`);
+	await expect(shapes).toHaveAttribute("aria-label", `${modifier}+S`);
+	await page.keyboard.press("s");
 	await expect(
-		page.getByRole("toolbar", { name: "Export toolbar", exact: true }),
+		page.getByRole("toolbar", { name: "Shapes toolbar", exact: true }),
 	).toBeVisible();
-	await page.keyboard.press("2");
-	await expect(
-		page.getByRole("button", { name: "Select", exact: true }),
-	).toHaveAttribute("aria-pressed", "true");
-	await expect(
-		page.locator(
-			`${hints}[data-shortcut="Q"], ${hints}[data-shortcut="H"], ${hints}[data-shortcut="M"]`,
-		),
-	).toHaveCount(0);
-	await page.screenshot({ path: "/tmp/ecad-shortcuts-macos-reserved.png" });
-	await page.keyboard.up("Meta");
-	await page.evaluate(() => {
-		const dialog = document.createElement("dialog");
-		for (const scope of ["editor", "sidebar"]) {
-			const group = document.createElement("div");
-			group.dataset.shortcutScope = scope;
-			for (const label of ["Q", "H", "M"]) {
-				const button = document.createElement("button");
-				button.textContent = label;
-				group.append(button);
-			}
-			dialog.append(group);
-		}
-		document.body.append(dialog);
-		dialog.showModal();
-	});
-	await page.keyboard.down("Meta");
-	await expect(page.locator(hints)).toHaveCount(6);
-	await expect(
-		page.locator(
-			`${hints}[data-shortcut="Q"], ${hints}[data-shortcut="H"], ${hints}[data-shortcut="M"]`,
-		),
-	).toHaveCount(0);
-	const nativeEvents = await page.evaluate(() =>
-		[false, true].flatMap((shiftKey) =>
-			["q", "h", "m"].map((key) => {
-				const event = new KeyboardEvent("keydown", {
-					key,
-					metaKey: true,
-					shiftKey,
-					bubbles: true,
-					cancelable: true,
-				});
-				window.dispatchEvent(event);
-				return event.defaultPrevented;
-			}),
-		),
-	);
-	expect(nativeEvents).toEqual([false, false, false, false, false, false]);
-	await page.keyboard.up("Meta");
-});
+	await expect(page.locator(`${hints}[title="Rectangle"]`)).toBeVisible();
+	await page.keyboard.up(modifier);
+	await expect(page.locator(hints)).toHaveCount(0);
+	await page.keyboard.down(modifier);
+	await expect(shapes).toBeVisible();
+	await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+	await expect(page.locator(hints)).toHaveCount(0);
+	await page.keyboard.up(modifier);
 
-test("a wheel zoom with Ctrl held does not rebuild the hints on every frame", async ({
-	page,
-}) => {
-	await page.keyboard.down("Control");
-	await expect(page.locator(`${hints}[title="Fit drawing"]`)).toBeVisible();
-	// Zoom in for 20 frames, then back out by the same steps.
-	const { rebuilds, elapsed } = await page.evaluate(
-		() =>
-			new Promise<{ rebuilds: number; elapsed: number }>((resolve) => {
-				const canvas = document.querySelector("canvas");
-				const overlay = document.querySelector(".button-shortcuts");
-				if (!canvas || !overlay) throw new Error("Expected the editor");
-				let rebuilds = 0;
-				const observer = new MutationObserver(() => rebuilds++);
-				observer.observe(overlay, { childList: true });
-				const started = performance.now();
-				let frame = 0;
-				const tick = () => {
-					if (frame === 40) {
-						const elapsed = performance.now() - started;
-						if (observer.takeRecords().length) rebuilds++;
-						observer.disconnect();
-						resolve({ rebuilds, elapsed });
-						return;
-					}
-					canvas.dispatchEvent(
-						new WheelEvent("wheel", {
-							deltaY: frame < 20 ? -40 : 40,
-							ctrlKey: true,
-							clientX: innerWidth / 2,
-							clientY: innerHeight / 2,
-							bubbles: true,
-							cancelable: true,
-						}),
-					);
-					frame++;
-					requestAnimationFrame(tick);
-				};
-				requestAnimationFrame(tick);
-			}),
-	);
-	// The rulers and the paper change on every frame and move no button. The
-	// zoom label does change a button, at most every 100 ms.
-	expect(rebuilds).toBeLessThanOrEqual(Math.floor(elapsed / 100) + 2);
-	await expect(page.locator(`${hints}[title="Fit drawing"]`)).toBeVisible();
-	await page.keyboard.up("Control");
+	await page.goto("/tests/browser/projects.html");
+	const sidebar = page.getByRole("complementary", {
+		name: "Project files",
+		exact: true,
+		includeHidden: true,
+	});
+	const addFile = page.getByRole("menu", { name: "Add file", exact: true });
+	await page.keyboard.press(`${other}+Shift+n`);
+	await expect(addFile).toHaveCount(0);
+	await page.keyboard.press(`${modifier}+Shift+n`);
+	await expect(addFile).toBeVisible();
+	await page.keyboard.press("Escape");
+	await expect(addFile).toHaveCount(0);
+	await expect(sidebar).toHaveAttribute("data-open", "false");
 });

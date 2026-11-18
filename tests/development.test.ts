@@ -1,33 +1,10 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import {
-	appendFileSync,
-	existsSync,
-	mkdtempSync,
-	readFileSync,
-	rmSync,
-	statSync,
-	symlinkSync,
-	writeFileSync,
-} from "node:fs";
+import { appendFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { runLocked, worktreeId } from "../scripts/development/common.ts";
-import { compareBaseline, type Summary } from "./performance/comparison.ts";
-
-test("worktree identities separate checkouts and resolve symlinks", () => {
-	const first = mkdtempSync(join(tmpdir(), "ecad-identity-"));
-	const second = mkdtempSync(join(tmpdir(), "ecad-identity-"));
-	try {
-		symlinkSync(first, join(second, "alias"));
-		assert.notEqual(worktreeId(first), worktreeId(second));
-		assert.equal(worktreeId(first), worktreeId(join(second, "alias")));
-	} finally {
-		rmSync(first, { recursive: true });
-		rmSync(second, { recursive: true });
-	}
-});
+import { runLocked } from "../scripts/development/common.ts";
 
 test("separate processes queue on the same host lock and release it after failure", {
 	skip: process.platform !== "linux",
@@ -64,27 +41,6 @@ test("separate processes queue on the same host lock and release it after failur
 	} finally {
 		rmSync(directory, { recursive: true });
 	}
-});
-
-test("native and container baseline profiles cannot cross in either direction", () => {
-	const native: Summary = {
-		version: 1,
-		profile: {
-			mode: "production",
-			cpu: 4,
-			platform: "linux",
-			browser: "chromium",
-		},
-		scenarios: {},
-	};
-	const container = structuredClone(native);
-	container.profile.environment = "image-a";
-	assert.equal(compareBaseline(native, container).length, 1);
-	assert.equal(compareBaseline(container, native).length, 1);
-	const otherImage = structuredClone(container);
-	otherImage.profile.environment = "image-b";
-	assert.equal(compareBaseline(container, otherImage).length, 1);
-	assert.deepEqual(compareBaseline(container, structuredClone(container)), []);
 });
 
 test("shared validation jobs can overlap while a benchmark waits", {
@@ -179,76 +135,3 @@ for (const signal of ["SIGTERM", "SIGHUP"] as const) {
 		}
 	});
 }
-
-test("a queued command cannot run after its launcher is killed", {
-	skip: process.platform !== "linux",
-	timeout: 10000,
-}, async () => {
-	const directory = mkdtempSync(join(tmpdir(), "ecad-abandoned-lock-"));
-	const ready = join(directory, "ready");
-	const release = join(directory, "release");
-	const unexpected = join(directory, "unexpected");
-	const env = { ...process.env, ECAD_LOCK_DIR: directory };
-	const holderCode = `const fs=require('node:fs');fs.writeFileSync(process.argv[1],'ready');const timer=setInterval(()=>{if(fs.existsSync(process.argv[2])){clearInterval(timer);}},10);`;
-	const holder = runLocked(
-		"perf",
-		process.execPath,
-		["-e", holderCode, ready, release],
-		env,
-		true,
-	);
-	const waitFor = async (predicate: () => boolean) => {
-		const deadline = Date.now() + 3000;
-		while (!predicate()) {
-			assert.ok(Date.now() < deadline);
-			await new Promise((resolve) => setTimeout(resolve, 10));
-		}
-	};
-	await waitFor(() => existsSync(ready));
-	const helper = new URL("../scripts/development/common.ts", import.meta.url)
-		.href;
-	const code = `import {runLocked} from ${JSON.stringify(helper)};process.exitCode=await runLocked('perf',process.execPath,['-e',"require('node:fs').writeFileSync(process.argv[1],'unexpected')",${JSON.stringify(unexpected)}]);`;
-	const child = spawn(process.execPath, ["--input-type=module", "-e", code], {
-		env,
-		stdio: ["ignore", "pipe", "pipe"],
-	});
-	const queued = new Promise<void>((resolve) =>
-		child.stdout.once("data", () => resolve()),
-	);
-	const exited = new Promise((resolve) => child.once("exit", resolve));
-	try {
-		await queued;
-		await new Promise((resolve) => setTimeout(resolve, 150));
-		child.kill("SIGKILL");
-		await exited;
-		writeFileSync(release, "release");
-		assert.equal(await holder, 0);
-		assert.equal(await runLocked("perf", process.execPath, ["-e", ""], env), 0);
-		assert.equal(existsSync(unexpected), false);
-	} finally {
-		child.kill("SIGTERM");
-		writeFileSync(release, "release");
-		await holder;
-		rmSync(directory, { recursive: true });
-	}
-});
-
-test("native lock overrides create fresh nested directories", {
-	skip: process.platform !== "linux",
-}, async () => {
-	const directory = mkdtempSync(join(tmpdir(), "ecad-fresh-lock-"));
-	const locks = join(directory, "nested/locks");
-	try {
-		assert.equal(
-			await runLocked("perf", process.execPath, ["-e", ""], {
-				...process.env,
-				ECAD_LOCK_DIR: locks,
-			}),
-			0,
-		);
-		assert.equal(statSync(locks).isDirectory(), true);
-		assert.equal(statSync(locks).mode & 0o777, 0o700);
-	} finally {
-		rmSync(directory, { recursive: true });
-	}
-});

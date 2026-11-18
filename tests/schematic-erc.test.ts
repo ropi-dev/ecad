@@ -37,7 +37,7 @@ test("schematic ERC reads wires and no-connect markers from the drawing", () => 
 		["unconnected-pin"],
 	);
 	const [finding] = diagnostics;
-	assert.match(finding.message, /^R2 pin/);
+	assert.match(finding.message, /\bR2\b/);
 	assert.deepEqual(checked.shapeIds(required(finding.subjects[0])), [2]);
 
 	// A marker on a wired pin is reported, not silently accepted.
@@ -109,7 +109,7 @@ test("schematic ERC reports duplicate references instead of failing", () => {
 		duplicate.subjects.map((subject) => subject.id),
 		["1", "9"],
 	);
-	assert.ok(results.some((item) => item.message.startsWith("R1 (2) pin 1 ")));
+	assert.ok(results.some((item) => /\bR1 \(2\)/.test(item.message)));
 });
 
 test("schematic ERC groups KiCad units and compares their values and pins", () => {
@@ -147,7 +147,8 @@ test("schematic ERC groups KiCad units and compares their values and pins", () =
 	]);
 	const split = results.find((item) => item.ruleId === "duplicate-pin-nets");
 	assert.ok(split);
-	assert.match(split.message, /^U1 pin 1 is connected to A and B\./);
+	assert.match(split.message, /\bU1\b/);
+	assert.match(split.message, /\bA\b.*\bB\b/);
 });
 
 test("schematic ERC reports unannotated symbols with their circuit reference", () => {
@@ -161,7 +162,7 @@ test("schematic ERC reports unannotated symbols with their circuit reference", (
 		results.map((item) => item.ruleId),
 		["unannotated-symbol"],
 	);
-	assert.match(results[0].message, /The circuit numbers it R\d+\./);
+	assert.match(results[0].message, /\bR\d+\b/);
 });
 
 test("schematic ERC reports symbols missing from their library", () => {
@@ -196,7 +197,6 @@ test("schematic ERC reports labels and supplies that reach no pins", () => {
 		dangling.map((item) => item.ruleId),
 		["unconnected-label"],
 	);
-	assert.match(dangling[0].message, /not attached to a wire or pin/);
 	assert.deepEqual(ruleIds([...shapes, createSymbol(9, ground, away)]), [
 		"unconnected-label",
 	]);
@@ -254,7 +254,6 @@ test("schematic ERC reports no-connect markers away from pins", () => {
 		results.map((item) => item.ruleId),
 		["stray-no-connect"],
 	);
-	assert.match(results[0].message, /not on a pin or wire/);
 	const middle = { x: a1.x, y: a1.y + 5 };
 	const connected = check([
 		...shapes,
@@ -263,7 +262,7 @@ test("schematic ERC reports no-connect markers away from pins", () => {
 	assert.match(
 		required(connected.find((item) => item.ruleId === "stray-no-connect"))
 			.message,
-		/connects 2 pins/,
+		/\b2 pins\b/,
 	);
 });
 

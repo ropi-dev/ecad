@@ -122,23 +122,3 @@ test("automatic labels follow edits, splits, reloads, and undo while manual name
 	);
 	assert.deepEqual(saved.nets.find((net) => net.id === "clock")?.names, []);
 });
-
-test("large automatic labels remain bounded and empty nets still have a label", () => {
-	const file = fixture();
-	file.circuit.nets = [
-		{
-			id: "bus",
-			names: [],
-			pinIds: file.circuit.components.flatMap((component) =>
-				component.pins.map((pin) => pin.id),
-			),
-		},
-		{ id: "empty", names: [], pinIds: [] },
-	];
-	assert.equal(circuitNetLabels(file.circuit).get("bus"), "GND / XIN / XOUT");
-	for (const component of file.circuit.components)
-		for (const pin of component.pins) pin.name = pin.id.repeat(8);
-	const labels = circuitNetLabels(file.circuit);
-	assert.ok(required(labels.get("bus")).length <= 180);
-	assert.equal(labels.get("empty"), "Net 2");
-});

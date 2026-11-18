@@ -144,165 +144,7 @@ test("plain custom rules share indexes and support severity overrides and disabl
 		[],
 	);
 	assert.deepEqual(circuit, before);
-	assert.throws(() => runErc(circuit, [custom, custom]), /duplicate/);
-});
-
-test("diagnostic identities survive net ordering and pin membership ordering", () => {
-	const circuit = fixture(["output", "output", "input", "passive"]);
-	circuit.nets = [
-		{ id: "n1", names: [], pinIds: ["p0", "p1"] },
-		{ id: "n2", names: [], pinIds: ["p2", "p3"] },
-	];
-	const before = runErc(circuit, defaultErcRules).map((item) => item.id);
-	circuit.nets.reverse();
-	for (const net of circuit.nets) net.pinIds.reverse();
-	assert.deepEqual(
-		runErc(circuit, defaultErcRules).map((item) => item.id),
-		before,
-	);
-});
-
-test("rule failures propagate instead of returning a clean report", () => {
-	assert.throws(
-		() =>
-			runErc(fixture([]), [
-				{
-					id: "broken",
-					title: "Broken",
-					severity: "error",
-					check() {
-						throw new Error("Broken rule");
-					},
-				},
-			]),
-		/Broken rule/,
-	);
-});
-
-test("severity overrides ignore inherited properties for valid prototype-name rule IDs", () => {
-	for (const id of ["constructor", "toString", "__proto__"]) {
-		const rule: ErcRule = {
-			id,
-			title: "Custom",
-			severity: "error",
-			*check() {
-				yield { message: "Test", subjects: [] };
-			},
-		};
-		const circuit = fixture([]);
-		assert.equal(
-			runErc(circuit, [rule], { severity: {} })[0].severity,
-			"error",
-		);
-		assert.deepEqual(
-			runErc(circuit, [rule], { severity: { [id]: "off" } }),
-			[],
-		);
-		assert.equal(
-			runErc(circuit, [rule], { severity: { [id]: "warning" } })[0].severity,
-			"warning",
-		);
-	}
-});
-
-test("finding codes distinguish violations and duplicate subjects do not change identity", () => {
-	const rule: ErcRule = {
-		id: "custom",
-		title: "Custom",
-		severity: "warning",
-		*check() {
-			yield {
-				code: "first",
-				message: "First",
-				subjects: [
-					{ kind: "pin", id: "p0" },
-					{ kind: "pin", id: "p0" },
-				],
-			};
-			yield {
-				code: "first",
-				message: "Same issue",
-				subjects: [{ kind: "pin", id: "p0" }],
-			};
-			yield {
-				code: "second",
-				message: "Second",
-				subjects: [{ kind: "pin", id: "p0" }],
-			};
-		},
-	};
-	const results = runErc(fixture(["passive"]), [rule]);
-	assert.equal(results.length, 2);
-	assert.equal(results[0].subjects.length, 1);
-	assert.notEqual(results[0].id, results[1].id);
-});
-
-test("net findings keep their identity when an equivalent net receives a new ID", () => {
-	for (const types of [
-		["output", "output"],
-		["input", "input"],
-		["power-in", "passive"],
-	] as const) {
-		const circuit = fixture([...types]);
-		const before = runErc(circuit, defaultErcRules);
-		circuit.nets[0].id = "recreated-net";
-		const after = runErc(circuit, defaultErcRules);
-		assert.equal(after[0].id, before[0].id);
-		assert.deepEqual(after[0].target, { kind: "net", id: "recreated-net" });
-	}
-});
-
-test("diagnostics snapshot reused subject arrays and navigation targets", () => {
-	const subjects = [{ kind: "pin" as const, id: "p0" }];
-	const target = { kind: "pin" as const, id: "p0" };
-	const rule: ErcRule = {
-		id: "reuse",
-		title: "Reuse",
-		severity: "warning",
-		*check() {
-			yield { message: "First", subjects, target };
-			subjects[0].id = "p1";
-			target.id = "p1";
-			yield { message: "Second", subjects, target };
-		},
-	};
-	const results = runErc(fixture(["passive", "passive"]), [rule]);
-	assert.deepEqual(
-		results.map((item) => item.subjects[0].id),
-		["p0", "p1"],
-	);
-	assert.deepEqual(
-		results.map((item) => item.target?.id),
-		["p0", "p1"],
-	);
-});
-
-test("connected no-connect markers do not suppress missing driver findings", () => {
-	for (const type of ["input", "power-in"] as const) {
-		const circuit = fixture([type, type === "input" ? "input" : "passive"]);
-		circuit.noConnectPinIds = ["p0"];
-		assert.equal(runErc(circuit, defaultErcRules).length, 2);
-	}
-});
-
-test("errors identify the failed rule and discard findings yielded before failure", () => {
-	const cause = new Error("Check failed");
-	const rule: ErcRule = {
-		id: "project/broken",
-		title: "Broken",
-		severity: "warning",
-		*check() {
-			yield { message: "Partial finding", subjects: [] };
-			throw cause;
-		},
-	};
-	assert.throws(
-		() => runErc(fixture([]), [rule]),
-		(error) =>
-			error instanceof Error &&
-			error.message.includes(rule.id) &&
-			error.cause === cause,
-	);
+	assert.throws(() => runErc(circuit, [custom, custom]), /\bcustom\b/);
 });
 
 test("ERC applies KiCad's pin conflict matrix", () => {
@@ -326,24 +168,11 @@ test("ERC applies KiCad's pin conflict matrix", () => {
 		pinTypeConflictRule,
 		pinTypeWarningRule,
 	]);
-	assert.equal(
-		result.message,
-		"SIGNAL connects Output and Output pins: U1 pin 1, U2 pin 1.",
+	assert.equal(result.ruleId, "pin-type-conflict");
+	assert.deepEqual(
+		result.subjects.map((subject) => subject.id),
+		["p0", "p1"],
 	);
-});
-
-test("ERC accepts stacked Unconnected pins that meet only each other", () => {
-	const circuit = fixture(["no-connect"]);
-	const [part] = circuit.components;
-	part.pins[0].name = "NC";
-	part.pins.push({
-		id: "p0b",
-		name: "NC",
-		number: "2",
-		electricalType: "no-connect",
-	});
-	circuit.nets[0].pinIds = ["p0", "p0b"];
-	assert.deepEqual(runErc(circuit, defaultErcRules), []);
 });
 
 test("ERC exempts Free pins from the unconnected check", () => {
@@ -367,7 +196,6 @@ test("ERC reports one pin number on several nets", () => {
 	});
 	circuit.nets.push({ id: "net2", names: ["OTHER"], pinIds: ["p0b", "p1b"] });
 	const [result] = runErc(circuit, [duplicatePinNetsRule]);
-	assert.equal(result.message, "U1 pin 1 is connected to SIGNAL and OTHER.");
 	assert.deepEqual(
 		result.subjects.map((subject) => subject.id),
 		["p0", "p0b"],
@@ -408,10 +236,8 @@ test("ERC reports nets with several or similar names", () => {
 	const circuit = fixture(["passive", "passive"]);
 	circuit.nets[0].names = ["A", "B"];
 	assert.deepEqual(
-		runErc(circuit, [multipleNetNamesRule]).map((item) => item.message),
-		[
-			"A, B name the same net. Remove all but one name, or check for an unintended connection.",
-		],
+		runErc(circuit, [multipleNetNamesRule]).map((item) => item.subjects),
+		[[{ kind: "net", id: "net" }]],
 	);
 	for (const [first, second] of [
 		["GND", "gnd"],

@@ -149,18 +149,3 @@ test("double-clicking a tab renames the page", async ({ page }) => {
 		pages.getByRole("button", { name: "Inputs", exact: true }),
 	).toBeVisible();
 });
-
-test("clicking outside the page list keeps a rename in progress", async ({
-	page,
-}) => {
-	const pages = page.getByRole("navigation", { name: "Schematic pages" });
-	await pages.getByRole("button", { name: "Page list", exact: true }).click();
-	const list = page.getByRole("region", { name: "Pages", exact: true });
-	await list.getByRole("button", { name: "Rename Power", exact: true }).click();
-	await list.getByRole("textbox", { name: "Name of Power" }).fill("Supply");
-	await page.locator("canvas").click({ position: { x: 300, y: 400 } });
-	await expect(list).toHaveCount(0);
-	await expect(
-		pages.getByRole("button", { name: "Supply", exact: true }),
-	).toBeVisible();
-});

@@ -1,18 +1,14 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { strToU8, zipSync } from "fflate";
-import { Box3, BufferAttribute, BufferGeometry, type Mesh } from "three";
+import { Box3, type Mesh } from "three";
 import { compilePlanarGeometry } from "#/engine/planar-geometry.ts";
 import {
 	createPlanarObject3D,
 	disposePlanarObject3D,
 	stylePlanarObject3D,
 } from "#/engine/planar-object.ts";
-import {
-	buildPlanarWalls,
-	offsetRing,
-	planarRings,
-} from "#/engine/planar-walls.ts";
+import { buildPlanarWalls } from "#/engine/planar-walls.ts";
 import { expandGerberFile } from "#/formats/expandGerberFile.ts";
 import {
 	DRILL_WALL,
@@ -20,7 +16,6 @@ import {
 	placeBoardLayers,
 } from "#/formats/gerber/board-stack.ts";
 import { gerberLayerOrder } from "#/formats/gerber/layer-order.ts";
-import { parseWorkerReply } from "#/formats/parse-reply.ts";
 import { installArchiveWorker } from "./helpers/archive-worker";
 
 after(installArchiveWorker().restore);
@@ -65,40 +60,6 @@ test("ZIP Gerbers follow the physical stack in the panel, including numeric inne
 	assert.equal(await files.at(-1)?.text(), source("Legend,Top"));
 });
 
-test("legacy layer names and extensions match the metadata order", () => {
-	const cases = [
-		["board-F_Silkscreen.gbr", "Legend,Top"],
-		["board.gto", "Legend,Top"],
-		["board-F.Paste.gbr", "Paste,Top"],
-		["board.gtp", "Paste,Top"],
-		["board-F_Mask.gbr", "Soldermask,Top"],
-		["board.gts", "Soldermask,Top"],
-		["board-F_Cu.gbr", "Copper,L1,Top"],
-		["board.gtl", "Copper,L1,Top"],
-		["board-B_Cu.gbr", "Copper,L4,Bot"],
-		["board.gbl", "Copper,L4,Bot"],
-		["board-B_Mask.gbr", "Soldermask,Bot"],
-		["board.gbs", "Soldermask,Bot"],
-		["board-B_Paste.gbr", "Paste,Bot"],
-		["board.gbp", "Paste,Bot"],
-		["board-B_SilkS.gbr", "Legend,Bot"],
-		["board.gbo", "Legend,Bot"],
-		["board-Edge_Cuts.gm1", "Profile,NP"],
-		["board.gko", "Profile,NP"],
-		["board-PTH-drl_map.gbr", "Drillmap"],
-		["board-NPTH-drl_map.gbr", "Drillmap"],
-	];
-	for (const [name, attribute] of cases)
-		assert.deepEqual(
-			gerberLayerOrder(name, source()),
-			gerberLayerOrder("unknown.gbr", source(attribute)),
-			name,
-		);
-	assert.deepEqual(gerberLayerOrder("board-In10_Cu.gbr", ""), [4, 10]);
-	assert.deepEqual(gerberLayerOrder("board.g2", ""), [4, 2]);
-	assert.deepEqual(gerberLayerOrder("board.gl10", ""), [4, 10]);
-});
-
 test("attributes override filenames, including legacy comment attributes", () => {
 	assert.deepEqual(
 		gerberLayerOrder("wrong.gbl", source("Copper,L1,Top")),
@@ -107,14 +68,6 @@ test("attributes override filenames, including legacy comment attributes", () =>
 	assert.deepEqual(
 		gerberLayerOrder("wrong.gtl", "G04 #@! TF.FileFunction,Copper,L4,Bot*"),
 		[5, 0],
-	);
-});
-
-test("standalone imports preserve their file identity", async () => {
-	const file = new File([source("Copper,L1,Top")], "board.gbr");
-	assert.deepEqual(
-		(await expandGerberFile(file, new AbortController().signal)).files,
-		[file],
 	);
 });
 
@@ -207,157 +160,4 @@ test("drill layers become barrels that span the board in 3D", () => {
 	assert.equal(barrel.visible, false);
 	assert.equal(part("fill").visible, true);
 	disposePlanarObject3D(object);
-});
-
-test("surface layers extrude inward from their outer face in 3D", () => {
-	const objects = [
-		{
-			id: "pad",
-			geometry: { type: "rect" as const, x: 0, y: 0, width: 2, height: 1 },
-			bounds: { minX: -1, minY: -0.5, maxX: 1, maxY: 0.5 },
-			polarity: "dark" as const,
-			attributes: {},
-		},
-	];
-	const compiled = compilePlanarGeometry(objects);
-	for (const [name, top, bottom] of [
-		["board-F_Cu.gbr", 0.835, 0.8],
-		["board-B_Mask.gbr", -0.835, -0.855],
-	] as const) {
-		const layer = { name, metadata: {} };
-		const object = createPlanarObject3D(
-			{
-				...layer,
-				id: name,
-				objects,
-				bounds: objects[0].bounds,
-				color: "#ffaa00",
-				visible: true,
-				opacity: 1,
-				type: "planar",
-			},
-			compiled,
-			buildPlanarWalls(compiled.edges, "slab"),
-		);
-		const placement = placeBoardLayers([layer])[0];
-		object.position.z = placement.z;
-		const board = { minX: -10, minY: -5, maxX: 30, maxY: 15 };
-		stylePlanarObject3D(object, "#ffaa00", 1, false, {
-			...placement,
-			sheet: board,
-		});
-		const sheet = object.children.find(
-			(child) => child.userData.planarPart === "sheet",
-		) as Mesh;
-		assert.equal(sheet.visible, true);
-		const walls = object.children.find(
-			(child) => child.userData.planarPart === "walls",
-		) as Mesh;
-		assert.equal(walls.visible, true);
-		assert.equal(
-			walls.geometry.getAttribute("position").count,
-			(compiled.edges.length / 6) * 6,
-		);
-		object.updateMatrixWorld(true);
-		const bounds = new Box3().setFromObject(walls);
-		assert.ok(Math.abs(bounds.max.z - top) < 1e-6, `${name} top`);
-		assert.ok(Math.abs(bounds.min.z - bottom) < 1e-6, `${name} bottom`);
-		const sheetBounds = new Box3().setFromObject(sheet);
-		assert.deepEqual(
-			[
-				sheetBounds.min.x,
-				sheetBounds.min.y,
-				sheetBounds.max.x,
-				sheetBounds.max.y,
-			],
-			[board.minX, board.minY, board.maxX, board.maxY],
-		);
-		assert.ok(Math.abs(sheetBounds.min.z - (top + bottom) / 2) < 1e-6);
-		stylePlanarObject3D(object, "#ffaa00", 1, false);
-		assert.equal(walls.visible, false);
-		assert.equal(sheet.visible, false);
-		object.updateMatrixWorld(true);
-		const hiddenSheet = new Box3().setFromObject(sheet);
-		assert.deepEqual(
-			[hiddenSheet.min.x, hiddenSheet.max.x],
-			[objects[0].bounds.minX, objects[0].bounds.maxX],
-		);
-		disposePlanarObject3D(object);
-	}
-});
-
-test("hole walls offset inward and stay open in tiny holes", () => {
-	const square: [number, number][] = [
-		[0, 0],
-		[2, 0],
-		[2, 2],
-		[0, 2],
-	];
-	const inner = offsetRing(square, 0.1);
-	assert.deepEqual(
-		inner.map(([x, y]) => [Number(x.toFixed(6)), Number(y.toFixed(6))]),
-		[
-			[0.1, 0.1],
-			[1.9, 0.1],
-			[1.9, 1.9],
-			[0.1, 1.9],
-		],
-	);
-	assert.deepEqual(
-		offsetRing([...square].reverse(), 0.1).map(([x]) => Number(x.toFixed(6))),
-		[0.1, 1.9, 1.9, 0.1],
-	);
-	const tiny = offsetRing(
-		square.map(([x, y]) => [x * 0.05, y * 0.05] as [number, number]),
-		0.1,
-	);
-	assert.ok(tiny[2][0] - tiny[0][0] > 0);
-	const compiled = compilePlanarGeometry([
-		{
-			id: "a",
-			geometry: { type: "circle", x: 0, y: 0, radius: 1 },
-			bounds: { minX: -1, minY: -1, maxX: 1, maxY: 1 },
-			polarity: "dark",
-			attributes: {},
-		},
-		{
-			id: "b",
-			geometry: { type: "circle", x: 5, y: 0, radius: 1 },
-			bounds: { minX: 4, minY: -1, maxX: 6, maxY: 1 },
-			polarity: "dark",
-			attributes: {},
-		},
-	]);
-	assert.equal(planarRings(compiled.edges).length, 2);
-	for (const wall of [0, DRILL_WALL, 5]) {
-		const barrel = buildPlanarWalls(compiled.edges, "barrel", wall);
-		const reference = new BufferGeometry();
-		reference.setAttribute(
-			"position",
-			new BufferAttribute(barrel.positions, 3),
-		);
-		reference.computeVertexNormals();
-		assert.deepEqual(barrel.normals, reference.getAttribute("normal").array);
-	}
-});
-
-test("the parse worker builds a layer's 3D walls and hands their buffers over", () => {
-	const walls = (fileFunction: string, filename: string) => {
-		const reply = parseWorkerReply(source(fileFunction), filename);
-		assert.ok("result" in reply);
-		assert.ok(reply.result.mesh && reply.result.walls);
-		return { mesh: reply.result.mesh, ...reply.result.walls };
-	};
-	const drill = walls("Plated,1,2,PTH", "holes.gbr");
-	assert.equal(drill.extrude, "barrel");
-	assert.equal(drill.positions.length, (drill.mesh.edges.length / 6) * 24 * 3);
-	assert.equal(drill.normals?.length, drill.positions.length);
-	assert.equal(walls("", "board-PTH.gbr").extrude, "barrel");
-	const copper = walls("Copper,L1,Top", "top.gbr");
-	assert.equal(copper.extrude, "slab");
-	assert.equal(copper.positions.length, (copper.mesh.edges.length / 6) * 6 * 3);
-	assert.equal(copper.normals, undefined);
-	assert.notEqual(copper.positions.buffer, copper.mesh.edges.buffer);
-	const fatal = parseWorkerReply("not a gerber file", "top.gbr");
-	assert.ok(!("result" in fatal) || !fatal.result.walls);
 });

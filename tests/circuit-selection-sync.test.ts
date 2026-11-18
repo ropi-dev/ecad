@@ -16,9 +16,6 @@ import {
 	componentsOfBoardSelection,
 	componentsOfCircuitSelection,
 	componentsOfSchematicSelection,
-	pruneCircuitSelection,
-	sameCircuitSelection,
-	sameSchematicSelection,
 	schematicSelectionFromCircuit,
 	schematicSelectionFromComponents,
 } from "#/circuit/selection-sync.ts";
@@ -209,84 +206,6 @@ test("circuit components, pins and nets select their schematic shapes", () => {
 			checkedPins: [],
 		}),
 		{ shapeIds: [], childKey: null },
-	);
-});
-
-test("restored circuit selections drop items that no longer exist or are hidden", () => {
-	const { file, net } = linkedPair();
-	const [a, b] = file.circuit.components;
-	const collapsed = {
-		...file,
-		graph: { ...file.graph, collapsedComponentIds: [a.id] },
-	};
-	assert.deepEqual(
-		pruneCircuitSelection(file, {
-			item: { kind: "component", id: "missing" },
-			checkedPins: [],
-		}),
-		{ item: null, checkedPins: [] },
-	);
-	assert.deepEqual(
-		pruneCircuitSelection(file, {
-			item: { kind: "net", id: net.id },
-			checkedPins: [a.pins[0].id],
-		}),
-		{ item: { kind: "net", id: net.id }, checkedPins: [] },
-	);
-	assert.deepEqual(
-		pruneCircuitSelection(collapsed, {
-			item: { kind: "pin", id: a.pins[0].id },
-			checkedPins: [],
-		}),
-		{ item: null, checkedPins: [] },
-	);
-	const connections = {
-		item: { kind: "connection" as const, id: b.pins[0].id },
-		checkedPins: [a.pins[0].id, b.pins[0].id, a.pins[1].id],
-	};
-	assert.deepEqual(pruneCircuitSelection(file, connections), {
-		item: connections.item,
-		checkedPins: [a.pins[0].id, b.pins[0].id],
-	});
-	assert.deepEqual(
-		pruneCircuitSelection(collapsed, {
-			item: { kind: "connection", id: a.pins[0].id },
-			checkedPins: [a.pins[0].id, b.pins[0].id],
-		}),
-		{ item: null, checkedPins: [] },
-	);
-});
-
-test("selection equality compares contents, not identity", () => {
-	assert.ok(
-		sameSchematicSelection(
-			{ shapeIds: [1, 2], childKey: null },
-			{ shapeIds: [1, 2], childKey: null },
-		),
-	);
-	assert.ok(
-		!sameSchematicSelection(
-			{ shapeIds: [1], childKey: "shape:3" },
-			{ shapeIds: [1], childKey: null },
-		),
-	);
-	assert.ok(
-		sameCircuitSelection(
-			{ item: { kind: "net", id: "n" }, checkedPins: [] },
-			{ item: { kind: "net", id: "n" }, checkedPins: [] },
-		),
-	);
-	assert.ok(
-		!sameCircuitSelection(
-			{ item: { kind: "connection", id: "p" }, checkedPins: ["p"] },
-			{ item: { kind: "connection", id: "p" }, checkedPins: ["p", "q"] },
-		),
-	);
-	assert.ok(
-		sameCircuitSelection(
-			{ item: null, checkedPins: [] },
-			{ item: null, checkedPins: [] },
-		),
 	);
 });
 

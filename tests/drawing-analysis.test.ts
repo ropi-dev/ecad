@@ -139,29 +139,6 @@ test("an incremental analysis matches a full one after random edits", () => {
 	assert.ok(incremental > 100, `${incremental} incremental updates`);
 });
 
-test("an incremental analysis sees a pin moved past its symbol's outline", () => {
-	const resistor = required(
-		symbolDefinitions.find((definition) => definition.id === "resistor"),
-	);
-	const symbol = createSymbol(1, resistor, { x: 0, y: 0 });
-	const pin = required(
-		symbol.kind === "symbol"
-			? symbol.children.find((child) => child.kind === "pin")
-			: undefined,
-	);
-	const wire = drawShape(2, "wire", { x: 100, y: 0 }, { x: 110, y: 0 });
-	const before = [symbol, wire];
-	const after = [
-		{
-			...symbol,
-			childOverrides: { [`shape:${pin.id}`]: { x: 100, y: 0 } },
-		} as EditorShape,
-		wire,
-	];
-	const updated = required(updateAnalysis(before, full(before), after));
-	assert.deepEqual(normalized(updated), normalized(full(after)));
-});
-
 test("a group move updates incrementally and matches a full analysis", () => {
 	const { shapes } = sheet();
 	let analysis = full(shapes);
@@ -181,14 +158,4 @@ test("a group move updates incrementally and matches a full analysis", () => {
 		previous = moved;
 		analysis = updated;
 	}
-});
-
-test("a new array of the same shapes reuses the analysis", () => {
-	const { shapes } = sheet();
-	const analysis = full(shapes);
-	assert.equal(updateAnalysis(shapes, analysis, [...shapes]), analysis);
-	assert.equal(
-		updateAnalysis(shapes, analysis, [...shapes].reverse()),
-		undefined,
-	);
 });

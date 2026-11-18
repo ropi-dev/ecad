@@ -1,10 +1,4 @@
-import {
-	type EditorSymbol,
-	isBoxSymbol,
-	shapeBounds,
-	symbolChildren,
-	symbolChildWorld,
-} from "@ecad/drawing-core/drawing/shapes.ts";
+import { isBoxSymbol } from "@ecad/drawing-core/drawing/shapes.ts";
 import { expect, type Page } from "@playwright/test";
 import { required } from "../helpers/required.ts";
 import { closeProjectFiles } from "./project-files";
@@ -108,45 +102,6 @@ export async function selectSymbolAttribute(page: Page, attribute: string) {
 		required(marker).x + required(marker).width / 2,
 		required(marker).y + required(marker).height / 2,
 	);
-	await expect(page.getByTestId("symbol-child-selection")).toBeVisible();
-}
-
-export async function symbolItemPoint(page: Page, key: string) {
-	const anchor = await page
-		.getByTestId("text-anchor")
-		.first()
-		.getAttribute("data-anchor-id");
-	const id = Number(required(anchor).split(":")[0]);
-	const document = JSON.parse(
-		required(
-			await page.locator("#editor-document, #project-document").textContent(),
-		),
-	);
-	const symbol = document.shapes.find(
-		(shape: EditorSymbol) => shape.id === id,
-	) as EditorSymbol;
-	const child = required(
-		symbolChildren(symbol).find((child) => child.key === key),
-	);
-	const bounds = shapeBounds(symbolChildWorld(symbol, child.shape));
-	const point = await drawingPoint(page, {
-		x: (bounds.minX + bounds.maxX) / 2,
-		y: (bounds.minY + bounds.maxY) / 2,
-	});
-	return { ...point, kind: child.shape.kind };
-}
-
-export async function selectSymbolItem(page: Page, key: string) {
-	await selectSymbolParent(page);
-	if (!key) return;
-	const point = await symbolItemPoint(page, key);
-	await page.mouse.move(point.x, point.y);
-	await page.mouse.down();
-	if (point.kind === "pin") {
-		await page.mouse.move(point.x + 4, point.y);
-		await page.mouse.move(point.x, point.y);
-	}
-	await page.mouse.up();
 	await expect(page.getByTestId("symbol-child-selection")).toBeVisible();
 }
 

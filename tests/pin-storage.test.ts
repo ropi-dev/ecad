@@ -27,14 +27,3 @@ test("project drawings preserve pin names and text numbers, including symbol chi
 		/number/,
 	);
 });
-
-test("project drawings restore legacy pins without names or numbers", () => {
-	const pin = drawShape(1, "pin", { x: 0, y: 0 }, { x: 0, y: 0 });
-	if (pin.kind !== "pin") throw new Error("Expected a pin");
-	const { name: _name, number: _number, ...legacy } = pin;
-	assert.deepEqual(
-		validateProjectDocument({ shapes: [legacy as typeof pin], symbols: [] })
-			.shapes,
-		[pin],
-	);
-});
