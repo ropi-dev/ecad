@@ -7,6 +7,7 @@ import {
 	ScriptOnce,
 	Scripts,
 } from "@tanstack/react-router";
+import { PostHogProvider } from "@posthog/react";
 import { AppWorkspace } from "#/projects/AppProjects.tsx";
 
 export const Route = createRootRoute({
@@ -45,7 +46,32 @@ export const Route = createRootRoute({
 
 const themeScript = `(()=>{let t;try{t=JSON.parse(localStorage.getItem(${JSON.stringify(SETTINGS_STORAGE_KEY)})).theme}catch{}document.documentElement.dataset.theme=t==="light"||t==="dark"?t:matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"})()`;
 
+const posthogToken = import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN;
+const posthogHost = import.meta.env.VITE_PUBLIC_POSTHOG_HOST;
+const posthogConfigured = posthogToken && posthogHost;
+
+if (import.meta.env.DEV && typeof window !== "undefined") {
+	if (!posthogToken) {
+		throw new Error(
+			"VITE_PUBLIC_POSTHOG_PROJECT_TOKEN variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once VITE_PUBLIC_POSTHOG_PROJECT_TOKEN is configured",
+		);
+	}
+	if (!posthogHost) {
+		throw new Error(
+			"VITE_PUBLIC_POSTHOG_HOST variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once VITE_PUBLIC_POSTHOG_HOST is configured",
+		);
+	}
+}
+
 function RootDocument({ children }: { children: React.ReactNode }) {
+	const app = (
+		<ProjectShell
+			sidebar={<div id="project-sidebar" className="contents" />}
+		>
+			{children}
+		</ProjectShell>
+	);
+
 	return (
 		<html lang="en" suppressHydrationWarning>
 			<head>
@@ -53,11 +79,20 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 				<HeadContent />
 			</head>
 			<body>
-				<ProjectShell
-					sidebar={<div id="project-sidebar" className="contents" />}
-				>
-					{children}
-				</ProjectShell>
+				{posthogConfigured ? (
+					<PostHogProvider
+						apiKey={posthogToken}
+						options={{
+							api_host: "/ingest",
+							capture_exceptions: true,
+							debug: import.meta.env.DEV,
+						}}
+					>
+						{app}
+					</PostHogProvider>
+				) : (
+					app
+				)}
 				<Scripts />
 			</body>
 		</html>

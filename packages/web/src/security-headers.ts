@@ -4,7 +4,7 @@
 const sharedDirectives = [
 	"style-src 'self' 'unsafe-inline'",
 	"img-src 'self' blob: data:",
-	"worker-src 'self'",
+	"worker-src 'self' blob:",
 	"connect-src 'self'",
 	"object-src 'none'",
 	"base-uri 'self'",

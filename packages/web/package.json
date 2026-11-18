@@ -18,20 +18,21 @@
 		"test": "tsx --test tests/*.test.ts"
 	},
 	"dependencies": {
+		"@ecad/core": "workspace:*",
+		"@posthog/react": "^1.11.3",
 		"@tanstack/react-router": "1.170.46",
 		"@tanstack/react-start": "1.169.4",
 		"react": "^19.2.0",
-		"@ecad/core": "workspace:*",
 		"react-dom": "^19.2.0"
 	},
 	"devDependencies": {
-		"nitro": "3.0.261029-rc",
+		"@ecad/drawing-core": "workspace:*",
+		"@tailwindcss/vite": "^4.1.18",
 		"@tanstack/router-cli": "1.167.46",
 		"@vitejs/plugin-react": "^6.0.1",
-		"typescript": "^6.0.2",
-		"vite": "^8.3.5",
-		"@tailwindcss/vite": "^4.1.18",
+		"nitro": "3.0.261029-rc",
 		"tailwindcss": "^4.1.18",
-		"@ecad/drawing-core": "workspace:*"
+		"typescript": "^6.0.2",
+		"vite": "^8.3.5"
 	}
 }

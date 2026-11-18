@@ -159,7 +159,9 @@ function useProjectFileUrl() {
 								? context.openBoard(requested.path)
 								: context.selectEditorFile(requested.path);
 					const failed = () => {
-						if (pending.current === request) setFailedRestoration(request);
+						if (pending.current === request) {
+							setFailedRestoration(request);
+						}
 					};
 					void Promise.resolve(selection).then((selected) => {
 						if (!selected) failed();

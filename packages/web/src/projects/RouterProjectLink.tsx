@@ -3,6 +3,7 @@ import type {
 	ProjectLinkProps,
 	ProjectPath,
 } from "@ecad/core/projects/ProjectLink.tsx";
+import { usePostHog } from "@posthog/react";
 
 export function createRouterProjectLink(
 	navigate: (
@@ -18,6 +19,8 @@ export function createRouterProjectLink(
 		onClick,
 		...props
 	}: ProjectLinkProps) {
+		const posthog = usePostHog();
+
 		return (
 			<a
 				{...props}
@@ -40,6 +43,12 @@ export function createRouterProjectLink(
 					)
 						return;
 					event.preventDefault();
+					if (file) {
+						const editorView = view ?? "editor";
+						posthog.capture("project_file_opened", {
+							view: editorView,
+						});
+					}
 					void navigate(
 						href,
 						file ? projectFileUrlPath(file) : undefined,
