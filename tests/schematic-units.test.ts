@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
 	formatInches,
+	formatLength,
 	formatMils,
 	fromMils,
 	toMils,
@@ -14,6 +15,8 @@ test("schematic display units preserve physical dimensions", () => {
 	assert.equal(toMils(1.27), 50);
 	assert.equal(formatInches(25.4), "1");
 	assert.equal(formatMils(-2.54), "-100 mil");
+	assert.equal(formatLength(-2.54, "mil"), "-100 mil");
+	assert.equal(formatLength(0.15, "mm"), "0.15 mm");
 	for (const value of [-1234.5, 0, 50, 100, 1000]) {
 		assert.equal(toMils(fromMils(value)), value);
 	}

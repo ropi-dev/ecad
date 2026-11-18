@@ -239,7 +239,7 @@ export function ViewportRulers({
 				data-shortcut-mutations="ignore"
 			>
 				<span id={descriptionId} className="sr-only">
-					Coordinates in {unit === "mil" ? "mils" : "millimetres"}. X increases
+					Coordinates in {unit === "mm" ? "millimetres" : "mils"}. X increases
 					to the right; Y increases upward.
 				</span>
 				<div
@@ -298,7 +298,7 @@ export function ViewportRulers({
 					>
 						<path className="ruler-band" d={`M1 0H${BAND + 1}V${BAND}H1Z`} />
 						<text x={BAND / 2 + 1} y="15" textAnchor="middle">
-							{unit}
+							{unit === "mm" ? "mm" : "mil"}
 						</text>
 					</svg>
 				</div>
