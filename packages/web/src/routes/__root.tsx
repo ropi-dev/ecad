@@ -1,3 +1,4 @@
+import copperE from "@ecad/core/assets/copper-e.svg?url";
 import { ProjectShell } from "@ecad/core/projects/ProjectShell.tsx";
 import { SETTINGS_STORAGE_KEY } from "@ecad/core/settings/store.ts";
 import appCss from "@ecad/core/styles.css?url";
@@ -29,7 +30,10 @@ export const Route = createRootRoute({
 				content: "Create drawings, circuits, and symbols.",
 			},
 		],
-		links: [{ rel: "stylesheet", href: appCss }],
+		links: [
+			{ rel: "stylesheet", href: appCss },
+			{ rel: "icon", type: "image/svg+xml", href: copperE },
+		],
 		scripts: [
 			{
 				// The deployed CSP blocks eval, so zod cannot compile parsers. Turn its
