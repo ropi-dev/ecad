@@ -9,6 +9,7 @@ import {
 	mcpChannels,
 	projectChannels,
 	settingsChannels,
+	telemetryChannels,
 	updateChannels,
 } from "#/bridge.ts";
 import { ipcArguments, parseIpcArguments } from "#/main/ipc.ts";
@@ -42,6 +43,7 @@ test("every invoke channel validates its arguments", () => {
 		appChannels.quit,
 		...Object.values(updateChannels),
 		...Object.values(mcpChannels),
+		...Object.values(telemetryChannels),
 	];
 	assert.deepEqual(Object.keys(ipcArguments).sort(), [...channels].sort());
 });

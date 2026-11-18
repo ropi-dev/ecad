@@ -37,6 +37,7 @@ const appShape = {
 	theme: z.enum(themeModes).optional(),
 	antialiasing: z.enum(antialiasingModes).optional(),
 	debugStats: z.boolean().optional(),
+	telemetry: z.boolean().optional(),
 	releaseChannel: z.enum(releaseChannels).optional(),
 	ercSeverity: ercSeveritySchema.optional(),
 };

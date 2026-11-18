@@ -9,6 +9,7 @@ Each setting is global, per project, or both:
 | Theme (System, Light, Dark) | yes | no |
 | Antialiasing (Automatic, On, Off) | yes | no |
 | Show debug stats (off by default, Ctrl+Shift+D toggles) | yes | no |
+| Send performance data (off by default, builds with a PostHog key only) | yes | no |
 | Electrical rule levels (Error, Warning, Off per rule) | yes | yes |
 | Symbol libraries | user libraries | project libraries |
 

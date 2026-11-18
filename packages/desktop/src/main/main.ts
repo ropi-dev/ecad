@@ -26,6 +26,7 @@ import {
 	projectChannels,
 	projectEvents,
 	settingsChannels,
+	telemetryChannels,
 	updateChannels,
 	updateEvents,
 } from "#/bridge.ts";
@@ -40,6 +41,7 @@ import { createDesktopMcpServer } from "#/main/mcp-server.ts";
 import { DesktopProjects } from "#/main/projects.ts";
 import { DesktopSettings } from "#/main/settings.ts";
 import { DesktopSymbolLibrary } from "#/main/symbol-library.ts";
+import { sendTelemetry } from "#/main/telemetry.ts";
 import {
 	DesktopUpdater,
 	readPackagedDistribution,
@@ -313,8 +315,21 @@ function registerSettingsHandlers() {
 	handle(settingsChannels.load, () => settings.load());
 	handle(settingsChannels.save, async (next) => {
 		await settings.save(next);
+		telemetryEnabled = next.telemetry === true;
 		applyTheme(next.theme);
 		void updater?.setChannel(next.releaseChannel ?? "stable");
+	});
+}
+
+let telemetryEnabled = false;
+
+function registerTelemetryHandlers() {
+	handle(telemetryChannels.send, async (batch) => {
+		await sendTelemetry(batch, {
+			enabled: telemetryEnabled,
+			version: app.getVersion(),
+			fetch: (url, init) => net.fetch(url, init),
+		});
 	});
 }
 
@@ -566,6 +581,8 @@ void app.whenReady().then(async () => {
 	registerSettingsHandlers();
 	registerDisplayHandlers();
 	const initial = (await settings.load()).settings;
+	telemetryEnabled = initial.telemetry === true;
+	registerTelemetryHandlers();
 	registerUpdateHandlers(initial.releaseChannel);
 	registerMcpHandlers();
 	handle(appChannels.quit, () => app.quit());

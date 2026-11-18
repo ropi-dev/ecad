@@ -10,15 +10,30 @@ import { SECURITY_HEADERS, WORKER_CSP } from "./src/security-headers.ts";
 
 const envDir = fileURLToPath(new URL("../..", import.meta.url));
 
+const POSTHOG_HOST = "https://eu.i.posthog.com";
+const ingestProxy = {
+	"/ingest": {
+		target: POSTHOG_HOST,
+		changeOrigin: true,
+		rewrite: (path: string) => path.replace(/^\/ingest/, ""),
+	},
+};
+const commit = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7);
+
 const config = defineConfig(({ mode }) => ({
 	envDir,
+	define: commit
+		? { "import.meta.env.VITE_APP_VERSION": JSON.stringify(commit) }
+		: {},
 	server: {
+		proxy: ingestProxy,
 		// Comma-separated extra hostnames for the dev and preview servers.
 		allowedHosts: (loadEnv(mode, envDir, "ECAD_").ECAD_ALLOWED_HOSTS ?? "")
 			.split(",")
 			.map((host) => host.trim())
 			.filter(Boolean),
 	},
+	preview: { proxy: ingestProxy },
 	cacheDir:
 		process.env.ECAD_PERF_MODE === "development"
 			? "../../node_modules/.vite-performance"
@@ -40,6 +55,7 @@ const config = defineConfig(({ mode }) => ({
 						// just the bundled workers.
 						routeRules: {
 							"/**": { headers: SECURITY_HEADERS },
+							"/ingest/**": { proxy: `${POSTHOG_HOST}/**` },
 							"/assets/**": {
 								headers: { "Content-Security-Policy": WORKER_CSP },
 							},

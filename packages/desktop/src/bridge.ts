@@ -10,6 +10,7 @@ import type {
 	SymbolLibrarySnapshot,
 	SymbolLibraryStorage,
 } from "@ecad/core/symbol-library/storage.tsx";
+import type { TelemetryBatch } from "@ecad/core/telemetry/schema.ts";
 import type {
 	DrawingEnvelope,
 	DrawingReply,
@@ -72,6 +73,7 @@ declare global {
 		ecadSettings: DesktopSettingsBridge;
 		ecadUpdates: DesktopUpdatesBridge;
 		ecadMcp: DesktopMcpBridge;
+		ecadTelemetry: DesktopTelemetryBridge;
 	}
 }
 
@@ -158,6 +160,14 @@ export const mcpEvents = {
 	request: "mcp:request",
 } as const;
 
+export interface DesktopTelemetryBridge {
+	send(batch: TelemetryBatch): Promise<void>;
+}
+
+export const telemetryChannels = {
+	send: "telemetry:send",
+} as const;
+
 export const displayChannels = {
 	getCalibration: "display:calibration",
 	changed: "display:changed",
@@ -170,5 +180,6 @@ export type InvokeChannel =
 	| (typeof settingsChannels)[keyof typeof settingsChannels]
 	| (typeof updateChannels)[keyof typeof updateChannels]
 	| (typeof mcpChannels)[keyof typeof mcpChannels]
+	| (typeof telemetryChannels)[keyof typeof telemetryChannels]
 	| typeof displayChannels.getCalibration
 	| typeof appChannels.quit;

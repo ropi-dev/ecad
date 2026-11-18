@@ -9,6 +9,7 @@ import { ProjectProvider } from "@ecad/core/projects/ProjectProvider.tsx";
 import { ProjectShell } from "@ecad/core/projects/ProjectShell.tsx";
 import { WorkspaceStart } from "@ecad/core/projects/WorkspaceStart.tsx";
 import { setSettingsStorage } from "@ecad/core/settings/store.ts";
+import { startTelemetry } from "@ecad/core/telemetry/telemetry.ts";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createDesktopMcpConnector } from "#/renderer/mcp.ts";
@@ -84,6 +85,10 @@ if (!root) throw new Error("The desktop editor root element is missing.");
 void createDesktopSettingsStorage(window.ecadSettings, window.ecadUpdates).then(
 	(settings) => {
 		setSettingsStorage(settings);
+		startTelemetry({
+			platform: "desktop",
+			transport: (batch) => window.ecadTelemetry.send(batch),
+		});
 		createRoot(root).render(<App />);
 	},
 );
