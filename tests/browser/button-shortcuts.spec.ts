@@ -1,4 +1,5 @@
 import { required } from "../helpers/required.ts";
+import { projectRail } from "./project-files";
 import { expect, test } from "./seeded-project";
 import { toolbarButton } from "./toolbar";
 
@@ -129,6 +130,9 @@ test("macOS uses Cmd for hints and actions", async ({ page }) => {
 		includeHidden: true,
 	});
 	const addFile = page.getByRole("menu", { name: "Add file", exact: true });
+	await expect(
+		projectRail(page).getByRole("button", { name: "Add file", exact: true }),
+	).toBeEnabled();
 	await page.keyboard.press(`${other}+Shift+n`);
 	await expect(addFile).toHaveCount(0);
 	await page.keyboard.press(`${modifier}+Shift+n`);
