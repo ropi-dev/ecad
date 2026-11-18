@@ -31,6 +31,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import copperE from "#/assets/copper-e.svg?url";
 import { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
 import { PinnedNotice } from "#/components/ui/Toaster.tsx";
 import { toastManager } from "#/components/ui/toast.ts";
@@ -771,6 +772,13 @@ export function ProjectFilesSidebar({
 							setTouchOpen(true);
 					}}
 				>
+					<img
+						src={copperE}
+						alt="ECAD"
+						width={28}
+						height={28}
+						className="my-1 size-7 shrink-0 object-contain"
+					/>
 					{snapshot && (
 						<DropdownMenu.Root
 							open={railAddMenuOpen}
