@@ -138,6 +138,10 @@ const mcp: DesktopMcpBridge = {
 contextBridge.exposeInMainWorld("ecadMcp", mcp);
 
 const telemetry: DesktopTelemetryBridge = {
-	send: (batch) => ipcRenderer.invoke(telemetryChannels.send, batch),
+	send: (batch, revision) =>
+		ipcRenderer.invoke(telemetryChannels.send, batch, revision),
+	loadConsent: () => ipcRenderer.invoke(telemetryChannels.loadConsent),
+	saveConsent: (consent) =>
+		ipcRenderer.invoke(telemetryChannels.saveConsent, consent),
 };
 contextBridge.exposeInMainWorld("ecadTelemetry", telemetry);

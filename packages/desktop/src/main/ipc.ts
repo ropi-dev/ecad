@@ -12,6 +12,7 @@ import {
 	projectSettingsSchema,
 } from "@ecad/core/settings/schema.ts";
 import { parseSymbolConfig } from "@ecad/core/symbol-library/config.ts";
+import { telemetryConsentSchema } from "@ecad/core/telemetry/consent.ts";
 import { telemetryBatchSchema } from "@ecad/core/telemetry/schema.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { drawingReplySchema } from "@ecad/drawing-core/mcp/drawing-protocol.ts";
@@ -136,7 +137,12 @@ export const ipcArguments = {
 	[mcpChannels.enable]: z.tuple([]),
 	[mcpChannels.disable]: z.tuple([]),
 	[mcpChannels.reply]: z.tuple([z.string().uuid(), drawingReplySchema]),
-	[telemetryChannels.send]: z.tuple([telemetryBatchSchema]),
+	[telemetryChannels.send]: z.tuple([
+		telemetryBatchSchema,
+		telemetryConsentSchema.shape.revision,
+	]),
+	[telemetryChannels.loadConsent]: z.tuple([]),
+	[telemetryChannels.saveConsent]: z.tuple([telemetryConsentSchema]),
 } satisfies Record<InvokeChannel, z.ZodTuple>;
 
 export type IpcArguments<Channel extends InvokeChannel> = z.output<

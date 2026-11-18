@@ -10,6 +10,7 @@ import type {
 	SymbolLibrarySnapshot,
 	SymbolLibraryStorage,
 } from "@ecad/core/symbol-library/storage.tsx";
+import type { TelemetryConsent } from "@ecad/core/telemetry/consent.ts";
 import type { TelemetryBatch } from "@ecad/core/telemetry/schema.ts";
 import type {
 	DrawingEnvelope,
@@ -161,11 +162,15 @@ export const mcpEvents = {
 } as const;
 
 export interface DesktopTelemetryBridge {
-	send(batch: TelemetryBatch): Promise<void>;
+	send(batch: TelemetryBatch, revision: string): Promise<void>;
+	loadConsent(): Promise<TelemetryConsent | null>;
+	saveConsent(consent: TelemetryConsent): Promise<void>;
 }
 
 export const telemetryChannels = {
 	send: "telemetry:send",
+	loadConsent: "telemetry:load-consent",
+	saveConsent: "telemetry:save-consent",
 } as const;
 
 export const displayChannels = {

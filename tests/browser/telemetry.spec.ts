@@ -16,8 +16,8 @@ test("performance data reaches the ingest proxy only while usage data is on", as
 	});
 	await page.evaluate(() =>
 		localStorage.setItem(
-			"ecad.settings.v1",
-			JSON.stringify({ version: 1, antialiasing: "off", telemetry: true }),
+			"ecad.telemetry.v1",
+			JSON.stringify({ enabled: true, revision: "browser-test-consent" }),
 		),
 	);
 	await page.goto("/tests/browser/projects.html");
@@ -81,7 +81,67 @@ test("performance data reaches the ingest proxy only while usage data is on", as
 		else expect(event.properties.metric).not.toBe("app.ready");
 	expect(
 		await page.evaluate(() =>
-			JSON.parse(localStorage.getItem("ecad.settings.v1") ?? "{}"),
+			JSON.parse(localStorage.getItem("ecad.telemetry.v1") ?? "{}"),
 		),
-	).toMatchObject({ telemetry: true });
+	).toMatchObject({ enabled: true });
+});
+
+test("a settings save in another tab cannot turn usage data back on", async ({
+	page,
+	context,
+}) => {
+	const sent: string[] = [];
+	await context.route("**/ingest/batch/", async (route) => {
+		sent.push(route.request().frame().page() === page ? "first" : "second");
+		await route.fulfill({ status: 200, body: "{}" });
+	});
+	await page.evaluate(() =>
+		localStorage.setItem(
+			"ecad.telemetry.v1",
+			JSON.stringify({ enabled: true, revision: "browser-test-consent" }),
+		),
+	);
+	const open = async (tab: typeof page) => {
+		await tab.goto("/tests/browser/projects.html");
+		await tab.waitForFunction(
+			() => !document.querySelector('[aria-busy="true"]'),
+		);
+		await tab
+			.getByRole("navigation", { name: "Sidebar shortcuts", exact: true })
+			.getByRole("button", { name: "Settings", exact: true })
+			.click();
+		return tab.getByRole("dialog", { name: "Settings" });
+	};
+	const second = await context.newPage();
+	const firstSettings = await open(page);
+	const secondSettings = await open(second);
+
+	await firstSettings.getByRole("tab", { name: "Usage data" }).click();
+	await firstSettings
+		.getByRole("checkbox", { name: "Send performance data" })
+		.uncheck();
+	await secondSettings.getByLabel("Theme").selectOption("light");
+	await expect
+		.poll(() =>
+			page.evaluate(
+				() =>
+					JSON.parse(localStorage.getItem("ecad.settings.v1") ?? "{}").theme,
+			),
+		)
+		.toBe("light");
+
+	const before = sent.length;
+	for (const tab of [page, second])
+		await tab.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+	await page.waitForTimeout(500);
+	expect(sent.length).toBe(before);
+	expect(
+		await page.evaluate(() =>
+			JSON.parse(localStorage.getItem("ecad.telemetry.v1") ?? "{}"),
+		),
+	).toMatchObject({ enabled: false });
+	await secondSettings.getByRole("tab", { name: "Usage data" }).click();
+	await expect(
+		secondSettings.getByRole("checkbox", { name: "Send performance data" }),
+	).not.toBeChecked();
 });

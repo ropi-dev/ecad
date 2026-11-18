@@ -1,14 +1,18 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import type { TelemetryBatch } from "@ecad/core/telemetry/schema.ts";
 import { telemetryChannels } from "#/bridge.ts";
 import { parseIpcArguments } from "#/main/ipc.ts";
 import {
-	keepStoredTelemetry,
+	DesktopTelemetryConsent,
 	POSTHOG_BATCH_URL,
 	sendTelemetry,
 } from "#/main/telemetry.ts";
 
+const revision = "6f3d2a6e-1c1d-4a59-9d36-0e7d6b1c2f10";
 const batch: TelemetryBatch = {
 	api_key: "phc_0123456789abcdefABCDEF",
 	batch: [
@@ -25,15 +29,23 @@ const batch: TelemetryBatch = {
 	],
 };
 
-test("the main process forwards batches to PostHog EU with its own version", async () => {
+const recorder = () => {
 	const requests: { url: string; init: RequestInit }[] = [];
-	const sent = await sendTelemetry(batch, {
-		enabled: true,
-		version: "1.2.3",
-		fetch: async (url, init) => {
+	return {
+		requests,
+		fetch: async (url: string, init: RequestInit) => {
 			requests.push({ url, init });
 			return new Response("{}");
 		},
+	};
+};
+
+test("the main process forwards batches to PostHog EU with its own version", async () => {
+	const { requests, fetch } = recorder();
+	const sent = await sendTelemetry(batch, revision, {
+		consent: { enabled: true, revision },
+		version: "1.2.3",
+		fetch,
 	});
 	assert.equal(sent, true);
 	assert.equal(requests.length, 1);
@@ -45,63 +57,75 @@ test("the main process forwards batches to PostHog EU with its own version", asy
 	assert.equal(body.batch[0].properties.metric, "project.open");
 });
 
-test("the main process drops batches while usage data is off and ignores network errors", async () => {
-	let calls = 0;
-	const fetch = async () => {
-		calls++;
-		throw new Error("offline");
-	};
+test("batches go out only under the consent that is on disk now", async () => {
+	const { requests, fetch } = recorder();
+	for (const consent of [
+		null,
+		{ enabled: false, revision },
+		{ enabled: true, revision: "0b6b5a3e-turned-on-again-later" },
+	])
+		assert.equal(
+			await sendTelemetry(batch, revision, { consent, version: "1", fetch }),
+			false,
+		);
+	assert.equal(requests.length, 0);
 	assert.equal(
-		await sendTelemetry(batch, { enabled: false, version: "1", fetch }),
+		await sendTelemetry(batch, revision, {
+			consent: { enabled: true, revision },
+			version: "1",
+			fetch: async () => {
+				throw new Error("offline");
+			},
+		}),
 		false,
 	);
-	assert.equal(calls, 0);
-	assert.equal(
-		await sendTelemetry(batch, { enabled: true, version: "1", fetch }),
-		false,
-	);
-	assert.equal(calls, 1);
 });
 
-test("a save that leaves usage data alone keeps the stored choice from other windows", () => {
-	const stale = {
-		version: 1 as const,
-		theme: "dark" as const,
-		telemetry: true,
-	};
-	assert.deepEqual(keepStoredTelemetry(stale, true, false), {
-		version: 1,
-		theme: "dark",
-		telemetry: false,
-	});
-	assert.deepEqual(keepStoredTelemetry(stale, true, undefined), {
-		version: 1,
-		theme: "dark",
-	});
-	assert.equal(
-		keepStoredTelemetry({ ...stale, telemetry: false }, true, true).telemetry,
-		false,
-	);
-	assert.equal(keepStoredTelemetry(stale, undefined, false).telemetry, true);
+test("consent lives in its own file that every running app reads", async () => {
+	const home = await mkdtemp(join(tmpdir(), "ecad-telemetry-"));
+	try {
+		const first = new DesktopTelemetryConsent(home);
+		const second = new DesktopTelemetryConsent(home);
+		assert.equal(await first.load(), null);
+		await first.save({ enabled: true, revision });
+		assert.deepEqual(await second.load(), { enabled: true, revision });
+		await second.save({ enabled: false, revision: "a1b2c3d4-off" });
+		assert.deepEqual(await first.load(), {
+			enabled: false,
+			revision: "a1b2c3d4-off",
+		});
+		assert.equal((await stat(first.path)).mode & 0o777, 0o600);
+		assert.match(await readFile(first.path, "utf8"), /"enabled":false/);
+		await writeFile(first.path, '{"enabled":"yes"}');
+		assert.equal(await first.load(), null);
+	} finally {
+		await rm(home, { recursive: true, force: true });
+	}
 });
 
 test("telemetry requests must be PostHog batches of known events", () => {
-	assert.deepEqual(parseIpcArguments(telemetryChannels.send, [batch]), [batch]);
+	assert.deepEqual(
+		parseIpcArguments(telemetryChannels.send, [batch, revision]),
+		[batch, revision],
+	);
+	assert.throws(
+		() => parseIpcArguments(telemetryChannels.send, [batch]),
+		/Invalid telemetry:send request/,
+	);
+	assert.throws(
+		() =>
+			parseIpcArguments(telemetryChannels.saveConsent, [
+				{ enabled: true, revision: "../x" },
+			]),
+		/Invalid telemetry:save-consent request/,
+	);
 	for (const invalid of [
 		{ ...batch, api_key: "not-a-key" },
 		{ ...batch, host: "https://example.com" },
 		{ ...batch, batch: [] },
 		{ ...batch, batch: [{ ...batch.batch[0], event: "$identify" }] },
-		{
-			...batch,
-			batch: [
-				{
-					...batch.batch[0],
-					properties: { ...batch.batch[0].properties, shapes: [1, 2] },
-				},
-			],
-		},
 		...[
+			{ shapes: [1, 2] },
 			{ file: "drawings/sample-board.ecaddraw" },
 			{ metric: "sample-board.ecaddraw" },
 			{ "sample-board.ecaddraw.count": 1 },
@@ -117,7 +141,7 @@ test("telemetry requests must be PostHog batches of known events", () => {
 		})),
 	])
 		assert.throws(
-			() => parseIpcArguments(telemetryChannels.send, [invalid]),
+			() => parseIpcArguments(telemetryChannels.send, [invalid, revision]),
 			/Invalid telemetry:send request/,
 		);
 });

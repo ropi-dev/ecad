@@ -27,6 +27,10 @@ import {
 	useSettingsStatus,
 } from "#/settings/store.ts";
 import { useTheme } from "#/settings/theme.ts";
+import {
+	setTelemetryEnabled,
+	useTelemetryEnabled,
+} from "#/telemetry/consent.ts";
 import { telemetryAvailable } from "#/telemetry/telemetry.ts";
 
 const SymbolLibrarySettings = lazy(() =>
@@ -351,7 +355,7 @@ function UpdateSettings() {
 }
 
 function UsageDataSettings() {
-	const settings = useAppSettings();
+	const enabled = useTelemetryEnabled();
 	return (
 		<section aria-label="Usage data" className="flex flex-col">
 			<h3 className="ui-section-label m-0 mb-1">Usage data</h3>
@@ -364,14 +368,10 @@ function UsageDataSettings() {
 						id={id}
 						type="checkbox"
 						className="ui-checkbox shrink-0"
-						checked={settings.telemetry ?? false}
-						onChange={(event) => {
-							const telemetry = event.currentTarget.checked;
-							void updateAppSettings((current) => ({
-								...current,
-								telemetry,
-							})).catch(() => undefined);
-						}}
+						checked={enabled}
+						onChange={(event) =>
+							void setTelemetryEnabled(event.currentTarget.checked)
+						}
 					/>
 				)}
 			</SettingRow>

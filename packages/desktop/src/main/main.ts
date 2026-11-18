@@ -41,7 +41,7 @@ import { createDesktopMcpServer } from "#/main/mcp-server.ts";
 import { DesktopProjects } from "#/main/projects.ts";
 import { DesktopSettings } from "#/main/settings.ts";
 import { DesktopSymbolLibrary } from "#/main/symbol-library.ts";
-import { keepStoredTelemetry, sendTelemetry } from "#/main/telemetry.ts";
+import { DesktopTelemetryConsent, sendTelemetry } from "#/main/telemetry.ts";
 import {
 	DesktopUpdater,
 	readPackagedDistribution,
@@ -312,25 +312,21 @@ function applyTheme(theme: AppSettings["theme"]) {
 }
 
 function registerSettingsHandlers() {
-	let telemetryChoice: boolean | undefined;
-	handle(settingsChannels.load, async () => {
-		const loaded = await settings.load();
-		telemetryChoice = loaded.settings.telemetry;
-		return loaded;
-	});
+	handle(settingsChannels.load, () => settings.load());
 	handle(settingsChannels.save, async (next) => {
-		const stored = (await settings.load()).settings.telemetry;
-		await settings.save(keepStoredTelemetry(next, telemetryChoice, stored));
-		telemetryChoice = next.telemetry;
+		await settings.save(next);
 		applyTheme(next.theme);
 		void updater?.setChannel(next.releaseChannel ?? "stable");
 	});
 }
 
 function registerTelemetryHandlers() {
-	handle(telemetryChannels.send, async (batch) => {
-		await sendTelemetry(batch, {
-			enabled: (await settings.load()).settings.telemetry === true,
+	const consent = new DesktopTelemetryConsent();
+	handle(telemetryChannels.loadConsent, () => consent.load());
+	handle(telemetryChannels.saveConsent, (next) => consent.save(next));
+	handle(telemetryChannels.send, async (batch, revision) => {
+		await sendTelemetry(batch, revision, {
+			consent: await consent.load(),
 			version: app.getVersion(),
 			fetch: (url, init) => net.fetch(url, init),
 		});

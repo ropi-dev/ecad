@@ -1,8 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { PerformanceSample } from "#/performance/recorder.ts";
-import { parseAppSettings } from "#/settings/schema.ts";
 import { createTelemetryCollector } from "#/telemetry/collector.ts";
+import {
+	createBrowserConsentStorage,
+	getTelemetryConsent,
+	isCurrentConsent,
+	setConsentStorage,
+	setTelemetryEnabled,
+	TELEMETRY_CONSENT_KEY,
+} from "#/telemetry/consent.ts";
 import { browser, gpuVendor, operatingSystem } from "#/telemetry/device.ts";
 import { telemetryBatchSchema } from "#/telemetry/schema.ts";
 
@@ -166,16 +173,33 @@ test("device details are reduced to coarse categories", () => {
 	assert.deepEqual(browser(safari), ["Safari", 18]);
 });
 
-test("usage data is off unless the settings file turns it on", () => {
-	assert.equal(parseAppSettings('{"version":1}').telemetry, undefined);
-	assert.equal(
-		parseAppSettings('{"version":1,"telemetry":true}').telemetry,
-		true,
-	);
-	assert.equal(
-		parseAppSettings('{"version":1,"telemetry":"yes"}').telemetry,
-		undefined,
-	);
+test("consent is its own record, and a newer revision retires older sessions", async () => {
+	const values = new Map<string, string>();
+	const shared = {
+		getItem: (key: string) => values.get(key) ?? null,
+		setItem: (key: string, value: string) => void values.set(key, value),
+	};
+	const storage = createBrowserConsentStorage(shared);
+	assert.equal(storage.load(), undefined);
+	setConsentStorage(storage);
+	assert.equal(getTelemetryConsent(), undefined);
+
+	await setTelemetryEnabled(true);
+	const first = getTelemetryConsent();
+	assert.equal(first?.enabled, true);
+	assert.ok(first && isCurrentConsent(first.revision));
+	assert.deepEqual(JSON.parse(values.get(TELEMETRY_CONSENT_KEY) ?? ""), first);
+
+	await setTelemetryEnabled(false);
+	assert.ok(first && !isCurrentConsent(first.revision));
+	await setTelemetryEnabled(true);
+	const second = getTelemetryConsent();
+	assert.ok(second && isCurrentConsent(second.revision));
+	assert.ok(first && !isCurrentConsent(first.revision));
+
+	values.set(TELEMETRY_CONSENT_KEY, '{"enabled":true}');
+	assert.equal(storage.load(), undefined);
+	assert.ok(second && !isCurrentConsent(second.revision));
 });
 
 test("the recorder stays on until the debug window and telemetry both release it", async () => {

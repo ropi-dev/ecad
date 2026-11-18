@@ -2,8 +2,12 @@ import {
 	acquirePerformance,
 	getAppPerformance,
 } from "#/performance/runtime.ts";
-import { getAppSettings, subscribeAppSettings } from "#/settings/store.ts";
 import { createTelemetryCollector } from "#/telemetry/collector.ts";
+import {
+	getTelemetryConsent,
+	isCurrentConsent,
+	subscribeTelemetryConsent,
+} from "#/telemetry/consent.ts";
 import { deviceProperties } from "#/telemetry/device.ts";
 import {
 	TELEMETRY_BATCH_LIMIT,
@@ -22,11 +26,18 @@ const OPERATION_FLUSH_MS = 30_000;
 const SUMMARY_MS = 5 * 60_000;
 const OPERATION_BATCH = 20;
 
-export type TelemetryTransport = (batch: TelemetryBatch) => Promise<unknown>;
+export type TelemetryTransport = (
+	batch: TelemetryBatch,
+	revision: string,
+) => Promise<unknown>;
 export type TelemetryPlatform = "web" | "desktop";
 
-export const webTelemetryTransport: TelemetryTransport = (batch) =>
-	fetch("/ingest/batch/", {
+export const webTelemetryTransport: TelemetryTransport = async (
+	batch,
+	revision,
+) => {
+	if (!isCurrentConsent(revision)) return;
+	await fetch("/ingest/batch/", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(batch),
@@ -34,6 +45,7 @@ export const webTelemetryTransport: TelemetryTransport = (batch) =>
 		referrerPolicy: "no-referrer",
 		keepalive: true,
 	});
+};
 
 function sessionId() {
 	if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
@@ -46,6 +58,7 @@ function beginSession(
 	transport: TelemetryTransport,
 	platform: TelemetryPlatform,
 	since: number,
+	revision: string,
 ) {
 	const release = acquirePerformance();
 	const recorder = getAppPerformance();
@@ -69,15 +82,18 @@ function beginSession(
 	let active = true;
 	const send = (events: TelemetryEvent[]) => {
 		for (let start = 0; start < events.length; start += TELEMETRY_BATCH_LIMIT)
-			void transport({
-				api_key: apiKey,
-				batch: events
-					.slice(start, start + TELEMETRY_BATCH_LIMIT)
-					.map((event) => ({
-						...event,
-						properties: { ...properties(), ...event.properties },
-					})),
-			}).catch(() => undefined);
+			void transport(
+				{
+					api_key: apiKey,
+					batch: events
+						.slice(start, start + TELEMETRY_BATCH_LIMIT)
+						.map((event) => ({
+							...event,
+							properties: { ...properties(), ...event.properties },
+						})),
+				},
+				revision,
+			).catch(() => undefined);
 	};
 	const flushOperations = () => {
 		if (active) send(collector.takeOperations());
@@ -122,25 +138,29 @@ export function startTelemetry({
 	if (typeof window === "undefined" || !telemetryAvailable || stopWatching)
 		return;
 	let stop: (() => void) | undefined;
+	let revision: string | undefined;
 	let starting = true;
 	const sync = () => {
-		const enabled = getAppSettings().telemetry === true;
-		if (enabled && !stop)
+		const consent = getTelemetryConsent();
+		const next = consent?.enabled ? consent.revision : undefined;
+		if (next === revision) return;
+		stop?.();
+		stop = undefined;
+		revision = next;
+		if (next)
 			stop = beginSession(
 				transport,
 				platform,
 				starting ? 0 : performance.now(),
+				next,
 			);
-		else if (!enabled && stop) {
-			stop();
-			stop = undefined;
-		}
 	};
-	const unsubscribe = subscribeAppSettings(sync);
+	const unsubscribe = subscribeTelemetryConsent(sync);
 	stopWatching = () => {
 		unsubscribe();
 		stop?.();
 		stop = undefined;
+		revision = undefined;
 		stopWatching = undefined;
 	};
 	sync();
