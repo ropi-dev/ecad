@@ -140,6 +140,7 @@ export async function createDesktopConsentStorage(
 		(await bridge.loadConsent().catch(() => null)) ?? undefined;
 	let consent: TelemetryConsent | undefined = await load();
 	let generation = 0;
+	let reload: (() => Promise<void>) | undefined;
 	const save = decodeIpcErrors((next: TelemetryConsent) =>
 		bridge.saveConsent(next),
 	);
@@ -149,16 +150,17 @@ export async function createDesktopConsentStorage(
 			await save(next);
 			generation++;
 			consent = next;
+			void reload?.();
 		},
 		subscribe(listener) {
-			const reload = async () => {
+			reload = async () => {
 				const started = ++generation;
 				const loaded = await load();
 				if (started !== generation) return;
 				consent = loaded;
 				listener();
 			};
-			const stop = bridge.onConsentChanged(() => void reload());
+			const stop = bridge.onConsentChanged(() => void reload?.());
 			void reload();
 			return stop;
 		},

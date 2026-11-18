@@ -185,6 +185,11 @@ test("an older consent read never replaces a newer one", async () => {
 	pending[2](on);
 	await new Promise((resolve) => setTimeout(resolve, 0));
 	assert.equal(storage.load()?.enabled, false);
+
+	const newer = { enabled: true, revision: "eeeeeeee-other-app", since: 6 };
+	pending[3](newer);
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	assert.deepEqual(storage.load(), newer);
 });
 
 test("telemetry requests must be PostHog batches of known events", () => {
