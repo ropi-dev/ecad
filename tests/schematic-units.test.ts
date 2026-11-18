@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
 	formatInches,
-	formatLength,
 	formatMils,
 	fromMils,
 	toMils,
@@ -66,12 +65,6 @@ test("board mil grid steps through round mil spacings", () => {
 	}
 	assert.equal(toMils(rulerSpacing(1000, "mil").minor), 1);
 	assert.equal(toMils(rulerSpacing(10, "mil").minor), 100);
-});
-
-test("lengths format in either board unit", () => {
-	assert.equal(formatLength(0.254, "mil"), "10 mil");
-	assert.equal(formatLength(0.254, "mm"), "0.254 mm");
-	assert.equal(formatLength(fromMils(7.874), "mil"), "7.87 mil");
 });
 
 test("new shapes and text use mil-sized defaults", async () => {

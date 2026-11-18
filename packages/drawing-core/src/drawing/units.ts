@@ -18,7 +18,3 @@ export const CONNECTION_RADIUS = fromMils(10);
 export const formatMils = (millimeters: number) => `${toMils(millimeters)} mil`;
 export const formatInches = (millimeters: number) =>
 	`${Number((millimeters / 25.4).toFixed(3))}`;
-export const formatLength = (millimeters: number, unit: LengthUnit) =>
-	unit === "mil"
-		? `${Number((millimeters / MM_PER_MIL).toFixed(2))} mil`
-		: `${Number(millimeters.toFixed(4))} mm`;
