@@ -120,6 +120,7 @@ Name=ECAD
 GenericName=Schematic Editor
 Comment=Draw schematics and view Gerber files and STEP models
 Exec=ecad-desktop
+Icon=ecad
 Terminal=false
 Categories=Development;Electronics;Engineering;
 StartupWMClass=ecad
@@ -376,6 +377,15 @@ async function main() {
 		const applications = join(tree, "usr/share/applications");
 		await mkdir(applications, { recursive: true });
 		await writeFile(join(applications, "ecad.desktop"), desktopEntry);
+		const icons = join(tree, "usr/share/icons/hicolor");
+		for (const [size, file] of [
+			["scalable", "ecad.svg"],
+			["512x512", "ecad.png"],
+		]) {
+			const apps = join(icons, size, "apps");
+			await mkdir(apps, { recursive: true });
+			await cp(join(desktop, "icons", file), join(apps, file));
+		}
 		const doc = join(tree, "usr/share/doc/ecad");
 		await mkdir(doc, { recursive: true });
 		await writeFile(

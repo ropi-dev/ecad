@@ -485,6 +485,7 @@ function createWindow() {
 		minWidth: 720,
 		minHeight: 480,
 		title: "ECAD desktop",
+		icon: join(__dirname, "icon.png"),
 		show: false,
 		// The app background, so the window does not flash before the page paints.
 		backgroundColor: windowBackground(),
