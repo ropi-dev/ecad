@@ -61,6 +61,7 @@ export function outlineInBox(
 	outline: readonly Point[],
 	box: Bounds,
 	mode: "window" | "crossing",
+	hollow = false,
 ): boolean {
 	if (!outline.length) return false;
 	if (mode === "window") return outline.every((point) => inside(point, box));
@@ -72,7 +73,7 @@ export function outlineInBox(
 		{ x: box.minX, y: box.maxY },
 	];
 	return (
-		contains(outline, corners[0]) ||
+		(!hollow && contains(outline, corners[0])) ||
 		outline.some((point, index) => {
 			const next = outline[(index + 1) % outline.length];
 			return corners.some((corner, side) =>
