@@ -2,6 +2,7 @@ import {
 	containsSelection,
 	type EditorShape,
 	intersectsSelection,
+	isHollowBoardShape,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Bounds, Point } from "@ecad/drawing-core/drawing/types.ts";
 import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
@@ -99,7 +100,10 @@ function project(
 		screenOutline,
 		inScreenBox: (shape, box, mode) => {
 			const outline = screenOutline(shape);
-			return outline !== null && outlineInBox(outline, box, mode);
+			return (
+				outline !== null &&
+				outlineInBox(outline, box, mode, isHollowBoardShape(shape))
+			);
 		},
 	};
 }

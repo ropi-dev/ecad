@@ -188,7 +188,7 @@ test("a designer adds two inner copper layers and routes a track through one wit
 		.toEqual({ inner: 1, vias: vias.length + 2 });
 });
 
-test("a designer draws a polygon copper zone corner by corner, drags a corner and raises its priority", async ({
+test("a designer draws a polygon copper zone corner by corner, drags a corner, raises its priority and boxes a via inside it", async ({
 	page,
 }) => {
 	await page.goto("/tests/browser/projects.html");
@@ -264,6 +264,26 @@ test("a designer draws a polygon copper zone corner by corner, drags a corner an
 		await expect(priority).toHaveValue("2");
 	}
 	expect((await zones())[0]?.zone?.priority).toBe(2);
+
+	const vias = async () =>
+		(await shapes()).filter((shape) => shape.kind === "circle" && shape.via);
+	await page.getByRole("button", { name: "Routing", exact: true }).click();
+	await page.getByRole("button", { name: "Via", exact: true }).click();
+	const via = await at(-3, 1);
+	await page.mouse.move(via.x, via.y);
+	await page.mouse.click(via.x, via.y);
+	await page.keyboard.press("Escape");
+	await expect.poll(async () => (await vias()).length).toBe(1);
+	const [filled] = await zones();
+	const boxFrom = await at(-3.7, 1.7);
+	const boxTo = await at(-2.3, 0.3);
+	await page.mouse.move(boxFrom.x, boxFrom.y);
+	await page.mouse.down();
+	await page.mouse.move(boxTo.x, boxTo.y, { steps: 4 });
+	await page.mouse.up();
+	await page.keyboard.press("Delete");
+	await expect.poll(async () => (await vias()).length).toBe(0);
+	expect(await zones()).toEqual([filled]);
 });
 
 test("the schematic, circuit and PCB of a circuit keep the same component selected", async ({

@@ -15,6 +15,7 @@ import {
 	type EditorShape,
 	type EditorSymbol,
 	findWireConnection,
+	hitsHollowInterior,
 	isUnsafeMove,
 	openPins,
 	prepareMove,
@@ -1303,6 +1304,34 @@ export function useCanvasGestures({
 				session.preview([...session.shapes(), shape]);
 			} else if (resize) shape = resize.shape;
 			else if (!shape) shape = hit;
+			if (
+				hit &&
+				shape === hit &&
+				!resize &&
+				hitsHollowInterior(
+					hit,
+					point,
+					6 / (cameraView.getProjection()?.scale ?? 1),
+				)
+			) {
+				const pressed =
+					mode === "replace" && selectedIds.has(hit.id)
+						? selectedIds
+						: applySelection(selectedIds, [hit.id], mode);
+				session.select(pressed);
+				session.selectChild(null);
+				beginDrag(event, canvas, {
+					start: point,
+					height,
+					mode: "marquee",
+					gridStep: snapStep,
+					originals: [],
+					created: false,
+					selectionMode: mode,
+					pressed,
+				});
+				return;
+			}
 			if (shape && mode !== "replace" && !created && !resize && !duplicate) {
 				session.select(applySelection(selectedIds, [shape.id], mode));
 				return;

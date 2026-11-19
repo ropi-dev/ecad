@@ -150,7 +150,7 @@ export function symbolChildAt(
 	);
 }
 
-const isHollowBoardShape = (shape: EditorShape) =>
+export const isHollowBoardShape = (shape: EditorShape) =>
 	shape.layer !== undefined &&
 	isFillableShape(shape) &&
 	!shape.filled &&
@@ -214,6 +214,14 @@ function hitHollowBoardShape(
 	if (outsideBy > reach) return undefined;
 	return outsideBy < -reach ? "inside" : "stroke";
 }
+
+export const hitsHollowInterior = (
+	shape: EditorShape,
+	point: Point,
+	tolerance: number,
+) =>
+	isHollowBoardShape(shape) &&
+	hitHollowBoardShape(shape, point, tolerance) === "inside";
 
 const boxArea = (shape: EditorShape) => shape.width * shape.height;
 
@@ -340,13 +348,17 @@ function edgeIntersectsBounds(a: Point, b: Point, bounds: Bounds): boolean {
 	return true;
 }
 
-function polygonTouchesBounds(corners: readonly Point[], bounds: Bounds) {
+function polygonTouchesBounds(
+	corners: readonly Point[],
+	bounds: Bounds,
+	hollow: boolean,
+) {
 	const center = {
 		x: (bounds.minX + bounds.maxX) / 2,
 		y: (bounds.minY + bounds.maxY) / 2,
 	};
 	return (
-		outlineOutsideBy(corners, center) < 0 ||
+		(!hollow && outlineOutsideBy(corners, center) < 0) ||
 		corners.some((corner, index) =>
 			edgeIntersectsBounds(
 				corner,
@@ -387,7 +399,19 @@ export function intersectsSelection(
 	bounds: Bounds,
 ): boolean {
 	if (isPolygonZone(shape))
-		return polygonTouchesBounds(zoneOutlinePoints(shape), bounds);
+		return polygonTouchesBounds(
+			zoneOutlinePoints(shape),
+			bounds,
+			isHollowBoardShape(shape),
+		);
+	if (
+		[bounds.minX, bounds.maxX].every((x) =>
+			[bounds.minY, bounds.maxY].every((y) =>
+				hitsHollowInterior(shape, { x, y }, 0),
+			),
+		)
+	)
+		return false;
 	if (shape.kind === "symbol")
 		return (
 			[...symbolTextShapes(shape), ...symbolShapes(shape)].some((child) =>

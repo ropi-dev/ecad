@@ -36,6 +36,7 @@ export interface CanvasDrag {
 	selectionMode: SelectionMode;
 	pointer?: Point;
 	wireStart?: Point;
+	pressed?: ReadonlySet<number>;
 	/** The latest move preview would route a wire through another net. */
 	unsafe?: boolean;
 }
@@ -108,7 +109,10 @@ export function canvasDragStep(
 			return result({
 				kind: "marquee-cancel",
 				selection:
-					drag.selectionMode === "replace" ? new Set() : drag.previousSelection,
+					drag.pressed ??
+					(drag.selectionMode === "replace"
+						? new Set()
+						: drag.previousSelection),
 			});
 		const mode = screen.x < drag.startScreen.x ? "crossing" : "window";
 		const box = {

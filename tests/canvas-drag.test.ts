@@ -4,6 +4,7 @@ import {
 	drawShape,
 	type EditorShape,
 } from "@ecad/drawing-core/drawing/shapes.ts";
+import { createPad } from "@ecad/drawing-core/footprint/shapes.ts";
 import {
 	type CanvasDrag,
 	canvasDragStep,
@@ -168,6 +169,25 @@ test("dragging right selects enclosed shapes; dragging left selects crossed shap
 	if (crossing.effect.kind !== "marquee") return;
 	assert.equal(crossing.effect.marquee.mode, "crossing");
 	assert.deepEqual(crossing.effect.selection, new Set([box.id, far.id]));
+});
+
+test("a crossing box drawn inside a board outline selects the pad it touches and leaves the outline", () => {
+	const outline: EditorShape = {
+		...drawShape(1, "rectangle", { x: 0, y: 0 }, { x: 50, y: 50 }),
+		layer: "Edge.Cuts",
+	};
+	const pad = createPad(2, { x: 20, y: 20 }, "smd", "1", "F.Cu");
+	const crossingTo = (x: number) => {
+		const step = canvasDragStep(
+			drag({ mode: "marquee", startScreen: onScreen(25, 25), originals: [] }),
+			null,
+			onScreen(x, 15),
+			{ ...context(), shapes: [outline, pad] },
+		);
+		return step.effect.kind === "marquee" ? step.effect.selection : undefined;
+	};
+	assert.deepEqual(crossingTo(15), new Set([pad.id]));
+	assert.deepEqual(crossingTo(-3), new Set([outline.id, pad.id]));
 });
 
 test("marquee modes add to, subtract from or toggle the selection", () => {
