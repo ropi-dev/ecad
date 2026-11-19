@@ -1,3 +1,4 @@
+import { copyFile, mkdir } from "node:fs/promises";
 import { build } from "esbuild";
 
 export async function buildElectron() {
@@ -13,4 +14,6 @@ export async function buildElectron() {
 		external: ["electron"],
 		logLevel: "info",
 	});
+	await mkdir("dist", { recursive: true });
+	await copyFile("icons/ecad.png", "dist/icon.png");
 }
