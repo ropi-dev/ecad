@@ -132,9 +132,11 @@ function itemIndex(items: readonly CopperItem[]) {
 }
 
 const foreign = (item: CopperItem, net: string | undefined) =>
-	net !== undefined &&
-	item.net !== net &&
-	(item.net !== undefined || (item.kind !== "track" && item.kind !== "via"));
+	net === undefined
+		? item.net !== undefined
+		: item.net !== net &&
+			(item.net !== undefined ||
+				(item.kind !== "track" && item.kind !== "via"));
 
 function obstaclesFor(
 	route: TrackRoute,
@@ -317,7 +319,7 @@ export function routeTrack(
 		if (
 			obstacles.some(
 				({ hull, gap }) =>
-					pointHullDistance(hull, to) < route.width / 2 + gap - 1e-9,
+					pointHullDistance(hull, to) < route.width / 2 + gap - 1e-6,
 			)
 		)
 			break;
@@ -389,7 +391,7 @@ function search(
 			)
 				continue;
 			const distance = pointHullDistance(hull, point);
-			if (distance < half + gap - 1e-9) {
+			if (distance < half + gap - 1e-6) {
 				result = 0;
 				break;
 			}
@@ -406,7 +408,7 @@ function search(
 		const b = pointOf(column + dx, row + dy);
 		const segment = { points: [a, b], radius: half };
 		return [...new Set([...nearbyOf(a), ...nearbyOf(b)])].every(
-			({ hull, gap }) => hullDistance(segment, hull) >= gap - 1e-9,
+			({ hull, gap }) => hullDistance(segment, hull) >= gap - 1e-6,
 		);
 	};
 	const estimate = (column: number, row: number) => {

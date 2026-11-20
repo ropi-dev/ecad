@@ -639,6 +639,46 @@ describe("routing and the ratsnest", () => {
 			assert.ok(moved.every(onOctant));
 			assert.ok(touching(moved));
 		}
+		const level = trackSegment(
+			4,
+			{ x: 0, y: 0 },
+			{ x: 10, y: 0 },
+			"F.Cu",
+			0.25,
+			"a",
+		);
+		const slope = trackSegment(
+			5,
+			{ x: 2, y: 2 },
+			{ x: 10, y: 10 },
+			"F.Cu",
+			0.25,
+			"a",
+		);
+		const rung = trackSegment(
+			6,
+			{ x: 5, y: 0 },
+			{ x: 5, y: 5 },
+			"F.Cu",
+			0.25,
+			"a",
+		);
+		const ladder = [level, slope, rung];
+		const moved = applyMove(
+			ladder,
+			moveShapes(
+				[level, slope],
+				{ x: 0, y: 1 },
+				0,
+				level,
+				ladder,
+				7,
+				false,
+				trackRouting(ladder),
+			),
+		).filter((item) => item.width > 0);
+		assert.ok(moved.every(onOctant));
+		assert.ok(touching(moved));
 	});
 
 	test("tracks that end up in one straight line after a drag merge into one", () => {
@@ -749,6 +789,7 @@ describe("routing and the ratsnest", () => {
 			[41, { x: 0.5, y: 0 }],
 			[2466, { x: 0, y: -0.5 }],
 			[2257, { x: 0, y: 0.5 }],
+			[55, { x: 0, y: -0.5 }],
 		] as const) {
 			const shape = required(shapes.find((item) => item.id === id));
 			const moved = moveShapes(
@@ -766,6 +807,12 @@ describe("routing and the ratsnest", () => {
 				unrouted(applyMove(shapes, moved).filter((item) => item.width > 0)),
 				before,
 			);
+			for (const item of moved) {
+				const original = shapes.find((other) => other.id === item.id);
+				if (item.kind !== "line" || item.width === 0) continue;
+				if (original && original.rotation === item.rotation) continue;
+				assert.ok(onOctant(item));
+			}
 		}
 	});
 
