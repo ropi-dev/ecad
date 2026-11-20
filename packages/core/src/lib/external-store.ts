@@ -2,13 +2,16 @@ import {
 	type Accessor,
 	createSignal,
 	getOwner,
+	isHydrating,
 	onCleanup,
+	onSettled,
 	untrack,
 } from "solid-js";
 
 export interface ExternalStore<T> {
 	subscribe(listener: () => void): () => void;
 	getSnapshot(): T;
+	getServerSnapshot?(): T;
 }
 
 export function shallowEqual(a: unknown, b: unknown) {
@@ -34,13 +37,22 @@ export function shallowEqual(a: unknown, b: unknown) {
 export function fromExternalStore<T>(
 	subscribe: (listener: () => void) => () => void,
 	getSnapshot: () => T,
-	options: { equals?: false | ((prev: T, next: T) => boolean) } = {},
+	options: {
+		equals?: false | ((prev: T, next: T) => boolean);
+		serverSnapshot?: () => T;
+	} = {},
 ): Accessor<T> {
-	const [value, setValue] = createSignal<T>(untrack(getSnapshot) as never, {
+	const hydrating = options.serverSnapshot !== undefined && isHydrating();
+	const initial = hydrating ? (options.serverSnapshot as () => T) : getSnapshot;
+	const [value, setValue] = createSignal<T>(untrack(initial) as never, {
 		ownedWrite: true,
 		...(options.equals === undefined ? {} : { equals: options.equals }),
 	});
 	const stop = subscribe(() => setValue(() => getSnapshot()));
+	if (options.serverSnapshot)
+		onSettled(() => {
+			if (hydrating) setValue(() => getSnapshot());
+		});
 	if (getOwner()) onCleanup(stop);
 	return value;
 }
@@ -49,4 +61,7 @@ export const useExternalStore = <T>(store: ExternalStore<T>): Accessor<T> =>
 	fromExternalStore(
 		(listener) => store.subscribe(listener),
 		() => store.getSnapshot(),
+		store.getServerSnapshot
+			? { serverSnapshot: () => store.getServerSnapshot?.() as T }
+			: {},
 	);

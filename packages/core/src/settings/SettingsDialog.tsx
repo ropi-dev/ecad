@@ -11,6 +11,7 @@ import {
 	Match,
 	Show,
 	Switch,
+	untrack,
 } from "solid-js";
 import { AppDialog } from "#/components/ui/Dialog.tsx";
 import {
@@ -92,10 +93,14 @@ export function SettingsDialog(props: {
 		const section = props.section ?? "display";
 		return shown().some(({ id }) => id === section) ? section : "display";
 	});
-	const opened = createMemo(() => props.open);
-	const [active, setActive] = createSignal<SettingsSection>((previous) =>
-		opened() || previous === undefined ? requested() : previous,
+	const opening = createMemo(
+		() => ({ open: props.open, section: requested() }),
+		{ equals: (previous, next) => previous.open === next.open },
 	);
+	const [active, setActive] = createSignal<SettingsSection>((previous) => {
+		const { open, section } = opening();
+		return open || previous === undefined ? section : previous;
+	});
 	const tabsId = createUniqueId();
 	return (
 		<AppDialog
@@ -428,8 +433,8 @@ function ErcSettings() {
 	const canEditProject = createMemo(
 		() => !!project()?.name && !!project()?.saveSettings,
 	);
-	const [scope, setScope] = createSignal<Scope>(() =>
-		canEditProject() ? "project" : "global",
+	const [scope, setScope] = createSignal<Scope>(
+		untrack(canEditProject) ? "project" : "global",
 	);
 	const [error, setError] = createSignal("");
 	const projectScope = () => scope() === "project" && canEditProject();

@@ -118,6 +118,7 @@ function watch(doc: Document) {
 	const inDocument = (layer: Layer) => layer.element?.ownerDocument === doc;
 	const keydown = (event: KeyboardEvent) => {
 		if (event.key !== "Escape") return;
+		if (isNode(event.target) && inBranch(event.target)) return;
 		for (let index = layers.length - 1; index >= 0; index--) {
 			if (!inDocument(layers[index])) continue;
 			layers[index].escape?.(event);
@@ -134,8 +135,21 @@ function watch(doc: Document) {
 			if (inDocument(layer) && !within(layer, target)) handler(layer)?.(event);
 		}
 	};
-	const pointerdown = (event: PointerEvent) =>
-		outside(event, (layer) => layer.pointerDownOutside);
+	let pendingClick: (() => void) | undefined;
+	const pointerdown = (event: PointerEvent) => {
+		if (pendingClick) doc.removeEventListener("click", pendingClick, true);
+		pendingClick = undefined;
+		if (event.pointerType !== "touch") {
+			outside(event, (layer) => layer.pointerDownOutside);
+			return;
+		}
+		const click = () => {
+			pendingClick = undefined;
+			outside(event, (layer) => layer.pointerDownOutside);
+		};
+		pendingClick = click;
+		doc.addEventListener("click", click, { capture: true, once: true });
+	};
 	const focusin = (event: FocusEvent) =>
 		outside(event, (layer) => layer.focusOutside);
 	doc.addEventListener("keydown", keydown, true);
@@ -146,6 +160,7 @@ function watch(doc: Document) {
 		stop: () => {
 			doc.removeEventListener("keydown", keydown, true);
 			doc.removeEventListener("pointerdown", pointerdown, true);
+			if (pendingClick) doc.removeEventListener("click", pendingClick, true);
 			doc.removeEventListener("focusin", focusin, true);
 		},
 	});

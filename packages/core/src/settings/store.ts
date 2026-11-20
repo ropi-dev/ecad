@@ -162,8 +162,15 @@ export function updateAppSettings(
 	);
 }
 
+const serverSettings = defaultAppSettings();
+const serverStatus: SettingsStatus = { error: "", updates: false };
+
 export const useAppSettings = (): Accessor<AppSettings> =>
-	fromExternalStore(subscribeAppSettings, getAppSettings);
+	fromExternalStore(subscribeAppSettings, getAppSettings, {
+		serverSnapshot: () => serverSettings,
+	});
 
 export const useSettingsStatus = (): Accessor<SettingsStatus> =>
-	fromExternalStore(subscribeAppSettings, getSettingsStatus);
+	fromExternalStore(subscribeAppSettings, getSettingsStatus, {
+		serverSnapshot: () => serverStatus,
+	});

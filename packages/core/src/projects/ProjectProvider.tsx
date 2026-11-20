@@ -161,11 +161,15 @@ function ProjectContents(props: {
 		busy,
 		hasProject: project !== null,
 	}));
-	const projectSymbols = createMemo(() => {
+	const symbolsSession = createMemo(() => {
 		const current = state();
-		return current?.hasProject
-			? props.session.getProjectSymbols(current.session)
-			: undefined;
+		return current?.hasProject ? current.session : undefined;
+	});
+	const projectSymbols = createMemo(() => {
+		const session = symbolsSession();
+		return session === undefined
+			? undefined
+			: props.session.getProjectSymbols(session);
 	});
 	return (
 		<SymbolLibraryProvider

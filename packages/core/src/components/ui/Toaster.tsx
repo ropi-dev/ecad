@@ -194,6 +194,20 @@ function Toast(props: { notification: ToastNotification }) {
 	const [announced, setAnnounced] = createSignal("");
 	const [announcing, setAnnouncing] = createSignal(true);
 	const close = () => toaster.close(props.notification, element);
+	let swipe: { id: number; x: number; y: number } | undefined;
+	const finishSwipe = (pointer: number, x?: number) => {
+		if (swipe?.id !== pointer) return;
+		const moved = x === undefined ? 0 : x - swipe.x;
+		swipe = undefined;
+		if (!element.dataset.swipe) return;
+		if (moved >= 50) {
+			element.dataset.swipe = "end";
+			close();
+			return;
+		}
+		element.dataset.swipe = "cancel";
+		element.style.removeProperty("--radix-toast-swipe-move-x");
+	};
 	const duration = () =>
 		props.notification.duration ??
 		(props.notification.type === "error" ? Number.POSITIVE_INFINITY : 5000);
@@ -248,6 +262,23 @@ function Toast(props: { notification: ToastNotification }) {
 				event.preventDefault();
 				close();
 			}}
+			onPointerDown={(event) => {
+				if (event.button !== 0) return;
+				swipe = { id: event.pointerId, x: event.clientX, y: event.clientY };
+			}}
+			onPointerMove={(event) => {
+				if (swipe?.id !== event.pointerId) return;
+				const x = Math.max(0, event.clientX - swipe.x);
+				if (!element.dataset.swipe) {
+					if (Math.abs(event.clientY - swipe.y) > 10) swipe = undefined;
+					if (!swipe || x < 10) return;
+					element.setPointerCapture(event.pointerId);
+				}
+				element.dataset.swipe = "move";
+				element.style.setProperty("--radix-toast-swipe-move-x", `${x}px`);
+			}}
+			onPointerUp={(event) => finishSwipe(event.pointerId, event.clientX)}
+			onPointerCancel={(event) => finishSwipe(event.pointerId)}
 		>
 			<Dynamic
 				component={icons[props.notification.type]}

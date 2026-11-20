@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from "solid-js";
+import { createSignal, For, Show, untrack } from "solid-js";
 import type { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
 import {
 	FolderOpen,
@@ -19,7 +19,7 @@ export function SymbolLibraryControls(props: {
 	feedback?: boolean;
 }) {
 	const [scope, setScope] = createSignal<LibraryScope>(
-		() => props.library.defaultScope,
+		untrack(() => props.library.defaultScope),
 	);
 	const [name, setName] = createSignal("");
 	const feedback = () => props.feedback ?? true;

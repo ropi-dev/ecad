@@ -127,4 +127,5 @@ export const useTelemetryEnabled = (): Accessor<boolean> =>
 	fromExternalStore(
 		subscribeTelemetryConsent,
 		() => getTelemetryConsent()?.enabled === true,
+		{ serverSnapshot: () => false },
 	);

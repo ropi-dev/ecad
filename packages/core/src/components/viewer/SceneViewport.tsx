@@ -7,6 +7,7 @@ import {
 	For,
 	onSettled,
 	Show,
+	untrack,
 } from "solid-js";
 import type { Object3D } from "three";
 import { AxisIndicator } from "#/components/viewer/AxisIndicator.tsx";
@@ -246,7 +247,6 @@ export function SceneViewport(props: SceneViewportProps) {
 				updateScene: props.updateScene,
 				zoomScale: zoomScale(),
 				grid: grid(),
-				fitBounds: props.getFitBounds?.() ?? null,
 			},
 		}),
 		{ equals: (a, b) => shallowEqual(a.options, b.options) },
@@ -255,8 +255,10 @@ export function SceneViewport(props: SceneViewportProps) {
 		const element = options.host;
 		if (!element) return;
 		const sourceScene = current.scene;
-		let fitBounds = () => current.fitBounds;
+		const fitBounds = () => untrack(() => props.getFitBounds?.() ?? null);
+		let notReady = 0;
 		if (!mounted) reportReady(false);
+		else notReady = requestAnimationFrame(() => reportReady(false));
 		setSelectionInfo(null);
 		setAttributesOpen(false);
 		let viewport: SceneViewportRuntime | undefined;
@@ -304,12 +306,14 @@ export function SceneViewport(props: SceneViewportProps) {
 						},
 						onOrbit: reportOrbit,
 						onZoom: reportZoom,
-						onReady: reportReady,
+						onReady: (ready) => {
+							cancelAnimationFrame(notReady);
+							reportReady(ready);
+						},
 						onError: reportError,
 					}),
 				{ objects: sourceScene.length },
 			);
-			fitBounds = () => props.getFitBounds?.() ?? null;
 			runtime = viewport;
 			mounted = true;
 			shownScene = sourceScene;
@@ -317,6 +321,7 @@ export function SceneViewport(props: SceneViewportProps) {
 			viewport.setGrid(current.grid);
 			reportOrbit(options.cameraMode === "top" && current.orbit);
 		} catch (error) {
+			cancelAnimationFrame(notReady);
 			mounted = false;
 			reportReady(false);
 			reportError(
@@ -324,6 +329,7 @@ export function SceneViewport(props: SceneViewportProps) {
 			);
 		}
 		return () => {
+			cancelAnimationFrame(notReady);
 			runtime = undefined;
 			shownScene = null;
 			viewport?.dispose();

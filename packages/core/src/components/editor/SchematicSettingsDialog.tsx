@@ -10,7 +10,7 @@ import {
 	sheetPaper,
 	sheetSettingsSchema,
 } from "@ecad/drawing-core/drawing/sheet.ts";
-import { createSignal, createUniqueId, For, Show } from "solid-js";
+import { createSignal, createUniqueId, For, Show, untrack } from "solid-js";
 import { AppDialog, dialogBodyClassName } from "#/components/ui/Dialog.tsx";
 
 const fieldLabel =
@@ -79,28 +79,21 @@ export function SchematicSettingsDialog(props: {
 	onClose: () => void;
 }) {
 	const formId = createUniqueId();
+	const sheet = untrack(() => props.sheet);
 	const [paper, setPaper] = createSignal<PaperSize | "custom">(
-		() => props.sheet?.paper ?? DEFAULT_PAPER,
+		sheet?.paper ?? DEFAULT_PAPER,
 	);
-	const [portrait, setPortrait] = createSignal(
-		() => props.sheet?.portrait ?? false,
-	);
-	const [width, setWidth] = createSignal(() =>
-		formatMm(sheetPaper(props.sheet).width),
-	);
-	const [height, setHeight] = createSignal(() =>
-		formatMm(sheetPaper(props.sheet).height),
-	);
-	const [title, setTitle] = createSignal(() => props.sheet?.title ?? "");
-	const [date, setDate] = createSignal(() => props.sheet?.date ?? "");
-	const [revision, setRevision] = createSignal(
-		() => props.sheet?.revision ?? "",
-	);
-	const [company, setCompany] = createSignal(() => props.sheet?.company ?? "");
-	const [comments, setComments] = createSignal(() =>
+	const [portrait, setPortrait] = createSignal(sheet?.portrait ?? false);
+	const [width, setWidth] = createSignal(formatMm(sheetPaper(sheet).width));
+	const [height, setHeight] = createSignal(formatMm(sheetPaper(sheet).height));
+	const [title, setTitle] = createSignal(sheet?.title ?? "");
+	const [date, setDate] = createSignal(sheet?.date ?? "");
+	const [revision, setRevision] = createSignal(sheet?.revision ?? "");
+	const [company, setCompany] = createSignal(sheet?.company ?? "");
+	const [comments, setComments] = createSignal(
 		Array.from(
 			{ length: SHEET_COMMENT_COUNT },
-			(_, index) => props.sheet?.comments?.[index] ?? "",
+			(_, index) => sheet?.comments?.[index] ?? "",
 		),
 	);
 	const [error, setError] = createSignal("");

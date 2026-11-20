@@ -53,7 +53,7 @@ function subscribe(listener: () => void) {
 }
 
 export const useTheme = (): Accessor<ThemeName> =>
-	fromExternalStore(subscribe, activeTheme);
+	fromExternalStore(subscribe, activeTheme, { serverSnapshot: () => "dark" });
 
 export function useSchematicTheme(): Accessor<SchematicTheme> {
 	const theme = useTheme();
