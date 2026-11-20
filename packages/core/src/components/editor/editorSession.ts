@@ -1,3 +1,4 @@
+import { isCollapsedTrack } from "@ecad/drawing-core/board/track-drag.ts";
 import {
 	type CommandResult,
 	type InvalidDrawingCommand,
@@ -264,23 +265,20 @@ export function createEditorSession(
 			else preview(null);
 		},
 
-		replace(
-			replacements: EditorShape[],
-			label: string,
-			removeIds: readonly number[] = [],
-		) {
+		replace(replacements: EditorShape[], label: string) {
 			const previous = store.getSnapshot();
 			const existing = new Set(previous.shapes.map((shape) => shape.id));
-			const removed = new Set(removeIds);
+			const removed = new Set(
+				replacements.filter(isCollapsedTrack).map((shape) => shape.id),
+			);
+			const kept = replacements.filter((shape) => !removed.has(shape.id));
 			const result = execute(
 				replaceAndPlaceShapesEffect(
-					replacements.filter((shape) => existing.has(shape.id)),
-					onCurrentPage(
-						replacements.filter((shape) => !existing.has(shape.id)),
-					),
+					kept.filter((shape) => existing.has(shape.id)),
+					onCurrentPage(kept.filter((shape) => !existing.has(shape.id))),
 					label,
 					[...state.selection].filter((id) => !removed.has(id)),
-					removeIds.filter((id) => existing.has(id)),
+					[...removed].filter((id) => existing.has(id)),
 				),
 			);
 			if (result) acceptEdit(result, previous.history.currentId);

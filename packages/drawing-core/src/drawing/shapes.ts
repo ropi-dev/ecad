@@ -1,10 +1,8 @@
 export {
 	connectTransformedTerminals,
-	isUnsafeMove,
 	moveShapes,
 	prepareMove,
 	snappedMoveDelta,
-	UNSAFE_MOVE_MESSAGE,
 	withFullRouting,
 } from "#/drawing/connected-wire-transforms.ts";
 export { connectionTolerance } from "#/drawing/connection-geometry.ts";
@@ -98,4 +96,8 @@ export {
 	wireConnectionPoints,
 	wireJunctions,
 } from "#/drawing/terminals.ts";
+export {
+	isUnsafeMove,
+	UNSAFE_MOVE_MESSAGE,
+} from "#/drawing/unsafe-moves.ts";
 export { normalizeWireSegments } from "#/drawing/wire-normalization.ts";

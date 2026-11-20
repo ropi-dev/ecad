@@ -41,6 +41,7 @@ import {
 } from "@ecad/drawing-core/circuit/model.ts";
 import {
 	type EditorShape,
+	isUnsafeMove,
 	moveShapes,
 	resizeHandles,
 	resizeShape,
@@ -264,6 +265,11 @@ function applyMove(
 	];
 }
 
+const trackRouting = (
+	shapes: readonly EditorShape[],
+	netlist = boardNetlist(undefined),
+) => ({ items: copperItems(shapes, netlist), clearance: 0.2 });
+
 const onOctant = (shape: EditorShape) =>
 	Math.abs(Math.sin(4 * shape.rotation)) < 1e-6;
 
@@ -427,7 +433,16 @@ describe("routing and the ratsnest", () => {
 		const shapes = [across, bend, down];
 		const moved = applyMove(
 			shapes,
-			moveShapes([bend], { x: 0.5, y: -0.5 }, 0, bend, shapes),
+			moveShapes(
+				[bend],
+				{ x: 0.5, y: -0.5 },
+				0,
+				bend,
+				shapes,
+				4,
+				false,
+				trackRouting(shapes),
+			),
 		);
 		assert.deepEqual(moved.map(roundedEnds), [
 			[
@@ -445,8 +460,8 @@ describe("routing and the ratsnest", () => {
 		]);
 	});
 
-	test("dragging a track's end reroutes it and the track joined there in 45 degree steps", () => {
-		const via = { ...createVia(1, { x: 0, y: 0 }), net: "a" };
+	test("dragging a track's end off a via reroutes it and the track joined there in 45 degree steps, keeping both on the via", () => {
+		const via = { ...createVia(1, { x: -6, y: 3 }), net: "a" };
 		const track = trackSegment(
 			2,
 			{ x: 0, y: 0 },
@@ -466,11 +481,20 @@ describe("routing and the ratsnest", () => {
 		const shapes = [via, track, joined];
 		const moved = applyMove(
 			shapes,
-			dragTrackEnd(track, 1, { x: -3, y: 1.5 }, shapes, 4, 0.1),
+			dragTrackEnd(
+				track,
+				1,
+				{ x: -3, y: 1.5 },
+				shapes,
+				4,
+				0.1,
+				trackRouting(shapes),
+			),
 		);
 		const copper = moved.filter((shape) => shape.kind === "line");
 		assert.ok(copper.every(onOctant));
 		assert.ok(joins(copper, { x: 0, y: 0 }, { x: -3, y: 9 }));
+		assert.ok(joins(copper, { x: 0, y: 0 }, { x: -6, y: 3 }));
 		assert.ok(joins(copper, { x: 0, y: 0 }, { x: -3, y: 1.5 }));
 	});
 
@@ -500,19 +524,24 @@ describe("routing and the ratsnest", () => {
 			"b",
 		);
 		const shapes = [track, joined, wall];
-		const routing = {
-			items: copperItems(shapes, boardNetlist(undefined)),
-			clearance: 0.2,
-		};
 		const moved = applyMove(
 			shapes,
-			dragTrackEnd(track, 1, { x: 6, y: 2 }, shapes, 4, 0.1, routing),
+			dragTrackEnd(
+				track,
+				1,
+				{ x: 6, y: 2 },
+				shapes,
+				4,
+				0.1,
+				trackRouting(shapes),
+			),
 		);
 		const net = moved.filter(
 			(shape) => shape.kind === "line" && shape.net === "a",
 		);
 		assert.ok(net.every(onOctant));
 		assert.ok(joins(net, { x: 0, y: 0 }, { x: 4, y: 4 }));
+		assert.ok(joins(net, { x: 0, y: 0 }, { x: 6, y: 2 }));
 		for (const shape of net)
 			assert.ok(
 				Math.min(
@@ -522,6 +551,36 @@ describe("routing and the ratsnest", () => {
 				) >=
 					0.2 - 1e-6,
 			);
+	});
+
+	test("dropping a track's end on another net's copper is refused", () => {
+		const track = trackSegment(
+			1,
+			{ x: 0, y: 0 },
+			{ x: 4, y: 0 },
+			"F.Cu",
+			0.25,
+			"a",
+		);
+		const wall = trackSegment(
+			2,
+			{ x: 5, y: -3 },
+			{ x: 5, y: 3 },
+			"F.Cu",
+			0.25,
+			"b",
+		);
+		const shapes = [track, wall];
+		const result = dragTrackEnd(
+			track,
+			1,
+			{ x: 5, y: 1 },
+			shapes,
+			3,
+			0.1,
+			trackRouting(shapes),
+		);
+		assert.ok(isUnsafeMove(result));
 	});
 
 	test("tracks that end up in one straight line after a drag merge into one", () => {
@@ -544,7 +603,15 @@ describe("routing and the ratsnest", () => {
 		const shapes = [before, track];
 		const moved = applyMove(
 			shapes,
-			dragTrackEnd(track, 1, { x: 4, y: 0 }, shapes, 3, 0.1),
+			dragTrackEnd(
+				track,
+				1,
+				{ x: 4, y: 0 },
+				shapes,
+				3,
+				0.1,
+				trackRouting(shapes),
+			),
 		).filter((shape) => shape.width > 0);
 		assert.deepEqual(moved.map(roundedEnds), [
 			[
@@ -563,9 +630,16 @@ describe("routing and the ratsnest", () => {
 			0.25,
 			"a",
 		);
-		const [moved] = moveShapes([track], { x: 0.4, y: 1.7 }, 0.1, track, [
+		const [moved] = moveShapes(
+			[track],
+			{ x: 0.4, y: 1.7 },
+			0.1,
 			track,
-		]);
+			[track],
+			2,
+			false,
+			trackRouting([track]),
+		);
 		assert.deepEqual(roundedEnds(moved), [
 			{ x: 0, y: 1.7 },
 			{ x: 4, y: 1.7 },
@@ -587,7 +661,16 @@ describe("routing and the ratsnest", () => {
 		for (const selection of [[halves[0]], [via], halves]) {
 			const moved = applyMove(
 				routed,
-				moveShapes(selection, { x: 0.3, y: -0.4 }, 0, selection[0], routed),
+				moveShapes(
+					selection,
+					{ x: 0.3, y: -0.4 },
+					0,
+					selection[0],
+					routed,
+					id + 3,
+					false,
+					trackRouting(routed, netlist),
+				),
 			);
 			assert.deepEqual(unroutedNets(moved, netlist), ["gnd"]);
 		}

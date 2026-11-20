@@ -9,6 +9,7 @@ import {
 } from "#/drawing/shape-geometry.ts";
 import { pinTerminals } from "#/drawing/terminals.ts";
 import type { Point } from "#/drawing/types.ts";
+import { markUnsafeMove } from "#/drawing/unsafe-moves.ts";
 import {
 	addRouteWires,
 	createRoutingIndex,
@@ -60,17 +61,20 @@ export function moveShapes(
 	routing?: TrackRouting,
 ): EditorShape[] {
 	if (!allowLocked && shapes.some((shape) => shape.locked)) return shapes;
-	const tracks = shapes.some(isBoardTrack);
-	delta = tracks
-		? octantDelta(delta, gridStep)
-		: snappedMoveDelta(anchorShape, delta, gridStep);
+	const board =
+		routing !== undefined &&
+		shapes.some((shape) => isBoardTrack(shape) || isVia(shape));
+	delta =
+		board && shapes.every((shape) => isBoardTrack(shape) || isVia(shape))
+			? octantDelta(delta, gridStep)
+			: snappedMoveDelta(anchorShape, delta, gridStep);
 	const moved = shapes.map((shape) => ({
 		...shape,
 		x: shape.x + delta.x,
 		y: shape.y + delta.y,
 	}));
 	if (delta.x === 0 && delta.y === 0) return moved;
-	if (tracks || shapes.some(isVia))
+	if (board)
 		return dragTracks(shapes, moved, allShapes, delta, nextShapeId, routing);
 	return connectTransformedTerminals(shapes, moved, allShapes, nextShapeId, {
 		pitch: gridStep,
@@ -886,14 +890,9 @@ function rerouteSelection(
 		),
 		...additions,
 	];
-	if (unsafe) unsafeMoves.add(result);
+	if (unsafe) markUnsafeMove(result);
 	return result;
 }
-
-const unsafeMoves = new WeakSet<readonly EditorShape[]>();
-
-export const UNSAFE_MOVE_MESSAGE =
-	"No wire route here avoids other nets, so the move was not applied.";
 
 let fullRouting = false;
 
@@ -911,13 +910,6 @@ export function withFullRouting<T>(work: () => T): T {
 		fullRouting = previous;
 	}
 }
-
-/**
- * Whether a move result routes a wire through another net because no safe
- * route was found. Previews may show it; committing it would join the nets.
- */
-export const isUnsafeMove = (result: readonly EditorShape[]) =>
-	unsafeMoves.has(result);
 
 /**
  * Moves stretched nodes along shared axes: a horizontal segment's ends share

@@ -75,54 +75,114 @@ export interface TrackRoute {
 	readonly ignore: ReadonlySet<number>;
 }
 
+export interface RouteBudget {
+	remaining: number;
+}
+
 interface Obstacle {
 	readonly hull: Hull;
+	readonly gap: number;
 	readonly bounds: Bounds;
 }
 
 const pitch = 0.1;
-const bucket = 1;
+const margin = pitch * 0.25;
+const bucket = 2;
 const bend = pitch * 3;
 const windows = [1, 3, 8];
-const budget = 12_000;
+const searchLimit = 12_000;
+
+const bucketKey = (x: number, y: number) => (x + 32_768) * 65_536 + y + 32_768;
+
+function forBuckets(
+	bounds: Bounds,
+	visit: (key: number) => void,
+	size = bucket,
+) {
+	for (
+		let x = Math.floor(bounds.minX / size);
+		x <= Math.floor(bounds.maxX / size);
+		x++
+	)
+		for (
+			let y = Math.floor(bounds.minY / size);
+			y <= Math.floor(bounds.maxY / size);
+			y++
+		)
+			visit(bucketKey(x, y));
+}
+
+const itemIndexes = new WeakMap<
+	readonly CopperItem[],
+	Map<number, CopperItem[]>
+>();
+
+function itemIndex(items: readonly CopperItem[]) {
+	let index = itemIndexes.get(items);
+	if (index) return index;
+	index = new Map();
+	for (const item of items) {
+		if (item.kind === "zone" || item.kind === "hole") continue;
+		forBuckets(item.bounds, (key) => {
+			const list = index?.get(key);
+			if (list) list.push(item);
+			else index?.set(key, [item]);
+		});
+	}
+	itemIndexes.set(items, index);
+	return index;
+}
 
 function obstaclesFor(
 	route: TrackRoute,
 	routing: TrackRouting,
 	area: Bounds,
 ): Obstacle[] {
-	const reach = route.width / 2 + routing.clearance;
+	const half = route.width / 2;
+	const reach = half + routing.clearance;
+	const index = itemIndex(routing.items);
+	const seen = new Set<CopperItem>();
 	const obstacles: Obstacle[] = [];
-	for (const item of routing.items) {
-		if (item.kind === "zone" || item.kind === "hole") continue;
-		if (route.ignore.has(item.shapeId)) continue;
-		if (!item.layers.includes(route.layer as CopperLayer)) continue;
-		if (route.net !== undefined && item.net === route.net) continue;
-		const { bounds } = item;
-		if (
-			bounds.maxX < area.minX - reach ||
-			bounds.minX > area.maxX + reach ||
-			bounds.maxY < area.minY - reach ||
-			bounds.minY > area.maxY + reach
-		)
-			continue;
-		for (const hull of item.hulls) {
-			if (
-				pointHullDistance(hull, route.from) < reach ||
-				pointHullDistance(hull, route.to) < reach
-			)
-				continue;
-			obstacles.push({
-				hull,
-				bounds: {
-					minX: bounds.minX - reach,
-					minY: bounds.minY - reach,
-					maxX: bounds.maxX + reach,
-					maxY: bounds.maxY + reach,
-				},
-			});
-		}
-	}
+	forBuckets(
+		{
+			minX: area.minX - reach,
+			minY: area.minY - reach,
+			maxX: area.maxX + reach,
+			maxY: area.maxY + reach,
+		},
+		(key) => {
+			for (const item of index.get(key) ?? []) {
+				if (seen.has(item)) continue;
+				seen.add(item);
+				if (route.ignore.has(item.shapeId)) continue;
+				if (!item.layers.includes(route.layer as CopperLayer)) continue;
+				if (
+					route.net === undefined ||
+					item.net === undefined ||
+					item.net === route.net
+				)
+					continue;
+				for (const hull of item.hulls) {
+					const gap = Math.min(
+						routing.clearance,
+						pointHullDistance(hull, route.from) - half,
+					);
+					const grow = Math.max(0, half + gap + margin);
+					const { bounds } = item;
+					obstacles.push({
+						hull,
+						gap,
+						bounds: {
+							minX: bounds.minX - grow,
+							minY: bounds.minY - grow,
+							maxX: bounds.maxX + grow,
+							maxY: bounds.maxY + grow,
+						},
+					});
+				}
+			}
+		},
+	);
 	return obstacles;
 }
 
@@ -130,15 +190,14 @@ function pathClear(
 	path: readonly Point[],
 	obstacles: readonly Obstacle[],
 	width: number,
-	clearance: number,
 ) {
 	for (let index = 1; index < path.length; index++) {
 		const segment = {
 			points: [path[index - 1], path[index]],
 			radius: width / 2,
 		};
-		for (const { hull } of obstacles)
-			if (hullDistance(segment, hull) < clearance - 1e-9) return false;
+		for (const { hull, gap } of obstacles)
+			if (hullDistance(segment, hull) < gap - 1e-9) return false;
 	}
 	return true;
 }
@@ -152,27 +211,50 @@ function simplify(path: readonly Point[]): Point[] {
 		const previous = points.at(-1);
 		if (previous && samePoint(previous, point)) continue;
 		const before = points.at(-2);
-		if (
-			before &&
-			previous &&
-			Math.abs(
-				(previous.x - before.x) * (point.y - previous.y) -
-					(previous.y - before.y) * (point.x - previous.x),
-			) < 1e-9
-		) {
-			points.pop();
-			if (!samePoint(before, point)) points.push(point);
-			continue;
+		if (before && previous) {
+			const ux = previous.x - before.x;
+			const uy = previous.y - before.y;
+			const vx = point.x - previous.x;
+			const vy = point.y - previous.y;
+			if (
+				Math.abs(ux * vy - uy * vx) <=
+				1e-6 * Math.hypot(ux, uy) * Math.hypot(vx, vy)
+			) {
+				points.pop();
+				if (!samePoint(before, point)) points.push(point);
+				continue;
+			}
 		}
 		points.push(point);
 	}
 	return points;
 }
 
+const spanOf = (points: readonly Point[], pad: number): Bounds => ({
+	minX: Math.min(...points.map((point) => point.x)) - pad,
+	minY: Math.min(...points.map((point) => point.y)) - pad,
+	maxX: Math.max(...points.map((point) => point.x)) + pad,
+	maxY: Math.max(...points.map((point) => point.y)) + pad,
+});
+
+export function trackClear(
+	route: TrackRoute,
+	path: readonly Point[],
+	routing: TrackRouting | undefined,
+) {
+	if (!routing) return true;
+	return pathClear(
+		path,
+		obstaclesFor(route, routing, spanOf(path, 0)),
+		route.width,
+	);
+}
+
 export function routeTrack(
 	route: TrackRoute,
 	routing: TrackRouting | undefined,
-): Point[] {
+	budget: RouteBudget = { remaining: searchLimit },
+): { points: Point[]; clear: boolean } {
 	const { from, to } = route;
 	const preferred = route.prefer && octant(route.prefer);
 	const first = (path: readonly Point[]) =>
@@ -184,93 +266,78 @@ export function routeTrack(
 		.sort(
 			(a, b) => Number(first(a) !== preferred) - Number(first(b) !== preferred),
 		);
-	if (!routing) return simplify(candidates[0]);
-	const span = {
-		minX: Math.min(from.x, to.x),
-		minY: Math.min(from.y, to.y),
-		maxX: Math.max(from.x, to.x),
-		maxY: Math.max(from.y, to.y),
-	};
+	if (!routing) return { points: simplify(candidates[0]), clear: true };
 	for (const pad of windows) {
-		const area = {
-			minX: span.minX - pad,
-			minY: span.minY - pad,
-			maxX: span.maxX + pad,
-			maxY: span.maxY + pad,
-		};
+		const area = spanOf([from, to], pad);
 		const obstacles = obstaclesFor(route, routing, area);
 		if (pad === windows[0]) {
 			const clear = candidates.find((path) =>
-				pathClear(path, obstacles, route.width, routing.clearance),
+				pathClear(path, obstacles, route.width),
 			);
-			if (clear) return simplify(clear);
+			if (clear) return { points: simplify(clear), clear: true };
 		}
-		const found = search(route, routing.clearance, obstacles, area, preferred);
-		if (found) return simplify(found);
+		if (budget.remaining <= 0) break;
+		const found = search(route, obstacles, area, preferred, budget);
+		if (found) {
+			const points = simplify(found);
+			if (pathClear(points, obstacles, route.width))
+				return { points, clear: true };
+		}
 	}
-	return simplify(candidates[0]);
+	return { points: simplify(candidates[0]), clear: false };
 }
 
 function search(
 	route: TrackRoute,
-	clearance: number,
 	obstacles: readonly Obstacle[],
 	area: Bounds,
 	preferred: number | undefined,
+	budget: RouteBudget,
 ): Point[] | undefined {
 	const { from, to, width } = route;
-	const reach = width / 2 + clearance;
-	const buckets = new Map<string, Obstacle[]>();
-	for (const obstacle of obstacles) {
-		const { bounds } = obstacle;
-		for (
-			let x = Math.floor(bounds.minX / bucket);
-			x <= Math.floor(bounds.maxX / bucket);
-			x++
-		)
-			for (
-				let y = Math.floor(bounds.minY / bucket);
-				y <= Math.floor(bounds.maxY / bucket);
-				y++
-			) {
-				const key = `${x},${y}`;
+	const half = width / 2;
+	const buckets = new Map<number, Obstacle[]>();
+	for (const obstacle of obstacles)
+		forBuckets(
+			obstacle.bounds,
+			(key) => {
 				const list = buckets.get(key);
 				if (list) list.push(obstacle);
 				else buckets.set(key, [obstacle]);
-			}
-	}
+			},
+			1,
+		);
 	const minColumn = Math.floor((area.minX - from.x) / pitch);
 	const maxColumn = Math.ceil((area.maxX - from.x) / pitch);
 	const minRow = Math.floor((area.minY - from.y) / pitch);
 	const maxRow = Math.ceil((area.maxY - from.y) / pitch);
 	const columns = maxColumn - minColumn + 1;
-	const rows = maxRow - minRow + 1;
 	const cellOf = (column: number, row: number) =>
 		(row - minRow) * columns + (column - minColumn);
 	const pointOf = (column: number, row: number): Point => ({
 		x: from.x + column * pitch,
 		y: from.y + row * pitch,
 	});
-	const blocked = new Uint8Array(columns * rows);
+	const blocked = new Map<number, boolean>();
 	const open = (column: number, row: number) => {
 		if (column < minColumn || column > maxColumn) return false;
 		if (row < minRow || row > maxRow) return false;
 		const cell = cellOf(column, row);
-		if (blocked[cell]) return blocked[cell] === 1;
+		const known = blocked.get(cell);
+		if (known !== undefined) return !known;
 		const point = pointOf(column, row);
 		const nearby =
-			buckets.get(
-				`${Math.floor(point.x / bucket)},${Math.floor(point.y / bucket)}`,
-			) ?? [];
+			buckets.get(bucketKey(Math.floor(point.x), Math.floor(point.y))) ?? [];
 		const free = nearby.every(
-			({ hull, bounds }) =>
+			({ hull, gap, bounds }) =>
 				point.x < bounds.minX ||
 				point.x > bounds.maxX ||
 				point.y < bounds.minY ||
 				point.y > bounds.maxY ||
-				pointHullDistance(hull, point) >= reach - 1e-9,
+				pointHullDistance(hull, point) >=
+					half + gap + (gap > 0 ? margin : 0) - 1e-9,
 		);
-		blocked[cell] = free ? 1 : 2;
+		blocked.set(cell, !free);
 		return free;
 	};
 	const estimate = (column: number, row: number) => {
@@ -288,7 +355,7 @@ function search(
 		let best: { tail: Point[]; cost: number } | undefined;
 		for (const posture of ["straight-first", "diagonal-first"] as const) {
 			const tail = simplify(trackPath(point, to, posture));
-			if (!pathClear(tail, obstacles, width, clearance)) continue;
+			if (!pathClear(tail, obstacles, width)) continue;
 			let cost = 0;
 			let previous = heading === 8 ? undefined : heading;
 			for (let index = 1; index < tail.length; index++) {
@@ -306,12 +373,10 @@ function search(
 		return best;
 	};
 	const tails = new Map<number, Point[]>();
-	const scores = new Float64Array(columns * rows).fill(
-		Number.POSITIVE_INFINITY,
-	);
-	const parents = new Int32Array(columns * rows).fill(-1);
-	const headings = new Uint8Array(columns * rows).fill(8);
-	const closed = new Uint8Array(columns * rows);
+	const scores = new Map<number, number>();
+	const parents = new Map<number, number>();
+	const headings = new Map<number, number>();
+	const closed = new Set<number>();
 	const heap: [number, number][] = [];
 	const push = (id: number, key: number) => {
 		heap.push([key, id]);
@@ -343,15 +408,19 @@ function search(
 		return top[1];
 	};
 	const start = cellOf(0, 0);
-	scores[start] = 0;
+	scores.set(start, 0);
 	push(start, estimate(0, 0));
 	let expanded = 0;
-	while (heap.length && expanded < budget) {
+	while (heap.length && expanded < searchLimit && budget.remaining > 0) {
 		const id = pop();
 		const tail = tails.get(id);
 		if (tail) {
 			const path: Point[] = [...tail.slice(1).reverse()];
-			for (let at = -id - 1; at >= 0; at = parents[at])
+			for (
+				let at: number | undefined = -id - 1;
+				at !== undefined;
+				at = parents.get(at)
+			)
 				path.push(
 					pointOf(
 						(at % columns) + minColumn,
@@ -360,13 +429,14 @@ function search(
 				);
 			return path.reverse();
 		}
-		if (closed[id]) continue;
-		closed[id] = 1;
+		if (closed.has(id)) continue;
+		closed.add(id);
 		expanded++;
-		const heading = headings[id];
+		budget.remaining--;
+		const heading = headings.get(id) ?? 8;
 		const column = (id % columns) + minColumn;
 		const row = Math.floor(id / columns) + minRow;
-		const score = scores[id];
+		const score = scores.get(id) ?? 0;
 		const ending = finish(column, row, heading);
 		if (ending) {
 			tails.set(-id - 1, ending.tail);
@@ -384,17 +454,17 @@ function search(
 			if (dx && dy && (!open(column + dx, row) || !open(column, row + dy)))
 				continue;
 			const nextId = cellOf(nextColumn, nextRow);
-			if (closed[nextId]) continue;
+			if (closed.has(nextId)) continue;
 			const turned =
 				heading === 8
 					? preferred !== undefined && next !== preferred
 					: next !== heading;
 			const total =
 				score + pitch * (dx && dy ? Math.SQRT2 : 1) + (turned ? bend : 0);
-			if (total >= scores[nextId]) continue;
-			scores[nextId] = total;
-			parents[nextId] = id;
-			headings[nextId] = next;
+			if (total >= (scores.get(nextId) ?? Number.POSITIVE_INFINITY)) continue;
+			scores.set(nextId, total);
+			parents.set(nextId, id);
+			headings.set(nextId, next);
 			push(nextId, total + estimate(nextColumn, nextRow));
 		}
 	}

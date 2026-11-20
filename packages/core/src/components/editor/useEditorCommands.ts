@@ -34,6 +34,7 @@ import { measureText } from "#/engine/drawing/text.ts";
 
 type Gestures = Pick<
 	ReturnType<typeof useCanvasGestures>,
+	| "trackRouting"
 	| "getDrag"
 	| "getWire"
 	| "finishDrag"
@@ -95,6 +96,7 @@ export function useEditorCommands(
 			nextId: session.nextId(),
 			allowLocked: current.allowLocked,
 			measureText,
+			routing: options().gestures.trackRouting(),
 		});
 		if (result?.error) session.setError(result.error);
 		else if (result) session.replace(result.replacements, result.label);

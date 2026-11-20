@@ -78,7 +78,13 @@ export function handleCanvasKeyDown(
 	event: KeyboardEvent,
 	{
 		session,
-		gestures: { getWire, getDrag, finishWire, finishDrag },
+		gestures: {
+			getWire,
+			getDrag,
+			finishWire,
+			finishDrag,
+			trackRouting: getTrackRouting,
+		},
 		setTool,
 		selected,
 		selectedSymbol,
@@ -92,7 +98,7 @@ export function handleCanvasKeyDown(
 		session: EditorSession;
 		gestures: Pick<
 			Gestures,
-			"getWire" | "getDrag" | "finishWire" | "finishDrag"
+			"getWire" | "getDrag" | "finishWire" | "finishDrag" | "trackRouting"
 		>;
 		setTool: (tool: CanvasTool) => void;
 		selected: EditorShape[];
@@ -164,6 +170,7 @@ export function handleCanvasKeyDown(
 						session.shapes(),
 						session.nextId(),
 						allowLocked,
+						getTrackRouting(),
 					),
 				);
 				if (isUnsafeMove(moved)) session.setError(UNSAFE_MOVE_MESSAGE);

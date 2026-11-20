@@ -178,9 +178,10 @@ export function canvasDragStep(
 	}
 	if (drag.mode === "resize" && drag.handle) {
 		const original = drag.originals[0];
+		const routing = isBoardTrack(original) ? context.routing?.() : undefined;
 		return result({
 			kind: "preview",
-			replacements: isBoardTrack(original)
+			replacements: routing
 				? dragTrackEnd(
 						original,
 						drag.handle.xDirection > 0 ? 1 : 0,
@@ -188,7 +189,7 @@ export function canvasDragStep(
 						drag.initialShapes,
 						context.nextId(),
 						drag.gridStep,
-						context.routing?.(),
+						routing,
 					)
 				: [resizeShape(original, drag.handle, delta, drag.gridStep)],
 			base: drag.initialShapes,

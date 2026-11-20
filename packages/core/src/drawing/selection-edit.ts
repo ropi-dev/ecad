@@ -2,6 +2,7 @@ import {
 	flipBoardFootprint,
 	isBoardFootprint,
 } from "@ecad/drawing-core/board/footprints.ts";
+import type { TrackRouting } from "@ecad/drawing-core/board/track-router.ts";
 import type { LineStyle } from "@ecad/drawing-core/drawing/line-style.ts";
 import type { PinElectricalType } from "@ecad/drawing-core/drawing/pin-types.ts";
 import {
@@ -140,6 +141,7 @@ export interface SelectionEditContext {
 	readonly nextId: number;
 	readonly allowLocked: boolean;
 	readonly measureText: MeasureText;
+	readonly routing?: TrackRouting;
 }
 
 export interface SelectionEditResult {
@@ -226,6 +228,7 @@ export function applySelectionEdit(
 						context.shapes,
 						context.nextId,
 						context.allowLocked,
+						context.routing,
 					),
 				);
 				// Refuse a position whose wires could only reach it through other nets.

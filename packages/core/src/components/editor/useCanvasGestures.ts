@@ -5,9 +5,9 @@ import type {
 import { outlineEncloses } from "@ecad/drawing-core/board/geometry.ts";
 import { ruleVia } from "@ecad/drawing-core/board/routing-grid.ts";
 import type { BoardRules } from "@ecad/drawing-core/board/rules.ts";
-import { isBoardTrack } from "@ecad/drawing-core/board/track-drag.ts";
 import {
 	type TrackPosture,
+	type TrackRouting,
 	trackPath,
 } from "@ecad/drawing-core/board/track-router.ts";
 import { isNetLabel } from "@ecad/drawing-core/drawing/named-nets.ts";
@@ -150,6 +150,8 @@ type CanvasGesture =
 export interface BoardGestures {
 	/** Copper on the visible layers, in board coordinates. */
 	items(): readonly CopperItem[];
+	/** Copper on every layer, hidden ones too. */
+	copper(): readonly CopperItem[];
 	rules: BoardRules;
 	/** The copper layer new tracks, zones and copper graphics go on. */
 	copperLayer: CopperLayer;
@@ -451,6 +453,10 @@ export function useCanvasGestures(getOptions: () => CanvasGesturesOptions) {
 		};
 		previewWire(connection);
 	};
+	const trackRouting = (): TrackRouting | undefined => {
+		const { board } = options;
+		return board && { items: board.copper(), clearance: board.rules.clearance };
+	};
 	const stepDrag = (active: Drag, point: Point | null, end: Point) => {
 		const step = canvasDragStep(active, point, end, {
 			shapes: options.shapes,
@@ -458,10 +464,7 @@ export function useCanvasGestures(getOptions: () => CanvasGesturesOptions) {
 			cameraScale: () => options.cameraView.getProjection()?.scale ?? 1,
 			nextId: options.session.nextId,
 			routing: () => {
-				const { board } = options;
-				active.routing ??= board
-					? { items: board.items(), clearance: board.rules.clearance }
-					: null;
+				active.routing ??= trackRouting() ?? null;
 				return active.routing ?? undefined;
 			},
 			inScreenBox: (shape, box, mode) =>
@@ -552,13 +555,10 @@ export function useCanvasGestures(getOptions: () => CanvasGesturesOptions) {
 		active.canvas.style.cursor = "";
 		setMarquee(null);
 		// Releasing where a wire could only cross another net restores the drag.
-		if (active.mode === "move" && active.unsafe && !cancel)
-			options.session.setError(UNSAFE_MOVE_MESSAGE);
-		if (
-			cancel ||
-			(active.created && !active.valid) ||
-			(active.mode === "move" && active.unsafe)
-		) {
+		const refused =
+			(active.mode === "move" || active.mode === "resize") && active.unsafe;
+		if (refused && !cancel) options.session.setError(UNSAFE_MOVE_MESSAGE);
+		if (cancel || (active.created && !active.valid) || refused) {
 			options.session.preview(null);
 			options.session.select(active.previousSelection);
 			options.session.selectChild(active.previousChild);
@@ -596,13 +596,10 @@ export function useCanvasGestures(getOptions: () => CanvasGesturesOptions) {
 			const changed = options.session
 				.shapes()
 				.filter((shape) => shape !== initial.get(shape.id));
-			const collapsed = changed.flatMap((shape) =>
-				isBoardTrack(shape) && shape.width <= 1e-6 ? [shape.id] : [],
-			);
 			if (!changed.length) options.session.preview(null);
 			else
 				options.session.replace(
-					changed.filter((shape) => !collapsed.includes(shape.id)).map(freeze),
+					changed.map(freeze),
 					active.mode === "symbol-child"
 						? active.handle
 							? "Resize symbol child"
@@ -612,7 +609,6 @@ export function useCanvasGestures(getOptions: () => CanvasGesturesOptions) {
 							: active.handle?.corner !== undefined
 								? "Edit zone outline"
 								: `Resize ${active.originals[0].kind}`,
-					collapsed,
 				);
 		}
 		if (active.canvas.hasPointerCapture(active.pointerId))
@@ -1489,6 +1485,7 @@ export function useCanvasGestures(getOptions: () => CanvasGesturesOptions) {
 		},
 		finishDrag,
 		finishWire,
+		trackRouting,
 		placeTrackVia,
 		stepCopperLayer,
 		flipTrackPosture,
