@@ -84,7 +84,7 @@ interface Obstacle {
 }
 
 const pitch = 0.1;
-const margin = pitch * 0.25;
+const margin = (pitch * Math.SQRT2) / 2;
 const bucket = 2;
 const bend = pitch * 3;
 const windows = [1, 3, 8];
@@ -219,7 +219,7 @@ export function copperClear(
 					continue;
 				for (const own of copper.hulls)
 					for (const hull of item.hulls)
-						if (hullDistance(own, hull) < routing.clearance - 1e-9) {
+						if (hullDistance(own, hull) < routing.clearance - 1e-6) {
 							clear = false;
 							return;
 						}
@@ -240,7 +240,7 @@ function pathClear(
 			radius: width / 2,
 		};
 		for (const { hull, gap } of obstacles)
-			if (hullDistance(segment, hull) < gap - 1e-9) return false;
+			if (hullDistance(segment, hull) < gap - 1e-6) return false;
 	}
 	return true;
 }

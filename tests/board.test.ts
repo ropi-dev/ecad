@@ -71,6 +71,9 @@ import { exportFabrication } from "#/board/gerber.ts";
 import { trackAnchor, trackSegments } from "#/board/routing.ts";
 import { boardDisplay, boardLayerView, footprintItemId } from "#/board/view.ts";
 import { containsPoint } from "#/engine/geometry.ts";
+import exampleDesign from "#/examples/rp2350a-design.json" with {
+	type: "json",
+};
 import { parseGerber } from "#/formats/gerber/index.ts";
 import { projectFileSelections } from "#/projects/file-url.ts";
 import {
@@ -268,7 +271,8 @@ function applyMove(
 const trackRouting = (
 	shapes: readonly EditorShape[],
 	netlist = boardNetlist(undefined),
-) => ({ items: copperItems(shapes, netlist), clearance: 0.2 });
+	clearance = 0.2,
+) => ({ items: copperItems(shapes, netlist), clearance });
 
 const onOctant = (shape: EditorShape) =>
 	Math.abs(Math.sin(4 * shape.rotation)) < 1e-6;
@@ -727,6 +731,41 @@ describe("routing and the ratsnest", () => {
 				),
 			);
 			assert.deepEqual(unroutedNets(moved, netlist), ["gnd"]);
+		}
+	});
+
+	test("moving tracks and vias on the example board keeps every net routed", () => {
+		const shapes = exampleDesign.board as unknown as EditorShape[];
+		const netlist = boardNetlist(exampleDesign.circuit as never);
+		const routing = trackRouting(
+			shapes,
+			netlist,
+			exampleDesign.rules.clearance,
+		);
+		const unrouted = (list: readonly EditorShape[]) =>
+			analyzeConnectivity(copperItems(list, netlist)).ratsnest.length;
+		const before = unrouted(shapes);
+		for (const [id, delta] of [
+			[41, { x: 0.5, y: 0 }],
+			[2466, { x: 0, y: -0.5 }],
+			[2257, { x: 0, y: 0.5 }],
+		] as const) {
+			const shape = required(shapes.find((item) => item.id === id));
+			const moved = moveShapes(
+				[shape],
+				delta,
+				0,
+				shape,
+				shapes,
+				9000,
+				false,
+				routing,
+			);
+			assert.ok(!isUnsafeMove(moved));
+			assert.equal(
+				unrouted(applyMove(shapes, moved).filter((item) => item.width > 0)),
+				before,
+			);
 		}
 	});
 
