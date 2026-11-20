@@ -180,7 +180,6 @@ function rework(
 	for (const [item, ends] of stretched) follow(item).path = ends;
 
 	const budget: RouteBudget = { remaining: 30_000 };
-	const ignore = new Set([...selected, ...followers.keys()]);
 	const routeOf = (wire: Wire, from: Point, to: Point, prefer?: Point) => ({
 		from,
 		to,
@@ -188,7 +187,7 @@ function rework(
 		width: wire.lineWidth,
 		net: wire.net,
 		prefer,
-		ignore,
+		ignore: selected,
 	});
 	const route = (wire: Wire, from: Point, to: Point, prefer?: Point) =>
 		routeTrack(routeOf(wire, from, to, prefer), routing, budget);
@@ -252,7 +251,6 @@ function rework(
 			if (keeps(follower)) continue;
 			if (stretched.has(follower.item)) return undefined;
 			followers.delete(id);
-			ignore.delete(id);
 			dropped = true;
 		}
 	}
