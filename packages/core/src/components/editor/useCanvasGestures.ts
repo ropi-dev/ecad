@@ -54,18 +54,7 @@ import {
 	onFootprintLayer,
 } from "@ecad/drawing-core/footprint/shapes.ts";
 import { freeze } from "@ecad/drawing-core/lib/freeze.ts";
-import {
-	type Dispatch,
-	type DOMAttributes,
-	type PointerEvent as ReactPointerEvent,
-	type SetStateAction,
-	useCallback,
-	useEffect,
-	useEffectEvent,
-	useMemo,
-	useRef,
-	useState,
-} from "react";
+import { createEffect, createMemo, createSignal, onSettled } from "solid-js";
 import {
 	otherCopperLayer,
 	type TrackPosture,
@@ -149,7 +138,6 @@ interface ZoneChain {
 
 type CanvasGesture =
 	| { kind: "idle" }
-	| { kind: "placing"; tool: CanvasTool }
 	| { kind: "drag"; drag: Drag }
 	| { kind: "wire"; wire: WireChain }
 	| { kind: "track"; track: TrackChain }
@@ -170,20 +158,16 @@ export interface BoardGestures {
 }
 
 interface ToolHandler {
-	press?: (
-		event: ReactPointerEvent<HTMLDivElement>,
-		point: Point,
-		start: Point,
-	) => void;
+	press?: (event: PointerEvent, point: Point, start: Point) => void;
 	hover?: (canvas: HTMLCanvasElement, point: Point) => boolean;
 	create?: (start: Point) => EditorShape;
 }
 
-interface CanvasGesturesOptions {
+export interface CanvasGesturesOptions {
 	session: EditorSession;
 	cameraView: CanvasView;
 	tool: CanvasTool;
-	setTool: Dispatch<SetStateAction<CanvasTool>>;
+	setTool: (tool: CanvasTool) => void;
 	shapes: EditorShape[];
 	selected: EditorShape[];
 	selectedIds: ReadonlySet<number>;
@@ -201,129 +185,95 @@ interface CanvasGesturesOptions {
 	sheetless: boolean;
 	footprintLayer?: FootprintLayer;
 	board?: BoardGestures;
-	setTextFocusId: Dispatch<SetStateAction<number | null>>;
+	setTextFocusId: (id: number | null) => void;
 	openAttributes: () => void;
 }
 
-export function useCanvasGestures({
-	session,
-	cameraView,
-	tool,
-	setTool,
-	shapes,
-	selected,
-	selectedIds,
-	selectedChildKey,
-	selectedSymbol,
-	allowLocked,
-	handles,
-	ready,
-	gridStep,
-	symbolDefinition,
-	sheetless,
-	footprintLayer,
-	board,
-	setTextFocusId,
-	openAttributes,
-}: CanvasGesturesOptions) {
-	const [marquee, setMarquee] = useState<CanvasMarquee | null>(null);
-	const [placement, setPlacement] = useState({
-		tool,
-		symbolDefinition,
-		rotation: 0,
+const samePoint = (a: Point | null, b: Point | null) =>
+	a === b || (a !== null && b !== null && a.x === b.x && a.y === b.y);
+
+export function useCanvasGestures(getOptions: () => CanvasGesturesOptions) {
+	const options = new Proxy({} as CanvasGesturesOptions, {
+		get: (_, key) => getOptions()[key as keyof CanvasGesturesOptions],
 	});
-	if (
-		placement.tool !== tool ||
-		placement.symbolDefinition !== symbolDefinition
-	)
-		setPlacement({ tool, symbolDefinition, rotation: 0 });
-	const placementRotation =
-		placement.tool === tool && placement.symbolDefinition === symbolDefinition
-			? placement.rotation
-			: 0;
-	const canRotatePlacement =
-		isPlacementTool(tool) ||
-		isPadTool(tool) ||
-		(tool === "symbol" && !!symbolDefinition);
-	const placing =
-		canRotatePlacement ||
-		tool === "via" ||
-		tool === "hole" ||
-		tool === "track" ||
-		tool === "zone" ||
-		tool === "zone-polygon" ||
-		tool === "outline";
-	const onLayer = <Shape extends EditorShape>(shape: Shape): Shape =>
-		footprintLayer ? onFootprintLayer(shape, footprintLayer) : shape;
-	const rotatePlacement = useCallback((angle: number) => {
-		setPlacement((current) => ({
-			...current,
-			rotation: (current.rotation + angle) % (2 * Math.PI),
-		}));
-	}, []);
-	const [pendingPreview, setPlacementPreview] = useState<{
+	const tool = createMemo(() => options.tool);
+	const symbolDefinition = createMemo(() => options.symbolDefinition);
+	const selected = createMemo(() => options.selected);
+	const shapes = createMemo(() => options.shapes);
+	const [marquee, setMarquee] = createSignal<CanvasMarquee | null>(null);
+	const [placementRotation, setPlacementRotation] = createSignal(() => {
+		tool();
+		symbolDefinition();
+		return 0;
+	});
+	const canRotatePlacement = createMemo(
+		() =>
+			isPlacementTool(tool()) ||
+			isPadTool(tool()) ||
+			(tool() === "symbol" && !!symbolDefinition()),
+	);
+	const placing = createMemo(
+		() =>
+			canRotatePlacement() ||
+			tool() === "via" ||
+			tool() === "hole" ||
+			tool() === "track" ||
+			tool() === "zone" ||
+			tool() === "zone-polygon" ||
+			tool() === "outline",
+	);
+	const onLayer = <Shape extends EditorShape>(shape: Shape): Shape => {
+		const layer = options.footprintLayer;
+		return layer ? onFootprintLayer(shape, layer) : shape;
+	};
+	const rotatePlacement = (angle: number) =>
+		setPlacementRotation((rotation) => (rotation + angle) % (2 * Math.PI));
+	const [pendingPreview, setPlacementPreview] = createSignal<{
 		tool: CanvasTool;
 		symbolDefinition: SymbolDefinition | null;
 		shape: EditorShape;
 	} | null>(null);
-	const placementPreview = useMemo(
-		() =>
-			pendingPreview?.tool === tool &&
-			pendingPreview.symbolDefinition === symbolDefinition
-				? { ...pendingPreview.shape, rotation: placementRotation }
-				: null,
-		[pendingPreview, tool, symbolDefinition, placementRotation],
+	const placementPreview = createMemo(() => {
+		const pending = pendingPreview();
+		return pending?.tool === tool() &&
+			pending.symbolDefinition === symbolDefinition()
+			? { ...pending.shape, rotation: placementRotation() }
+			: null;
+	});
+	const clearPlacementPreview = () => setPlacementPreview(null);
+	let gesture: CanvasGesture = { kind: "idle" };
+	const getDrag = () => (gesture.kind === "drag" ? gesture.drag : null);
+	const getWireChain = () => (gesture.kind === "wire" ? gesture.wire : null);
+	const getTrack = () => (gesture.kind === "track" ? gesture.track : null);
+	const getZoneChain = () => (gesture.kind === "zone" ? gesture.zone : null);
+	const getWire = () => getWireChain() ?? getTrack() ?? getZoneChain();
+	createEffect(
+		() => [tool(), selected(), shapes()] as const,
+		([current, selection, drawing]) => {
+			if (current !== "select" || !selection.length) return;
+			if (typeof requestIdleCallback !== "function") return;
+			let id = 0;
+			const prepare = (deadline: IdleDeadline) => {
+				if (deadline.timeRemaining() < 12 || gesture.kind !== "idle")
+					id = requestIdleCallback(prepare);
+				else prepareMove(selection, drawing);
+			};
+			id = requestIdleCallback(prepare);
+			return () => cancelIdleCallback(id);
+		},
 	);
-	const clearPlacementPreview = useCallback(
-		() => setPlacementPreview(null),
-		[],
+	const [movingShapeId, setMovingShapeId] = createSignal<number | null>(null);
+	const [wirePreview, setWirePreview] = createSignal<EditorShape[] | null>(
+		null,
 	);
-	const gesture = useRef<CanvasGesture>({ kind: "idle" });
-	const getGesture = useCallback(
-		(): CanvasGesture =>
-			gesture.current.kind === "idle" && tool !== "select" && tool !== "pan"
-				? { kind: "placing", tool }
-				: gesture.current,
-		[tool],
+	const [connectionHover, setConnectionHover] = createSignal<Point | null>(
+		null,
+		{ equals: samePoint },
 	);
-	const getDrag = useCallback(() => {
-		const active = getGesture();
-		return active.kind === "drag" ? active.drag : null;
-	}, [getGesture]);
-	const getWireChain = useCallback(() => {
-		const active = getGesture();
-		return active.kind === "wire" ? active.wire : null;
-	}, [getGesture]);
-	const getTrack = useCallback(() => {
-		const active = getGesture();
-		return active.kind === "track" ? active.track : null;
-	}, [getGesture]);
-	const getZoneChain = useCallback(() => {
-		const active = getGesture();
-		return active.kind === "zone" ? active.zone : null;
-	}, [getGesture]);
-	const getWire = useCallback(
-		() => getWireChain() ?? getTrack() ?? getZoneChain(),
-		[getWireChain, getTrack, getZoneChain],
-	);
-	useEffect(() => {
-		if (tool !== "select" || !selected.length) return;
-		if (typeof requestIdleCallback !== "function") return;
-		let id = 0;
-		const prepare = (deadline: IdleDeadline) => {
-			if (deadline.timeRemaining() < 12 || gesture.current.kind !== "idle")
-				id = requestIdleCallback(prepare);
-			else prepareMove(selected, shapes);
-		};
-		id = requestIdleCallback(prepare);
-		return () => cancelIdleCallback(id);
-	}, [tool, selected, shapes]);
-	const [movingShapeId, setMovingShapeId] = useState<number | null>(null);
-	const [wirePreview, setWirePreview] = useState<EditorShape[] | null>(null);
-	const [connectionHover, setConnectionHover] = useState<Point | null>(null);
 	const heightOf = (shape: EditorShape) =>
-		cameraView.getProjection()?.heightOf(shape) ?? 0;
+		options.cameraView.getProjection()?.heightOf(shape) ?? 0;
 	const toolLayers = (): readonly FootprintLayer[] => {
+		const { tool, footprintLayer, board } = options;
 		if (isPadTool(tool))
 			return newPadLayers(padToolTypes[tool], footprintLayer ?? "F.Cu");
 		if (tool === "via") return copperLayers;
@@ -337,18 +287,18 @@ export function useCanvasGestures({
 		return footprintLayer ? [footprintLayer] : [];
 	};
 	const toolHeight = () =>
-		cameraView.getProjection()?.layerHeight(toolLayers()) ?? 0;
+		options.cameraView.getProjection()?.layerHeight(toolLayers()) ?? 0;
 	const screenPoint = (
-		event: Pick<ReactPointerEvent, "clientX" | "clientY">,
+		event: Pick<PointerEvent, "clientX" | "clientY">,
 		canvas: HTMLCanvasElement,
 	) => {
 		const rect = canvas.getBoundingClientRect();
 		return { x: event.clientX - rect.left, y: event.clientY - rect.top };
 	};
 	const handleAt = (screen: Point) => {
-		const projection = cameraView.getProjection();
+		const projection = options.cameraView.getProjection();
 		if (!projection) return undefined;
-		return [...handles].reverse().find(({ shape, handle }) => {
+		return [...options.handles].reverse().find(({ shape, handle }) => {
 			const at = projection.toScreen(handle, projection.heightOf(shape));
 			return (
 				at !== null &&
@@ -358,22 +308,23 @@ export function useCanvasGestures({
 		});
 	};
 	const pointAt = (
-		event: Pick<ReactPointerEvent, "clientX" | "clientY">,
+		event: Pick<PointerEvent, "clientX" | "clientY">,
 		canvas: HTMLCanvasElement,
 		height = 0,
 	) =>
-		cameraView.getProjection()?.toWorld(screenPoint(event, canvas), height) ??
-		null;
+		options.cameraView
+			.getProjection()
+			?.toWorld(screenPoint(event, canvas), height) ?? null;
 	const pick = (
-		event: Pick<ReactPointerEvent, "clientX" | "clientY">,
+		event: Pick<PointerEvent, "clientX" | "clientY">,
 		canvas: HTMLCanvasElement,
 	) => {
-		const projection = cameraView.getProjection();
+		const projection = options.cameraView.getProjection();
 		if (!projection) return undefined;
 		const screen = screenPoint(event, canvas);
 		const points = new Map<number, Point | null>();
 		return shapeAt(
-			projection.nearestLast(shapes),
+			projection.nearestLast(options.shapes),
 			(shape) => {
 				const height = projection.heightOf(shape);
 				let point = points.get(height);
@@ -384,22 +335,22 @@ export function useCanvasGestures({
 				return point;
 			},
 			6 / projection.scale,
-			(shape) => canSelectShape(shape, allowLocked),
+			(shape) => canSelectShape(shape, options.allowLocked),
 		);
 	};
-	const stop = (event: ReactPointerEvent) => {
+	const stop = (event: Event) => {
 		event.preventDefault();
 		event.stopPropagation();
 	};
 	const previewReplacements = (
 		replacements: EditorShape[],
-		base = session.shapes(),
+		base = options.session.shapes(),
 	) => {
 		const byId = new Map(replacements.map((shape) => [shape.id, shape]));
 		const existing = new Set(base.map((shape) => shape.id));
 		// Rerouting deletes a wire by collapsing it to zero length. The preview
 		// keeps it so the release commits it, and committing drops it.
-		session.preview([
+		options.session.preview([
 			...base.map((shape) => byId.get(shape.id) ?? shape),
 			...replacements.filter((shape) => !existing.has(shape.id)),
 		]);
@@ -407,110 +358,105 @@ export function useCanvasGestures({
 	const placementAnchor = (tool: PlacementTool, point: Point, start: Point) =>
 		placementSnapsToConnection(tool)
 			? (findWireConnection(
-					session.shapes(),
+					options.session.shapes(),
 					point,
-					8 / (cameraView.getProjection()?.scale ?? 1),
+					8 / (options.cameraView.getProjection()?.scale ?? 1),
 				) ?? start)
 			: start;
 	// Routing obstacles are rebuilt only after the drawing changes.
-	const routing = useRef<WireRoutingContext | null>(null);
-	const routed = useRef<{
+	let routing: WireRoutingContext | null = null;
+	let routed: {
 		key: string;
 		start: Point;
 		shapes: readonly EditorShape[];
 		points: Point[];
 		clear: boolean;
-	} | null>(null);
-	const previewWire = useCallback(
-		(point: Point) => {
-			const active = getWireChain();
-			if (!active) return null;
-			const snapStep = cameraView.getGridStep();
-			const shapes = session.shapes();
-			const connection = findWireConnection(
-				shapes,
-				point,
-				8 / (cameraView.getProjection()?.scale ?? 1),
-				active.start,
-			);
-			setConnectionHover(connection ?? null);
-			let segments: EditorShape[];
-			let end: Point;
-			if (connection) {
-				// Ending on a connection routes the rest of the wire around obstacles.
-				const pitch = routingPitch(snapStep);
-				const key = `${connection.x},${connection.y},${active.fromPin},${active.heading},${pitch}`;
-				if (
-					routed.current?.key !== key ||
-					routed.current.start !== active.start ||
-					routed.current.shapes !== shapes
-				) {
-					if (routing.current?.shapes !== shapes)
-						routing.current = createWireRoutingContext(shapes);
-					const context = routing.current;
-					const { points, clear } = measurePerformance(
-						"editor.wire-route",
-						() =>
-							routeWireConnection(context, active.start, connection, {
-								pitch,
-								heading: active.heading,
-								fromPin: active.fromPin,
-							}),
-						{ shapes: shapes.length },
-					);
-					routed.current = {
-						key,
-						start: active.start,
-						shapes,
-						points,
-						clear,
-					};
-				}
-				end = connection;
-				segments = pathWires(session.nextId(), routed.current.points);
-				// No safe route: show the fallback, but never connect through it.
-				if (!routed.current.clear) {
-					setWirePreview(segments);
-					return { segments, end, connected: true, blocked: true };
-				}
-			} else {
-				end = constrainWireEndpoint(active.start, point, snapStep);
-				segments = routeWire(session.nextId(), active.start, end);
+	} | null = null;
+	const previewWire = (point: Point) => {
+		const active = getWireChain();
+		if (!active) return null;
+		const snapStep = options.cameraView.getGridStep();
+		const shapes = options.session.shapes();
+		const connection = findWireConnection(
+			shapes,
+			point,
+			8 / (options.cameraView.getProjection()?.scale ?? 1),
+			active.start,
+		);
+		setConnectionHover(connection ?? null);
+		let segments: EditorShape[];
+		let end: Point;
+		if (connection) {
+			// Ending on a connection routes the rest of the wire around obstacles.
+			const pitch = routingPitch(snapStep);
+			const key = `${connection.x},${connection.y},${active.fromPin},${active.heading},${pitch}`;
+			if (
+				routed?.key !== key ||
+				routed.start !== active.start ||
+				routed.shapes !== shapes
+			) {
+				if (routing?.shapes !== shapes)
+					routing = createWireRoutingContext(shapes);
+				const context = routing;
+				const { points, clear } = measurePerformance(
+					"editor.wire-route",
+					() =>
+						routeWireConnection(context, active.start, connection, {
+							pitch,
+							heading: active.heading,
+							fromPin: active.fromPin,
+						}),
+					{ shapes: shapes.length },
+				);
+				routed = {
+					key,
+					start: active.start,
+					shapes,
+					points,
+					clear,
+				};
 			}
-			setWirePreview(segments);
-			return { segments, end, connected: !!connection, blocked: false };
-		},
-		[getWireChain, cameraView, session],
-	);
-	const finishWire = useCallback(() => {
+			end = connection;
+			segments = pathWires(options.session.nextId(), routed.points);
+			// No safe route: show the fallback, but never connect through it.
+			if (!routed.clear) {
+				setWirePreview(segments);
+				return { segments, end, connected: true, blocked: true };
+			}
+		} else {
+			end = constrainWireEndpoint(active.start, point, snapStep);
+			segments = routeWire(options.session.nextId(), active.start, end);
+		}
+		setWirePreview(segments);
+		return { segments, end, connected: !!connection, blocked: false };
+	};
+	const finishWire = () => {
 		if (
-			gesture.current.kind === "wire" ||
-			gesture.current.kind === "track" ||
-			gesture.current.kind === "zone"
+			gesture.kind === "wire" ||
+			gesture.kind === "track" ||
+			gesture.kind === "zone"
 		)
-			gesture.current = { kind: "idle" };
+			gesture = { kind: "idle" };
 		setWirePreview(null);
 		setConnectionHover(null);
 		clearPlacementPreview();
-	}, [clearPlacementPreview]);
-	const startWire = useCallback(
-		(connection: Point, pointerId: number) => {
-			gesture.current = {
-				kind: "wire",
-				wire: { start: connection, pointerId, fromPin: true },
-			};
-			previewWire(connection);
-		},
-		[previewWire],
-	);
+	};
+	const startWire = (connection: Point, pointerId: number) => {
+		gesture = {
+			kind: "wire",
+			wire: { start: connection, pointerId, fromPin: true },
+		};
+		previewWire(connection);
+	};
 	const stepDrag = (active: Drag, point: Point | null, end: Point) => {
 		const step = canvasDragStep(active, point, end, {
-			shapes,
-			allowLocked,
-			cameraScale: () => cameraView.getProjection()?.scale ?? 1,
-			nextId: session.nextId,
+			shapes: options.shapes,
+			allowLocked: options.allowLocked,
+			cameraScale: () => options.cameraView.getProjection()?.scale ?? 1,
+			nextId: options.session.nextId,
 			inScreenBox: (shape, box, mode) =>
-				cameraView.getProjection()?.inScreenBox(shape, box, mode) ?? false,
+				options.cameraView.getProjection()?.inScreenBox(shape, box, mode) ??
+				false,
 		});
 		active.moved = step.moved;
 		active.valid = step.valid;
@@ -522,14 +468,14 @@ export function useCanvasGestures({
 			previewReplacements(effect.replacements, effect.base);
 		} else if (effect.kind === "marquee-cancel") {
 			setMarquee(null);
-			session.select(effect.selection);
+			options.session.select(effect.selection);
 		} else if (effect.kind === "marquee") {
 			setMarquee(effect.marquee);
-			session.select(effect.selection);
+			options.session.select(effect.selection);
 		}
 	};
 	const beginDrag = (
-		event: ReactPointerEvent,
+		event: PointerEvent,
 		canvas: HTMLCanvasElement,
 		drag: Omit<
 			CanvasDrag,
@@ -543,23 +489,23 @@ export function useCanvasGestures({
 			| "valid"
 		>,
 	) => {
-		gesture.current = {
+		gesture = {
 			kind: "drag",
 			drag: {
 				pointerId: event.pointerId,
 				canvas,
 				startScreen: screenPoint(event, canvas),
-				previousSelection: selectedIds,
-				previousChild: selectedChildKey,
+				previousSelection: options.selectedIds,
+				previousChild: options.selectedChildKey,
 				moved: false,
-				initialShapes: session.shapes(),
+				initialShapes: options.session.shapes(),
 				valid: false,
 				...drag,
 			},
 		};
 		canvas.setPointerCapture(event.pointerId);
 	};
-	const updateDrag = (event: ReactPointerEvent) => {
+	const updateDrag = (event: PointerEvent) => {
 		const active = getDrag();
 		if (!active || active.pointerId !== event.pointerId) return;
 		stop(event);
@@ -570,127 +516,124 @@ export function useCanvasGestures({
 		active.pointer = end;
 		stepDrag(active, point, end);
 	};
-	const refreshMarqueeMode = useEffectEvent((event: KeyboardEvent) => {
+	const refreshMarqueeMode = (event: KeyboardEvent) => {
 		const active = getDrag();
 		if (active?.mode !== "marquee" || !active.pointer) return;
 		const mode = selectionMode(event);
 		if (mode === active.selectionMode) return;
 		active.selectionMode = mode;
 		stepDrag(active, null, active.pointer);
-	});
-	const marqueeActive = marquee !== null;
-	useEffect(() => {
-		if (!marqueeActive) return;
+	};
+	const marqueeActive = createMemo(() => marquee() !== null);
+	createEffect(marqueeActive, (active) => {
+		if (!active) return;
 		window.addEventListener("keydown", refreshMarqueeMode);
 		window.addEventListener("keyup", refreshMarqueeMode);
 		return () => {
 			window.removeEventListener("keydown", refreshMarqueeMode);
 			window.removeEventListener("keyup", refreshMarqueeMode);
 		};
-	}, [marqueeActive]);
-	const finishDrag = useCallback(
-		(cancel = false) => {
-			const active = getDrag();
-			if (!active) return;
-			gesture.current = { kind: "idle" };
-			setMovingShapeId(null);
-			active.canvas.style.cursor = "";
-			setMarquee(null);
-			// Releasing where a wire could only cross another net restores the drag.
-			if (active.mode === "move" && active.unsafe && !cancel)
-				session.setError(UNSAFE_MOVE_MESSAGE);
-			if (
-				cancel ||
-				(active.created && !active.valid) ||
-				(active.mode === "move" && active.unsafe)
-			) {
-				session.preview(null);
-				session.select(active.previousSelection);
-				session.selectChild(active.previousChild);
-			} else if (active.wireStart && !active.moved) {
-				session.preview(null);
-				session.select(new Set());
-				setTool("wire");
-				startWire(active.wireStart, active.pointerId);
-			} else if (active.created) {
-				const original = active.originals[0];
-				const kind =
-					original.kind === "text" && original.electrical
-						? `${original.electrical} label`
-						: original.kind === "rectangle" && original.zone
-							? "zone"
-							: original.kind;
-				const createdIds = new Set(active.originals.map((shape) => shape.id));
-				session.place(
-					session.shapes().filter((shape) => createdIds.has(shape.id)),
-					active.mode !== "duplicate"
-						? `Draw ${kind}`
-						: active.originals.length > 1
-							? "Duplicate selection"
-							: `Duplicate ${kind}`,
+	});
+	const finishDrag = (cancel = false) => {
+		const active = getDrag();
+		if (!active) return;
+		gesture = { kind: "idle" };
+		setMovingShapeId(null);
+		active.canvas.style.cursor = "";
+		setMarquee(null);
+		// Releasing where a wire could only cross another net restores the drag.
+		if (active.mode === "move" && active.unsafe && !cancel)
+			options.session.setError(UNSAFE_MOVE_MESSAGE);
+		if (
+			cancel ||
+			(active.created && !active.valid) ||
+			(active.mode === "move" && active.unsafe)
+		) {
+			options.session.preview(null);
+			options.session.select(active.previousSelection);
+			options.session.selectChild(active.previousChild);
+		} else if (active.wireStart && !active.moved) {
+			options.session.preview(null);
+			options.session.select(new Set());
+			options.setTool("wire");
+			startWire(active.wireStart, active.pointerId);
+		} else if (active.created) {
+			const original = active.originals[0];
+			const kind =
+				original.kind === "text" && original.electrical
+					? `${original.electrical} label`
+					: original.kind === "rectangle" && original.zone
+						? "zone"
+						: original.kind;
+			const createdIds = new Set(active.originals.map((shape) => shape.id));
+			options.session.place(
+				options.session.shapes().filter((shape) => createdIds.has(shape.id)),
+				active.mode !== "duplicate"
+					? `Draw ${kind}`
+					: active.originals.length > 1
+						? "Duplicate selection"
+						: `Duplicate ${kind}`,
+			);
+			options.setTool("select");
+		} else if (
+			active.mode === "move" ||
+			active.mode === "resize" ||
+			active.mode === "symbol-child"
+		) {
+			const initial = new Map(
+				active.initialShapes.map((shape) => [shape.id, shape]),
+			);
+			const changed = options.session
+				.shapes()
+				.filter((shape) => shape !== initial.get(shape.id));
+			if (!changed.length) options.session.preview(null);
+			else
+				options.session.replace(
+					changed.map(freeze),
+					active.mode === "symbol-child"
+						? active.handle
+							? "Resize symbol child"
+							: "Move symbol child"
+						: active.mode === "move"
+							? "Move selection"
+							: active.handle?.corner !== undefined
+								? "Edit zone outline"
+								: `Resize ${active.originals[0].kind}`,
 				);
-				setTool("select");
-			} else if (
-				active.mode === "move" ||
-				active.mode === "resize" ||
-				active.mode === "symbol-child"
-			) {
-				const initial = new Map(
-					active.initialShapes.map((shape) => [shape.id, shape]),
-				);
-				const changed = session
-					.shapes()
-					.filter((shape) => shape !== initial.get(shape.id));
-				if (!changed.length) session.preview(null);
-				else
-					session.replace(
-						changed.map(freeze),
-						active.mode === "symbol-child"
-							? active.handle
-								? "Resize symbol child"
-								: "Move symbol child"
-							: active.mode === "move"
-								? "Move selection"
-								: active.handle?.corner !== undefined
-									? "Edit zone outline"
-									: `Resize ${active.originals[0].kind}`,
-					);
-			}
-			if (active.canvas.hasPointerCapture(active.pointerId))
-				active.canvas.releasePointerCapture(active.pointerId);
-		},
-		[getDrag, session, setTool, startWire],
-	);
+		}
+		if (active.canvas.hasPointerCapture(active.pointerId))
+			active.canvas.releasePointerCapture(active.pointerId);
+	};
 	const placementHandler = (kind: PlacementTool): ToolHandler => ({
 		press: (_event, point, start) => {
 			const placed = {
 				...onLayer(
 					createPlacementShape(
 						kind,
-						session.nextId(),
+						options.session.nextId(),
 						placementAnchor(kind, point, start),
 						measureText,
 					),
 				),
-				rotation: placementRotation,
+				rotation: placementRotation(),
 			};
-			session.place([placed], placementLabel(kind));
-			setTool("select");
+			options.session.place([placed], placementLabel(kind));
+			options.setTool("select");
 			if (placed.kind === "text") {
-				setTextFocusId(placed.id);
-				openAttributes();
+				options.setTextFocusId(placed.id);
+				options.openAttributes();
 			}
 			return;
 		},
 		hover: (_event, point) => {
 			setPlacementPreview({
-				tool,
-				symbolDefinition,
+				tool: options.tool,
+				symbolDefinition: options.symbolDefinition,
 				shape: onLayer(
 					createPlacementShape(
 						kind,
-						session.nextId(),
-						placementAnchor(kind, point, snapPoint(point, gridStep)),
+						options.session.nextId(),
+						placementAnchor(kind, point, snapPoint(point, options.gridStep)),
 						measureText,
 					),
 				),
@@ -700,55 +643,74 @@ export function useCanvasGestures({
 	});
 	const padAt = (tool: PadTool, center: Point) =>
 		createPad(
-			session.nextId(),
+			options.session.nextId(),
 			center,
 			padToolTypes[tool],
-			nextPadNumber(session.drawing().shapes),
-			footprintLayer ?? "F.Cu",
+			nextPadNumber(options.session.drawing().shapes),
+			options.footprintLayer ?? "F.Cu",
 		);
 	const padHandler = (kind: PadTool): ToolHandler => ({
 		press: (_event, _point, start) => {
-			session.place(
-				[{ ...padAt(kind, start), rotation: placementRotation }],
+			options.session.place(
+				[{ ...padAt(kind, start), rotation: placementRotation() }],
 				"Place pad",
 			);
 		},
 		hover: (_canvas, point) => {
 			setPlacementPreview({
-				tool,
-				symbolDefinition,
-				shape: padAt(kind, snapPoint(point, gridStep)),
+				tool: options.tool,
+				symbolDefinition: options.symbolDefinition,
+				shape: padAt(kind, snapPoint(point, options.gridStep)),
 			});
 			return true;
 		},
 	});
-	const boardVia = (id: number, center: Point, net?: string) =>
-		board ? ruleVia(id, center, board.rules, net) : createVia(id, center);
+	const boardVia = (
+		id: number,
+		center: Point,
+		net?: string,
+		board = options.board,
+	) => (board ? ruleVia(id, center, board.rules, net) : createVia(id, center));
 	const viaHandler: ToolHandler = {
 		press: (_event, _point, start) => {
-			session.place(
-				[boardVia(session.nextId(), start, board?.netAt(start))],
+			options.session.place(
+				[
+					boardVia(
+						options.session.nextId(),
+						start,
+						options.board?.netAt(start),
+					),
+				],
 				"Place via",
 			);
 		},
 		hover: (_canvas, point) => {
 			setPlacementPreview({
-				tool,
-				symbolDefinition,
-				shape: boardVia(session.nextId(), snapPoint(point, gridStep)),
+				tool: options.tool,
+				symbolDefinition: options.symbolDefinition,
+				shape: boardVia(
+					options.session.nextId(),
+					snapPoint(point, options.gridStep),
+				),
 			});
 			return true;
 		},
 	};
 	const holeHandler: ToolHandler = {
 		press: (_event, _point, start) => {
-			session.place([createHole(session.nextId(), start)], "Place hole");
+			options.session.place(
+				[createHole(options.session.nextId(), start)],
+				"Place hole",
+			);
 		},
 		hover: (_canvas, point) => {
 			setPlacementPreview({
-				tool,
-				symbolDefinition,
-				shape: createHole(session.nextId(), snapPoint(point, gridStep)),
+				tool: options.tool,
+				symbolDefinition: options.symbolDefinition,
+				shape: createHole(
+					options.session.nextId(),
+					snapPoint(point, options.gridStep),
+				),
 			});
 			return true;
 		},
@@ -757,9 +719,9 @@ export function useCanvasGestures({
 		point: Point,
 		chain?: Partial<Pick<TrackChain, "layer" | "net" | "start">>,
 	) => {
-		if (!board) return undefined;
-		const scale = cameraView.getProjection()?.scale ?? 1;
-		return trackAnchor(board.items(), point, {
+		if (!options.board) return undefined;
+		const scale = options.cameraView.getProjection()?.scale ?? 1;
+		return trackAnchor(options.board.items(), point, {
 			layer: chain?.layer,
 			net: chain?.net,
 			exclude: chain?.start,
@@ -768,30 +730,35 @@ export function useCanvasGestures({
 		});
 	};
 	const startAnchorAt = (point: Point) =>
-		anchorAt(point, { layer: board?.copperLayer }) ?? anchorAt(point);
+		anchorAt(point, { layer: options.board?.copperLayer }) ?? anchorAt(point);
 	/** The preview of the track from the chain's start to `point`, and its end. */
 	const previewTrack = (point: Point) => {
 		const active = getTrack();
-		if (!active || !board) return null;
+		if (!active || !options.board) return null;
 		const joins = anchorAt(point, active);
-		const end = joins?.point ?? snapPoint(point, cameraView.getGridStep());
+		const end =
+			joins?.point ?? snapPoint(point, options.cameraView.getGridStep());
 		const segments = trackSegments(
-			session.nextId(),
+			options.session.nextId(),
 			trackPath(active.start, end, active.posture),
 			active.layer,
-			board.rules.trackWidth,
+			options.board.rules.trackWidth,
 			active.net ?? joins?.item.net,
 		);
 		setWirePreview(segments);
 		setConnectionHover(joins && segments.length ? joins.point : null);
 		return { segments, end, joins };
 	};
-	const switchTrackLayer = useEffectEvent((layer: CopperLayer) => {
+	const switchTrackLayer = (
+		layer: CopperLayer,
+		board = options.board,
+		session = options.session,
+	) => {
 		const active = getTrack();
-		if (!active || !board || active.layer === layer) return false;
+		if (!active || active.layer === layer || !board) return false;
 		const { start, through } = active;
 		if (through?.x !== start.x || through.y !== start.y) {
-			const via = boardVia(session.nextId(), start, active.net);
+			const via = boardVia(session.nextId(), start, active.net, board);
 			session.place([via], "Place via");
 			if (active.net === undefined) active.netless.push(via.id);
 			active.through = { ...start };
@@ -800,61 +767,74 @@ export function useCanvasGestures({
 		board.setCopperLayer(layer);
 		setWirePreview(null);
 		return true;
-	});
-	const placeTrackVia = useEffectEvent(() => {
+	};
+	const placeTrackVia = () => {
 		const active = getTrack();
 		return active ? switchTrackLayer(otherCopperLayer(active.layer)) : false;
-	});
-	const stepCopperLayer = useEffectEvent((step: 1 | -1) => {
-		if (!board) return false;
-		const current = getTrack()?.layer ?? board.copperLayer;
-		const next = board.copperLayers[board.copperLayers.indexOf(current) + step];
+	};
+	const stepCopperLayer = (step: 1 | -1) => {
+		if (!options.board) return false;
+		const current = getTrack()?.layer ?? options.board.copperLayer;
+		const next =
+			options.board.copperLayers[
+				options.board.copperLayers.indexOf(current) + step
+			];
 		if (!next) return false;
 		if (getTrack()) return switchTrackLayer(next);
-		board.setCopperLayer(next);
+		options.board.setCopperLayer(next);
 		return true;
-	});
-	const boardCopperLayer = board?.copperLayer;
-	const boardStack = board?.copperLayers;
-	const shownStack = useRef(boardStack);
-	const followCopperLayer = useEffectEvent(
-		(layer: CopperLayer | undefined, stack: typeof boardStack) => {
-			if (stack !== shownStack.current) {
-				shownStack.current = stack;
+	};
+	const boardGestures = createMemo(() => options.board);
+	const boardCopperLayer = createMemo(() => boardGestures()?.copperLayer);
+	const boardStack = createMemo(() => boardGestures()?.copperLayers);
+	const editorSession = createMemo(() => options.session);
+	let shownStack: readonly CopperLayer[] | undefined;
+	let followed = false;
+	createEffect(
+		() =>
+			[
+				boardCopperLayer(),
+				boardStack(),
+				boardGestures(),
+				editorSession(),
+			] as const,
+		([layer, stack, board, session]) => {
+			if (followed && stack !== shownStack) {
+				shownStack = stack;
 				const active = getTrack() ?? getZoneChain();
 				if (active && stack && !stack.includes(active.layer)) finishWire();
 				return;
 			}
-			if (layer) switchTrackLayer(layer);
+			followed = true;
+			shownStack = stack;
+			if (layer) switchTrackLayer(layer, board, session);
 		},
 	);
-	useEffect(
-		() => followCopperLayer(boardCopperLayer, boardStack),
-		[boardCopperLayer, boardStack],
-	);
-	const flipTrackPosture = useEffectEvent(() => {
+	const flipTrackPosture = () => {
 		const active = getTrack();
 		if (!active) return false;
 		active.posture =
 			active.posture === "straight-first" ? "diagonal-first" : "straight-first";
 		setWirePreview(null);
 		return true;
-	});
+	};
 	const trackHandler: ToolHandler = {
 		press: (event, point) => {
-			if (!board) return;
+			if (!options.board) return;
 			const active = getTrack();
 			if (!active) {
 				const anchor = startAnchorAt(point);
-				let layer = board.copperLayer;
+				let layer = options.board.copperLayer;
 				if (anchor && !anchor.item.layers.includes(layer)) {
 					layer = anchor.item.layers[0];
-					board.setCopperLayer(layer);
+					options.board.setCopperLayer(layer);
 				}
-				gesture.current = {
+				gesture = {
 					kind: "track",
 					track: {
-						start: anchor?.point ?? snapPoint(point, cameraView.getGridStep()),
+						start:
+							anchor?.point ??
+							snapPoint(point, options.cameraView.getGridStep()),
 						layer,
 						...(anchor?.item.net ? { net: anchor.item.net } : {}),
 						netless: [],
@@ -873,9 +853,9 @@ export function useCanvasGestures({
 			const net = next.segments[0]?.net;
 			if (net !== undefined && active.netless.length) {
 				const earlier = new Set(active.netless);
-				session.replace(
+				options.session.replace(
 					[
-						...session
+						...options.session
 							.shapes()
 							.filter((shape) => earlier.has(shape.id))
 							.map((shape) => ({ ...shape, net })),
@@ -885,7 +865,7 @@ export function useCanvasGestures({
 				);
 				active.netless = [];
 			} else {
-				session.place(next.segments, "Route track");
+				options.session.place(next.segments, "Route track");
 				if (net === undefined)
 					active.netless.push(...next.segments.map((shape) => shape.id));
 			}
@@ -903,7 +883,7 @@ export function useCanvasGestures({
 				previewTrack(point);
 				return true;
 			}
-			if (!board) return false;
+			if (!options.board) return false;
 			const anchor = startAnchorAt(point);
 			setConnectionHover(anchor?.point ?? null);
 			canvas.style.cursor = "crosshair";
@@ -912,10 +892,10 @@ export function useCanvasGestures({
 	};
 	const zoneHandler: ToolHandler = {
 		create: (start) => {
-			const net = board?.netAt(start);
+			const net = options.board?.netAt(start);
 			return {
-				...drawShape(session.nextId(), "rectangle", start, start),
-				layer: board?.copperLayer ?? "F.Cu",
+				...drawShape(options.session.nextId(), "rectangle", start, start),
+				layer: options.board?.copperLayer ?? "F.Cu",
 				lineWidth: 0.1,
 				zone: {},
 				...(net ? { net } : {}),
@@ -925,7 +905,7 @@ export function useCanvasGestures({
 	const polygonZone = (chain: ZoneChain, points: readonly Point[]) =>
 		withZoneOutline(
 			{
-				id: session.nextId(),
+				id: options.session.nextId(),
 				kind: "rectangle",
 				layer: chain.layer,
 				...points[0],
@@ -939,30 +919,30 @@ export function useCanvasGestures({
 			points,
 		);
 	const closable = (points: readonly Point[]) => {
-		const scale = cameraView.getProjection()?.scale ?? 1;
+		const scale = options.cameraView.getProjection()?.scale ?? 1;
 		return outlineEncloses(points, 9 / (scale * scale));
 	};
 	/** Places the zone drawn so far once its corners enclose an area. A zone still too small keeps drawing. */
-	const closeZone = useEffectEvent(() => {
+	const closeZone = () => {
 		const active = getZoneChain();
 		if (!active) return false;
 		if (!closable(active.points)) return true;
-		session.place([polygonZone(active, active.points)], "Draw zone");
+		options.session.place([polygonZone(active, active.points)], "Draw zone");
 		finishWire();
-		setTool("select");
+		options.setTool("select");
 		return true;
-	});
+	};
 	const previewZone = (point: Point) => {
 		const active = getZoneChain();
 		if (!active) return;
-		const end = snapPoint(point, cameraView.getGridStep());
+		const end = snapPoint(point, options.cameraView.getGridStep());
 		const points = [...active.points, end];
 		setWirePreview(
 			points.length > 2
 				? [polygonZone(active, points)]
 				: [
 						{
-							...drawShape(session.nextId(), "line", points[0], end),
+							...drawShape(options.session.nextId(), "line", points[0], end),
 							layer: active.layer,
 							lineWidth: 0.1,
 						},
@@ -973,13 +953,13 @@ export function useCanvasGestures({
 		press: (event, _point, start) => {
 			const active = getZoneChain();
 			if (!active) {
-				if (!board) return;
-				const net = board.netAt(start);
-				gesture.current = {
+				if (!options.board) return;
+				const net = options.board.netAt(start);
+				gesture = {
 					kind: "zone",
 					zone: {
 						points: [start],
-						layer: board.copperLayer,
+						layer: options.board.copperLayer,
 						...(net ? { net } : {}),
 						pointerId: event.pointerId,
 					},
@@ -987,7 +967,7 @@ export function useCanvasGestures({
 				previewZone(start);
 				return;
 			}
-			const scale = cameraView.getProjection()?.scale ?? 1;
+			const scale = options.cameraView.getProjection()?.scale ?? 1;
 			const near = (point: Point) =>
 				Math.hypot(point.x - start.x, point.y - start.y) * scale < 8;
 			const last = active.points[active.points.length - 1];
@@ -1013,7 +993,7 @@ export function useCanvasGestures({
 	};
 	const outlineHandler: ToolHandler = {
 		create: (start) => ({
-			...drawShape(session.nextId(), "rectangle", start, start),
+			...drawShape(options.session.nextId(), "rectangle", start, start),
 			layer: "Edge.Cuts",
 			lineWidth: 0.1,
 		}),
@@ -1021,7 +1001,8 @@ export function useCanvasGestures({
 	const drawingHandler = (
 		kind: "rectangle" | "circle" | "triangle" | "line",
 	): ToolHandler => ({
-		create: (start) => onLayer(drawShape(session.nextId(), kind, start, start)),
+		create: (start) =>
+			onLayer(drawShape(options.session.nextId(), kind, start, start)),
 	});
 	const toolHandlers: Record<CanvasTool, ToolHandler> = {
 		select: {},
@@ -1045,27 +1026,28 @@ export function useCanvasGestures({
 		outline: outlineHandler,
 		symbol: {
 			press: (_event, _point, start) => {
-				if (!symbolDefinition || (sheetless && symbolDefinition.netSymbol))
-					return;
+				const definition = options.symbolDefinition;
+				if (!definition || (options.sheetless && definition.netSymbol)) return;
 				const symbol = {
-					...createSymbol(session.nextId(), symbolDefinition, start),
-					rotation: placementRotation,
+					...createSymbol(options.session.nextId(), definition, start),
+					rotation: placementRotation(),
 				};
-				session.place([symbol], `Insert ${symbol.attributes.name}`);
+				options.session.place([symbol], `Insert ${symbol.attributes.name}`);
 				clearPlacementPreview();
-				setTool("select");
+				options.setTool("select");
 				return;
 			},
 			hover: (_event, point) => {
-				if (!symbolDefinition) return false;
+				const definition = options.symbolDefinition;
+				if (!definition) return false;
 
 				setPlacementPreview({
-					tool,
-					symbolDefinition,
+					tool: options.tool,
+					symbolDefinition: definition,
 					shape: createSymbol(
-						session.nextId(),
-						symbolDefinition,
-						snapPoint(point, gridStep),
+						options.session.nextId(),
+						definition,
+						snapPoint(point, options.gridStep),
 					),
 				});
 				return true;
@@ -1076,9 +1058,9 @@ export function useCanvasGestures({
 				const active = getWireChain();
 				if (!active) {
 					const connection = findWireConnection(
-						session.shapes(),
+						options.session.shapes(),
 						point,
-						8 / (cameraView.getProjection()?.scale ?? 1),
+						8 / (options.cameraView.getProjection()?.scale ?? 1),
 					);
 					if (!connection) return;
 					startWire(connection, event.pointerId);
@@ -1089,14 +1071,14 @@ export function useCanvasGestures({
 					!next ||
 					next.blocked ||
 					next.segments.reduce((sum, segment) => sum + segment.width, 0) *
-						(cameraView.getProjection()?.scale ?? 1) <
+						(options.cameraView.getProjection()?.scale ?? 1) <
 						3
 				)
 					return;
-				session.place(next.segments, "Draw wire");
+				options.session.place(next.segments, "Draw wire");
 				if (next.connected) {
 					finishWire();
-					setTool("select");
+					options.setTool("select");
 					return;
 				}
 				active.heading = finalHeading(
@@ -1112,9 +1094,9 @@ export function useCanvasGestures({
 				if (getWireChain()) return false;
 
 				const connection = findWireConnection(
-					session.shapes(),
+					options.session.shapes(),
 					point,
-					8 / (cameraView.getProjection()?.scale ?? 1),
+					8 / (options.cameraView.getProjection()?.scale ?? 1),
 				);
 				setConnectionHover(connection ?? null);
 				canvas.style.cursor = connection ? "crosshair" : "not-allowed";
@@ -1122,348 +1104,381 @@ export function useCanvasGestures({
 			},
 		},
 	};
-	const pointerHandlers: Pick<
-		DOMAttributes<HTMLDivElement>,
-		| "onPointerLeave"
-		| "onDoubleClickCapture"
-		| "onPointerDownCapture"
-		| "onPointerMoveCapture"
-		| "onPointerUpCapture"
-		| "onPointerCancelCapture"
-		| "onLostPointerCapture"
-	> = {
-		onPointerLeave: () => {
-			clearPlacementPreview();
-			setConnectionHover(null);
-		},
-		onDoubleClickCapture: (event) => {
-			if (!(event.target instanceof HTMLCanvasElement) || tool !== "select")
-				return;
-			const shape = pick(event, event.target);
-			if (!shape) return;
-			event.preventDefault();
-			event.stopPropagation();
-			if (shape.kind === "text") {
-				session.select(new Set([shape.id]));
-				setTextFocusId(shape.id);
-			} else if (!session.getState().selection.has(shape.id))
-				session.select(new Set([shape.id]));
-			openAttributes();
-		},
-		onPointerDownCapture: (event) => {
-			const canvas = event.target;
-			if (!(canvas instanceof HTMLCanvasElement) || !ready) return;
-			if (getDrag()) {
-				stop(event);
-				return;
-			}
-			const mode = selectionMode(event);
-			if (
-				!event.isPrimary ||
-				event.button !== 0 ||
-				tool === "pan" ||
-				(event.shiftKey &&
-					!event[shortcutModifier().flag] &&
-					(cameraView.getProjection()?.turned ||
-						(footprintLayer !== undefined && event.altKey))) ||
-				((event.ctrlKey || event.metaKey) &&
-					(tool !== "select" ||
-						event.altKey ||
-						!event[shortcutModifier().flag]))
-			)
-				return;
-			const created = tool !== "select";
-			const hit = created ? undefined : pick(event, canvas);
-			const pressedHandle =
-				event.altKey && hit ? undefined : handleAt(screenPoint(event, canvas));
-			const height = pressedHandle
-				? heightOf(pressedHandle.shape)
-				: hit
-					? heightOf(hit)
-					: created
-						? toolHeight()
-						: 0;
-			const point = pointAt(event, canvas, height);
-			if (!point) {
-				if (!cameraView.getProjection()?.turned) return;
-				stop(event);
-				if (tool !== "select" || pressedHandle || event.altKey) return;
-				canvas.focus({ preventScroll: true });
-				canvas.style.cursor = "";
-				session.select(mode === "replace" ? new Set() : selectedIds);
-				session.selectChild(null);
-				beginDrag(event, canvas, {
-					start: null,
-					mode: "marquee",
-					gridStep: cameraView.getGridStep(),
-					originals: [],
-					created: false,
-					selectionMode: mode,
-				});
-				return;
-			}
-			const duplicate =
-				event.altKey && hit
-					? selectedIds.has(hit.id)
-						? selected.filter((shape) => canSelectShape(shape, allowLocked))
-						: [hit]
-					: undefined;
-			if (event.altKey && !duplicate) return;
-			stop(event);
-			canvas.focus({ preventScroll: true });
-			const resize = duplicate ? undefined : pressedHandle;
-			canvas.style.cursor = resize?.handle.cursor ?? "";
-			let shape: EditorShape | undefined;
-			const snapStep = cameraView.getGridStep();
-			const start = created ? snapPoint(point, snapStep) : point;
-			let wireStart: Point | undefined;
-			const childHit =
-				!created &&
-				!resize &&
-				!duplicate &&
-				mode === "replace" &&
-				selectedSymbol &&
-				hit?.id === selectedSymbol.id
-					? symbolChildAt(
-							selectedSymbol,
-							point,
-							2 / (cameraView.getProjection()?.scale ?? 1),
-							allowLocked,
-						)
-					: undefined;
-			if (childHit) shape = selectedSymbol;
-			const editableChild =
-				childHit &&
-				selectedSymbol &&
-				canSelectSymbolChild(selectedSymbol, childHit, allowLocked)
-					? childHit
-					: undefined;
-			// Pressing a fixed pin selects it, and dragging still moves the symbol.
-			const inspectedChild =
-				editableChild ??
-				(childHit &&
-				selectedSymbol &&
-				canInspectSymbolChild(selectedSymbol, childHit, allowLocked)
-					? childHit
-					: undefined);
-
-			if (
-				tool === "select" &&
-				mode === "replace" &&
-				!resize &&
-				!duplicate &&
-				(!childHit || childHit.shape.kind === "pin")
-			) {
-				let connection: ReturnType<typeof openPins>[number] | undefined;
-				let distance = 8 / (cameraView.getProjection()?.scale ?? 1);
-				const candidates = measurePerformance(
-					"editor.pin-hit-test",
-					() =>
-						openPins(session.shapes(), {
-							point,
-							tolerance: distance,
-						}),
-					{ shapes: session.shapes().length },
-				);
-				for (const candidate of candidates) {
-					const terminal = candidate.point;
-					const next = Math.hypot(terminal.x - point.x, terminal.y - point.y);
-					if (
-						next <= distance &&
-						canSelectShape(candidate.shape, allowLocked)
-					) {
-						connection = candidate;
-						distance = next;
-					}
-				}
-				if (connection) {
-					wireStart = connection.point;
-					shape = connection.shape;
-				}
-			}
-			const handler = toolHandlers[tool];
-			if (handler.press) {
-				handler.press(event, point, start);
-				return;
-			}
-			let copies: EditorShape[] = [];
-			if (duplicate && hit) {
-				copies = pasteSelection(
-					duplicate,
-					shapes,
-					session.nextId(),
-					{ x: 0, y: 0 },
-					footprintLayer ? { footprintLayer } : "drawing",
-				);
-				shape = copies[duplicate.findIndex((item) => item.id === hit.id)];
-				session.preview([...session.shapes(), ...copies]);
-			} else if (created) {
-				const create = handler.create;
-				if (!create) return;
-				shape = create(start);
-				session.preview([...session.shapes(), shape]);
-			} else if (resize) shape = resize.shape;
-			else if (!shape) shape = hit;
-			if (
-				hit &&
-				shape === hit &&
-				!resize &&
-				hitsHollowInterior(
-					hit,
-					point,
-					6 / (cameraView.getProjection()?.scale ?? 1),
-				)
-			) {
-				const pressed =
-					mode === "replace" && selectedIds.has(hit.id)
-						? selectedIds
-						: applySelection(selectedIds, [hit.id], mode);
-				session.select(pressed);
-				session.selectChild(null);
-				beginDrag(event, canvas, {
-					start: point,
-					height,
-					mode: "marquee",
-					gridStep: snapStep,
-					originals: [],
-					created: false,
-					selectionMode: mode,
-					pressed,
-				});
-				return;
-			}
-			if (shape && mode !== "replace" && !created && !resize && !duplicate) {
-				session.select(applySelection(selectedIds, [shape.id], mode));
-				return;
-			}
-			const childKey = resize?.childKey ?? editableChild?.key;
-
-			const originals = duplicate
-				? copies
-				: shape
-					? childKey === undefined &&
-						!created &&
-						!resize &&
-						selectedIds.has(shape.id)
-						? selected
-						: [shape]
-					: [];
-			session.select(
-				resize
-					? selectedIds
-					: shape
-						? new Set(originals.map((item) => item.id))
-						: mode === "replace"
-							? new Set()
-							: selectedIds,
-			);
-			session.selectChild(childKey ?? inspectedChild?.key ?? null);
-			beginDrag(event, canvas, {
-				start,
-				height,
-				childKey,
-				mode: duplicate
-					? "duplicate"
-					: childKey !== undefined
-						? "symbol-child"
-						: created
-							? "draw"
-							: resize
-								? "resize"
-								: shape
-									? "move"
-									: "marquee",
-				handle: resize?.handle,
-				anchorShape: shape,
-				gridStep:
-					editableChild?.shape.kind === "text" ||
-					(!created &&
-						!resize &&
-						originals.length > 0 &&
-						originals.every(
-							(item) => item.kind === "text" && !isNetLabel(item),
-						))
-						? snapStep / 10
-						: snapStep,
-				originals,
-				created: created || !!duplicate,
-				selectionMode: mode,
-				wireStart,
-			});
-		},
-		onPointerMoveCapture: (event) => {
-			if (getDrag()) {
-				updateDrag(event);
-				return;
-			}
-			if (!(event.target instanceof HTMLCanvasElement)) return;
-			const point = pointAt(
-				event,
-				event.target,
-				tool === "select" ? 0 : toolHeight(),
-			);
-			if (!point) clearPlacementPreview();
-			else if (toolHandlers[tool].hover?.(event.target, point)) return;
-			if (
-				getWireChain() &&
-				event.isPrimary &&
-				(event.buttons & ~1) === 0 &&
-				!event.ctrlKey &&
-				!event.metaKey &&
-				!event.altKey
-			) {
-				stop(event);
-				if (point) previewWire(point);
-				return;
-			}
-			event.target.style.cursor =
-				handleAt(screenPoint(event, event.target))?.handle.cursor ?? "";
-		},
-		onPointerUpCapture: (event) => {
-			if (getDrag()?.pointerId !== event.pointerId) return;
-			// The release routes without the preview budget, so a move is refused
-			// only when no safe route exists.
-			withFullRouting(() => updateDrag(event));
-			finishDrag();
-		},
-		onPointerCancelCapture: (event) => {
-			if (tool === "symbol") {
-				clearPlacementPreview();
-				setTool("select");
-				return;
-			}
-			if (getWire()?.pointerId === event.pointerId) {
-				stop(event);
-				finishWire();
-				setTool("select");
-				return;
-			}
-			if (getDrag()?.pointerId !== event.pointerId) return;
-			stop(event);
-			finishDrag(true);
-		},
-		onLostPointerCapture: (event) => {
-			if (getDrag()?.pointerId === event.pointerId) finishDrag(true);
-		},
+	const onPointerLeave = () => {
+		clearPlacementPreview();
+		setConnectionHover(null);
 	};
+	const onDoubleClick = (event: MouseEvent) => {
+		if (
+			!(event.target instanceof HTMLCanvasElement) ||
+			options.tool !== "select"
+		)
+			return;
+		const shape = pick(event, event.target);
+		if (!shape) return;
+		event.preventDefault();
+		event.stopPropagation();
+		if (shape.kind === "text") {
+			options.session.select(new Set([shape.id]));
+			options.setTextFocusId(shape.id);
+		} else if (!options.session.getState().selection.has(shape.id))
+			options.session.select(new Set([shape.id]));
+		options.openAttributes();
+	};
+	const onPointerDown = (event: PointerEvent) => {
+		const {
+			tool,
+			session,
+			cameraView,
+			selectedIds,
+			selected,
+			selectedSymbol,
+			allowLocked,
+			footprintLayer,
+			shapes,
+		} = options;
+		const canvas = event.target;
+		if (!(canvas instanceof HTMLCanvasElement) || !options.ready) return;
+		if (getDrag()) {
+			stop(event);
+			return;
+		}
+		const mode = selectionMode(event);
+		if (
+			!event.isPrimary ||
+			event.button !== 0 ||
+			tool === "pan" ||
+			(event.shiftKey &&
+				!event[shortcutModifier().flag] &&
+				(cameraView.getProjection()?.turned ||
+					(footprintLayer !== undefined && event.altKey))) ||
+			((event.ctrlKey || event.metaKey) &&
+				(tool !== "select" || event.altKey || !event[shortcutModifier().flag]))
+		)
+			return;
+		const created = tool !== "select";
+		const hit = created ? undefined : pick(event, canvas);
+		const pressedHandle =
+			event.altKey && hit ? undefined : handleAt(screenPoint(event, canvas));
+		const height = pressedHandle
+			? heightOf(pressedHandle.shape)
+			: hit
+				? heightOf(hit)
+				: created
+					? toolHeight()
+					: 0;
+		const point = pointAt(event, canvas, height);
+		if (!point) {
+			if (!cameraView.getProjection()?.turned) return;
+			stop(event);
+			if (tool !== "select" || pressedHandle || event.altKey) return;
+			canvas.focus({ preventScroll: true });
+			canvas.style.cursor = "";
+			session.select(mode === "replace" ? new Set() : selectedIds);
+			session.selectChild(null);
+			beginDrag(event, canvas, {
+				start: null,
+				mode: "marquee",
+				gridStep: cameraView.getGridStep(),
+				originals: [],
+				created: false,
+				selectionMode: mode,
+			});
+			return;
+		}
+		const duplicate =
+			event.altKey && hit
+				? selectedIds.has(hit.id)
+					? selected.filter((shape) => canSelectShape(shape, allowLocked))
+					: [hit]
+				: undefined;
+		if (event.altKey && !duplicate) return;
+		stop(event);
+		canvas.focus({ preventScroll: true });
+		const resize = duplicate ? undefined : pressedHandle;
+		canvas.style.cursor = resize?.handle.cursor ?? "";
+		let shape: EditorShape | undefined;
+		const snapStep = cameraView.getGridStep();
+		const start = created ? snapPoint(point, snapStep) : point;
+		let wireStart: Point | undefined;
+		const childHit =
+			!created &&
+			!resize &&
+			!duplicate &&
+			mode === "replace" &&
+			selectedSymbol &&
+			hit?.id === selectedSymbol.id
+				? symbolChildAt(
+						selectedSymbol,
+						point,
+						2 / (cameraView.getProjection()?.scale ?? 1),
+						allowLocked,
+					)
+				: undefined;
+		if (childHit) shape = selectedSymbol;
+		const editableChild =
+			childHit &&
+			selectedSymbol &&
+			canSelectSymbolChild(selectedSymbol, childHit, allowLocked)
+				? childHit
+				: undefined;
+		// Pressing a fixed pin selects it, and dragging still moves the symbol.
+		const inspectedChild =
+			editableChild ??
+			(childHit &&
+			selectedSymbol &&
+			canInspectSymbolChild(selectedSymbol, childHit, allowLocked)
+				? childHit
+				: undefined);
+
+		if (
+			tool === "select" &&
+			mode === "replace" &&
+			!resize &&
+			!duplicate &&
+			(!childHit || childHit.shape.kind === "pin")
+		) {
+			let connection: ReturnType<typeof openPins>[number] | undefined;
+			let distance = 8 / (cameraView.getProjection()?.scale ?? 1);
+			const candidates = measurePerformance(
+				"editor.pin-hit-test",
+				() =>
+					openPins(session.shapes(), {
+						point,
+						tolerance: distance,
+					}),
+				{ shapes: session.shapes().length },
+			);
+			for (const candidate of candidates) {
+				const terminal = candidate.point;
+				const next = Math.hypot(terminal.x - point.x, terminal.y - point.y);
+				if (next <= distance && canSelectShape(candidate.shape, allowLocked)) {
+					connection = candidate;
+					distance = next;
+				}
+			}
+			if (connection) {
+				wireStart = connection.point;
+				shape = connection.shape;
+			}
+		}
+		const handler = toolHandlers[tool];
+		if (handler.press) {
+			handler.press(event, point, start);
+			return;
+		}
+		let copies: EditorShape[] = [];
+		if (duplicate && hit) {
+			copies = pasteSelection(
+				duplicate,
+				shapes,
+				session.nextId(),
+				{ x: 0, y: 0 },
+				footprintLayer ? { footprintLayer } : "drawing",
+			);
+			shape = copies[duplicate.findIndex((item) => item.id === hit.id)];
+			session.preview([...session.shapes(), ...copies]);
+		} else if (created) {
+			const create = handler.create;
+			if (!create) return;
+			shape = create(start);
+			session.preview([...session.shapes(), shape]);
+		} else if (resize) shape = resize.shape;
+		else if (!shape) shape = hit;
+		if (
+			hit &&
+			shape === hit &&
+			!resize &&
+			hitsHollowInterior(
+				hit,
+				point,
+				6 / (cameraView.getProjection()?.scale ?? 1),
+			)
+		) {
+			const pressed =
+				mode === "replace" && selectedIds.has(hit.id)
+					? selectedIds
+					: applySelection(selectedIds, [hit.id], mode);
+			session.select(pressed);
+			session.selectChild(null);
+			beginDrag(event, canvas, {
+				start: point,
+				height,
+				mode: "marquee",
+				gridStep: snapStep,
+				originals: [],
+				created: false,
+				selectionMode: mode,
+				pressed,
+			});
+			return;
+		}
+		if (shape && mode !== "replace" && !created && !resize && !duplicate) {
+			session.select(applySelection(selectedIds, [shape.id], mode));
+			return;
+		}
+		const childKey = resize?.childKey ?? editableChild?.key;
+
+		const originals = duplicate
+			? copies
+			: shape
+				? childKey === undefined &&
+					!created &&
+					!resize &&
+					selectedIds.has(shape.id)
+					? selected
+					: [shape]
+				: [];
+		session.select(
+			resize
+				? selectedIds
+				: shape
+					? new Set(originals.map((item) => item.id))
+					: mode === "replace"
+						? new Set()
+						: selectedIds,
+		);
+		session.selectChild(childKey ?? inspectedChild?.key ?? null);
+		beginDrag(event, canvas, {
+			start,
+			height,
+			childKey,
+			mode: duplicate
+				? "duplicate"
+				: childKey !== undefined
+					? "symbol-child"
+					: created
+						? "draw"
+						: resize
+							? "resize"
+							: shape
+								? "move"
+								: "marquee",
+			handle: resize?.handle,
+			anchorShape: shape,
+			gridStep:
+				editableChild?.shape.kind === "text" ||
+				(!created &&
+					!resize &&
+					originals.length > 0 &&
+					originals.every((item) => item.kind === "text" && !isNetLabel(item)))
+					? snapStep / 10
+					: snapStep,
+			originals,
+			created: created || !!duplicate,
+			selectionMode: mode,
+			wireStart,
+		});
+	};
+	const onPointerMove = (event: PointerEvent) => {
+		if (getDrag()) {
+			updateDrag(event);
+			return;
+		}
+		if (!(event.target instanceof HTMLCanvasElement)) return;
+		const point = pointAt(
+			event,
+			event.target,
+			options.tool === "select" ? 0 : toolHeight(),
+		);
+		if (!point) clearPlacementPreview();
+		else if (toolHandlers[options.tool].hover?.(event.target, point)) return;
+		if (
+			getWireChain() &&
+			event.isPrimary &&
+			(event.buttons & ~1) === 0 &&
+			!event.ctrlKey &&
+			!event.metaKey &&
+			!event.altKey
+		) {
+			stop(event);
+			if (point) previewWire(point);
+			return;
+		}
+		event.target.style.cursor =
+			handleAt(screenPoint(event, event.target))?.handle.cursor ?? "";
+	};
+	const onPointerUp = (event: PointerEvent) => {
+		if (getDrag()?.pointerId !== event.pointerId) return;
+		// The release routes without the preview budget, so a move is refused
+		// only when no safe route exists.
+		withFullRouting(() => updateDrag(event));
+		finishDrag();
+	};
+	const onPointerCancel = (event: PointerEvent) => {
+		if (options.tool === "symbol") {
+			clearPlacementPreview();
+			options.setTool("select");
+			return;
+		}
+		if (getWire()?.pointerId === event.pointerId) {
+			stop(event);
+			finishWire();
+			options.setTool("select");
+			return;
+		}
+		if (getDrag()?.pointerId !== event.pointerId) return;
+		stop(event);
+		finishDrag(true);
+	};
+	const onLostPointerCapture = (event: PointerEvent) => {
+		if (getDrag()?.pointerId === event.pointerId) finishDrag(true);
+	};
+	let bound: HTMLElement | undefined;
+	const listeners = [
+		["pointerleave", onPointerLeave, false],
+		["dblclick", onDoubleClick, true],
+		["pointerdown", onPointerDown, true],
+		["pointermove", onPointerMove, true],
+		["pointerup", onPointerUp, true],
+		["pointercancel", onPointerCancel, true],
+		["lostpointercapture", onLostPointerCapture, false],
+	] as const;
+	const unbind = () => {
+		for (const [type, listener, capture] of listeners)
+			bound?.removeEventListener(type, listener as EventListener, capture);
+		bound = undefined;
+	};
+	const pointerRef = (element: HTMLElement) => {
+		if (element === bound) return;
+		unbind();
+		bound = element;
+		for (const [type, listener, capture] of listeners)
+			element.addEventListener(type, listener as EventListener, capture);
+	};
+	onSettled(() => unbind);
 	return {
 		getDrag,
 		getWire,
-		marquee,
-		movingShapeId,
-		wirePreview,
-		placementPreview,
+		get marquee() {
+			return marquee();
+		},
+		get movingShapeId() {
+			return movingShapeId();
+		},
+		get wirePreview() {
+			return wirePreview();
+		},
+		get placementPreview() {
+			return placementPreview();
+		},
 		clearPlacementPreview,
-		canRotatePlacement,
-		placing,
+		get canRotatePlacement() {
+			return canRotatePlacement();
+		},
+		get placing() {
+			return placing();
+		},
 		rotatePlacement,
-		connectionHover,
+		get connectionHover() {
+			return connectionHover();
+		},
 		finishDrag,
 		finishWire,
 		placeTrackVia,
 		stepCopperLayer,
 		flipTrackPosture,
 		closeZone,
-		pointerHandlers,
+		pointerRef,
 	};
 }

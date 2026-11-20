@@ -1,15 +1,13 @@
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
+import type { JSX } from "@solidjs/web";
 import {
-	type ReactNode,
-	type Ref,
-	useCallback,
-	useEffect,
-	useEffectEvent,
-	useImperativeHandle,
-	useMemo,
-	useRef,
-	useState,
-} from "react";
+	createEffect,
+	createMemo,
+	createSignal,
+	For,
+	onSettled,
+	Show,
+} from "solid-js";
 import type { Object3D } from "three";
 import { AxisIndicator } from "#/components/viewer/AxisIndicator.tsx";
 import { useAntialiasing } from "#/components/viewer/antialiasing.ts";
@@ -39,6 +37,7 @@ import {
 	type SceneViewportRuntime,
 } from "#/engine/scene-viewport.ts";
 import type { Bounds, Camera } from "#/engine/types.ts";
+import { shallowEqual } from "#/lib/external-store.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 import { useTheme } from "#/settings/theme.ts";
 
@@ -75,204 +74,189 @@ export interface SceneViewportProps {
 	onChange?: (snapshot: Viewer2DSnapshot) => void;
 	/** Updates the existing object without replacing the scene or resetting the camera. */
 	updateScene?: (object: Object3D) => void;
-	ref?: Ref<SceneViewportHandle>;
+	ref?: (handle: SceneViewportHandle) => void;
 	onReady?: (ready: boolean) => void;
 	onError?: (message: string) => void;
 	ariaLabel?: string;
-	extraControls?: ReactNode;
+	extraControls?: JSX.Element;
 	/** Grouped toolbars place these after the zoom controls. */
-	trailingControls?: ReactNode;
+	trailingControls?: JSX.Element;
 	groupedControls?: boolean;
 	scrollableControls?: boolean;
 	/** Accessible name of the bottom toolbar. */
 	controlsLabel?: string;
 }
 
-export function SceneViewport({
-	scene: sourceScene,
-	cameraMode,
-	projection = "perspective",
-	lockProjection = false,
-	fitZoom = 1,
-	physicalSizeZoom = false,
-	pixelsPerMmAt100,
-	cameraState,
-	keepView = false,
-	getFitBounds,
-	selectionEnabled = true,
-	hoverHighlight = true,
-	orbit = false,
-	gestureOrbit,
-	onOrbit,
-	selectionPosition = "top-right",
-	interactionHint,
-	gridBounds,
-	showGrid = true,
-	rulerUnit,
-	onChange,
-	updateScene,
-	ref,
-	onReady,
-	onError,
-	ariaLabel = "3D model",
-	extraControls,
-	trailingControls,
-	groupedControls = false,
-	scrollableControls = false,
-	controlsLabel,
-}: SceneViewportProps) {
-	const [selectionInfo, setSelectionInfo] = useState<SceneSelection | null>(
+type Projection = "perspective" | "orthographic";
+
+const sameBounds = (a: Bounds | undefined, b: Bounds | undefined) =>
+	a === b ||
+	(a !== undefined &&
+		b !== undefined &&
+		a.minX === b.minX &&
+		a.maxX === b.maxX &&
+		a.minY === b.minY &&
+		a.maxY === b.maxY);
+
+export function SceneViewport(props: SceneViewportProps) {
+	const ariaLabel = () => props.ariaLabel ?? "3D model";
+	const [selectionInfo, setSelectionInfo] = createSignal<SceneSelection | null>(
 		null,
 	);
-	const [attributesOpen, setAttributesOpen] = useState(false);
-	const [controlsReady, setControlsReady] = useState(false);
-	const [exporting, setExporting] = useState(false);
-	const [exportError, setExportError] = useState("");
-	const [zoomLevel, setZoomLevel] = useState(1);
-	const runtime = useRef<SceneViewportRuntime | null>(null);
+	const [attributesOpen, setAttributesOpen] = createSignal(false);
+	const [controlsReady, setControlsReady] = createSignal(false);
+	const [exporting, setExporting] = createSignal(false);
+	const [exportError, setExportError] = createSignal("");
+	const [zoomLevel, setZoomLevel] = createSignal(1);
+	let runtime: SceneViewportRuntime | undefined;
+	let mounted = false;
 	// A continuous zoom changes the level on every frame, and each change
-	// re-renders and repaints the toolbar. The label follows a wheel or pinch
-	// at most every ZOOM_LABEL_MS and always shows the level the zoom ends on.
-	const zoomLabel = useRef<{
+	// repaints the toolbar. The label follows a wheel or pinch at most every
+	// ZOOM_LABEL_MS and always shows the level the zoom ends on.
+	const zoomLabel: {
 		shown: number;
 		latest: number;
 		time: number;
 		timer?: ReturnType<typeof setTimeout>;
-	}>({ shown: 1, latest: 1, time: Number.NEGATIVE_INFINITY });
-	const showZoom = useCallback(() => {
-		const label = zoomLabel.current;
-		clearTimeout(label.timer);
-		label.timer = undefined;
-		label.time = performance.now();
-		label.shown = label.latest;
-		setZoomLevel(label.latest);
-	}, []);
-	const reportZoom = useEffectEvent((zoom: number) => {
-		const label = zoomLabel.current;
-		label.latest = zoom;
-		if (label.timer !== undefined || zoom === label.shown) return;
-		const wait = label.time + ZOOM_LABEL_MS - performance.now();
+	} = { shown: 1, latest: 1, time: Number.NEGATIVE_INFINITY };
+	const showZoom = () => {
+		clearTimeout(zoomLabel.timer);
+		zoomLabel.timer = undefined;
+		zoomLabel.time = performance.now();
+		zoomLabel.shown = zoomLabel.latest;
+		setZoomLevel(zoomLabel.latest);
+	};
+	const reportZoom = (zoom: number) => {
+		zoomLabel.latest = zoom;
+		if (zoomLabel.timer !== undefined || zoom === zoomLabel.shown) return;
+		const wait = zoomLabel.time + ZOOM_LABEL_MS - performance.now();
 		if (wait <= 0) showZoom();
-		else label.timer = setTimeout(showZoom, wait);
-	});
+		else zoomLabel.timer = setTimeout(showZoom, wait);
+	};
 	/** A zoom chosen in one step, such as a toolbar button, shows its level at once. */
-	const stepZoom = useCallback(
-		(step: (viewport: SceneViewportRuntime) => void) => {
-			showZoom();
-			zoomLabel.current.time = Number.NEGATIVE_INFINITY;
-			if (runtime.current) step(runtime.current);
-		},
-		[showZoom],
+	const stepZoom = (step: (viewport: SceneViewportRuntime) => void) => {
+		showZoom();
+		zoomLabel.time = Number.NEGATIVE_INFINITY;
+		if (runtime) step(runtime);
+	};
+	onSettled(() => () => clearTimeout(zoomLabel.timer));
+	const [flatProjection, setFlatProjection] = createSignal<Projection>(
+		() => props.projection ?? "perspective",
 	);
-	useEffect(() => () => clearTimeout(zoomLabel.current.timer), []);
-	const [flatProjection, setFlatProjection] = useState(projection);
-	useEffect(() => setFlatProjection(projection), [projection]);
 	const [orbitProjection, setOrbitProjection] =
-		useState<typeof projection>("perspective");
-	const [orbiting, setOrbiting] = useState(orbit);
-	const activeProjection = orbiting ? orbitProjection : flatProjection;
-	const reportOrbit = useEffectEvent((next: boolean) => {
-		if (next && !orbiting) setOrbitProjection("perspective");
+		createSignal<Projection>("perspective");
+	const [orbiting, setOrbiting] = createSignal(false);
+	let orbitingNow = false;
+	const activeProjection = createMemo(() =>
+		orbiting() ? orbitProjection() : flatProjection(),
+	);
+	const reportOrbit = (next: boolean) => {
+		if (next && !orbitingNow) setOrbitProjection("perspective");
+		orbitingNow = next;
 		setOrbiting(next);
-		onOrbit?.(next);
-	});
-	const displayScale = useDisplayScale(physicalSizeZoom);
-	const zoomScale = lockProjection ? (pixelsPerMmAt100 ?? displayScale) : null;
+		props.onOrbit?.(next);
+	};
+	const displayScale = useDisplayScale(() => props.physicalSizeZoom ?? false);
+	const zoomScale = createMemo(() =>
+		props.lockProjection ? (props.pixelsPerMmAt100 ?? displayScale()) : null,
+	);
 	const antialias = useAntialiasing();
-	const ownCamera = useRef<{ camera?: Camera; scene?: ViewerScene }>({});
-	const host = useRef<HTMLDivElement>(null);
+	let ownCamera: { camera?: Camera; scene?: ViewerScene } = {};
+	const [host, setHost] = createSignal<HTMLDivElement>();
 	const size = useViewportSize(host);
-	const axes = useRef<AxisIndicatorHandle>(null);
-	const rulers = useRef<ViewportRulersHandle>(null);
-	const reportChange = useEffectEvent((snapshot: Viewer2DSnapshot) => {
-		rulers.current?.update(snapshot);
-		if (cameraState) cameraState.camera = snapshot.camera;
-		onChange?.(snapshot);
-	});
-	const gridMinX = gridBounds?.minX;
-	const gridMaxX = gridBounds?.maxX;
-	const gridMinY = gridBounds?.minY;
-	const gridMaxY = gridBounds?.maxY;
+	let axes: AxisIndicatorHandle | undefined;
+	let rulers: ViewportRulersHandle | undefined;
+	const rulersShown = createMemo(
+		() => props.cameraMode === "top" && !orbiting(),
+	);
+	const axesShown = createMemo(
+		() => props.cameraMode === "orbit" || orbiting(),
+	);
+	const reportChange = (snapshot: Viewer2DSnapshot) => {
+		if (rulersShown()) rulers?.update(snapshot);
+		if (props.cameraState) props.cameraState.camera = snapshot.camera;
+		props.onChange?.(snapshot);
+	};
 	const theme = useTheme();
-	const { grid: gridColor, gridMajor } = schematicThemes[theme];
-	// Callers pass new bounds objects on every render; key the grid on values.
-	const grid = useMemo(
-		() =>
-			cameraMode === "top" && showGrid
-				? {
-						unit: rulerUnit ?? "mm",
-						color: gridColor,
-						majorColor: gridMajor,
-						bounds:
-							gridMinX === undefined ||
-							gridMaxX === undefined ||
-							gridMinY === undefined ||
-							gridMaxY === undefined
-								? undefined
-								: {
-										minX: gridMinX,
-										maxX: gridMaxX,
-										minY: gridMinY,
-										maxY: gridMaxY,
-									},
-					}
-				: null,
-		[
-			cameraMode,
-			rulerUnit,
-			gridColor,
-			gridMajor,
-			showGrid,
-			gridMinX,
-			gridMaxX,
-			gridMinY,
-			gridMaxY,
-		],
-	);
-	const configureDisplay = useEffectEvent((viewport: SceneViewportRuntime) => {
-		viewport.setPhysicalScale(zoomScale);
-		viewport.setGrid(grid);
+	const gridBounds = createMemo(() => props.gridBounds, { equals: sameBounds });
+	const grid = createMemo(() => {
+		if (props.cameraMode !== "top" || !(props.showGrid ?? true)) return null;
+		const { grid: color, gridMajor: majorColor } = schematicThemes[theme()];
+		const bounds = gridBounds();
+		return {
+			unit: props.rulerUnit ?? "mm",
+			color,
+			majorColor,
+			bounds: bounds && {
+				minX: bounds.minX,
+				maxX: bounds.maxX,
+				minY: bounds.minY,
+				maxY: bounds.maxY,
+			},
+		};
 	});
-	const readFitBounds = useEffectEvent(() => getFitBounds?.() ?? null);
-	const reportReady = useEffectEvent((ready: boolean) => {
+	const reportReady = (ready: boolean) => {
 		setControlsReady(ready);
-		onReady?.(ready);
+		props.onReady?.(ready);
+	};
+	const reportError = (message: string) => props.onError?.(message);
+	props.ref?.({
+		fit: () => stepZoom((viewport) => viewport.fit()),
+		zoom: (factor) => stepZoom((viewport) => viewport.zoom(factor)),
+		view: (direction) => stepZoom((viewport) => viewport.view(direction)),
+		pan: (x, y) => runtime?.pan(x, y),
 	});
-	const reportError = useEffectEvent((message: string) => onError?.(message));
-	useImperativeHandle(
-		ref,
-		() => ({
-			fit: () => stepZoom((viewport) => viewport.fit()),
-			zoom: (factor) => stepZoom((viewport) => viewport.zoom(factor)),
-			view: (direction) => stepZoom((viewport) => viewport.view(direction)),
-			pan: (x, y) => runtime.current?.pan(x, y),
-		}),
-		[stepZoom],
+	const orbit = createMemo(() => props.orbit ?? false);
+	createEffect(orbit, (enabled) => {
+		runtime?.setOrbit(enabled);
+	});
+	createEffect(activeProjection, (projection) => {
+		runtime?.setProjection(projection);
+	});
+	let shownScene: ViewerScene | null = null;
+	const [restarts, setRestarts] = createSignal(0);
+	createEffect(
+		() => [props.updateScene, props.scene] as const,
+		([update, scene]) => {
+			if (update && shownScene === scene) runtime?.update(update);
+		},
 	);
-	const currentOrbit = useRef(orbit);
-	useEffect(() => {
-		currentOrbit.current = orbit;
-		runtime.current?.setOrbit(orbit);
-	}, [orbit]);
-	const currentProjection = useRef(activeProjection);
-	useEffect(() => {
-		currentProjection.current = activeProjection;
-		runtime.current?.setProjection(activeProjection);
-	}, [activeProjection]);
-	const sceneUpdate = useRef(updateScene);
-	const shownScene = useRef<ViewerScene | null>(null);
-	const [restarts, setRestarts] = useState(0);
-	useEffect(() => {
-		sceneUpdate.current = updateScene;
-		if (updateScene && shownScene.current === sourceScene)
-			runtime.current?.update(updateScene);
-	}, [updateScene, sourceScene]);
-	const mountKey = keepView ? restarts : sourceScene;
-	// biome-ignore lint/correctness/useExhaustiveDependencies: a kept view swaps later scenes in place, in the effect below
-	useEffect(() => {
-		const element = host.current;
+	// A kept view swaps later scenes in place, in the effect below.
+	const mount = createMemo(
+		() => ({
+			options: {
+				host: host(),
+				key: props.keepView ? restarts() : props.scene,
+				cameraMode: props.cameraMode,
+				ariaLabel: ariaLabel(),
+				interactionHint: props.interactionHint,
+				selectionEnabled: props.selectionEnabled ?? true,
+				hoverHighlight: props.hoverHighlight ?? true,
+				gestureOrbit: props.gestureOrbit,
+				lockProjection: props.lockProjection ?? false,
+				fitZoom: props.fitZoom ?? 1,
+				pixelsPerMmAt100: props.pixelsPerMmAt100,
+				cameraState: props.cameraState,
+				antialias: antialias(),
+			},
+			current: {
+				scene: props.scene,
+				projection: activeProjection(),
+				orbit: orbit(),
+				updateScene: props.updateScene,
+				zoomScale: zoomScale(),
+				grid: grid(),
+				fitBounds: props.getFitBounds?.() ?? null,
+			},
+		}),
+		{ equals: (a, b) => shallowEqual(a.options, b.options) },
+	);
+	createEffect(mount, ({ options, current }) => {
+		const element = options.host;
 		if (!element) return;
-		reportReady(false);
+		const sourceScene = current.scene;
+		let fitBounds = () => current.fitBounds;
+		if (!mounted) reportReady(false);
 		setSelectionInfo(null);
 		setAttributesOpen(false);
 		let viewport: SceneViewportRuntime | undefined;
@@ -282,37 +266,32 @@ export function SceneViewport({
 				() =>
 					createSceneViewport(element, {
 						scene: sourceScene,
-						cameraMode,
-						projection: currentProjection.current,
-						lockProjection,
-						fitZoom,
-						pixelsPerMmAt100,
+						cameraMode: options.cameraMode,
+						projection: current.projection,
+						lockProjection: options.lockProjection,
+						fitZoom: options.fitZoom,
+						pixelsPerMmAt100: options.pixelsPerMmAt100,
 						initialCamera:
-							cameraState?.camera ??
-							(ownCamera.current.scene === sourceScene
-								? ownCamera.current.camera
-								: undefined),
-						getFitBounds: readFitBounds,
-						selectionEnabled,
-						hoverHighlight,
-						orbit: currentOrbit.current,
-						gestureOrbit,
-						antialias,
+							options.cameraState?.camera ??
+							(ownCamera.scene === sourceScene ? ownCamera.camera : undefined),
+						getFitBounds: () => fitBounds(),
+						selectionEnabled: options.selectionEnabled,
+						hoverHighlight: options.hoverHighlight,
+						orbit: current.orbit,
+						gestureOrbit: options.gestureOrbit,
+						antialias: options.antialias,
 						ariaLabel: formatShortcut(
-							interactionHint
-								? `${ariaLabel}. ${interactionHint}`
-								: cameraMode === "top"
-									? `${ariaLabel}. Top view locked. Drag or swipe to pan; pinch or Ctrl + scroll to zoom. Arrow keys pan, plus or minus zooms, and F6 fits the scene.`
-									: `${ariaLabel}. Shift + left-drag to orbit and Ctrl + left-drag to pan. Two-finger swipe to pan, Shift + two-finger swipe to orbit, pinch or Ctrl + scroll to zoom toward the pointer. Middle-drag to pan and Shift + middle-drag to orbit with a mouse. Double-click the middle button or press F6 to fit. Arrow keys pan, plus or minus zooms. On touchscreens, drag to orbit and use two fingers to pan or pinch to zoom.`,
+							options.interactionHint
+								? `${options.ariaLabel}. ${options.interactionHint}`
+								: options.cameraMode === "top"
+									? `${options.ariaLabel}. Top view locked. Drag or swipe to pan; pinch or Ctrl + scroll to zoom. Arrow keys pan, plus or minus zooms, and F6 fits the scene.`
+									: `${options.ariaLabel}. Shift + left-drag to orbit and Ctrl + left-drag to pan. Two-finger swipe to pan, Shift + two-finger swipe to orbit, pinch or Ctrl + scroll to zoom toward the pointer. Middle-drag to pan and Shift + middle-drag to orbit with a mouse. Double-click the middle button or press F6 to fit. Arrow keys pan, plus or minus zooms. On touchscreens, drag to orbit and use two fingers to pan or pinch to zoom.`,
 						),
 						canvasClassName:
 							"block h-full w-full touch-none focus-visible:outline-2 focus-visible:outline-accent",
-						updateScene: sceneUpdate.current,
+						updateScene: current.updateScene,
 						onChange: (snapshot) => {
-							ownCamera.current = {
-								camera: snapshot.camera,
-								scene: sourceScene,
-							};
+							ownCamera = { camera: snapshot.camera, scene: sourceScene };
 							reportChange(snapshot);
 						},
 						onSelection: (selection) => {
@@ -320,7 +299,9 @@ export function SceneViewport({
 							setAttributesOpen(false);
 						},
 						onOpenSelection: () => setAttributesOpen(true),
-						onOrientation: (rotation) => axes.current?.update(rotation),
+						onOrientation: (rotation) => {
+							if (axesShown()) axes?.update(rotation);
+						},
 						onOrbit: reportOrbit,
 						onZoom: reportZoom,
 						onReady: reportReady,
@@ -328,173 +309,175 @@ export function SceneViewport({
 					}),
 				{ objects: sourceScene.length },
 			);
-			runtime.current = viewport;
-			shownScene.current = sourceScene;
-			configureDisplay(viewport);
-			reportOrbit(cameraMode === "top" && currentOrbit.current);
+			fitBounds = () => props.getFitBounds?.() ?? null;
+			runtime = viewport;
+			mounted = true;
+			shownScene = sourceScene;
+			viewport.setPhysicalScale(current.zoomScale);
+			viewport.setGrid(current.grid);
+			reportOrbit(options.cameraMode === "top" && current.orbit);
 		} catch (error) {
+			mounted = false;
+			reportReady(false);
 			reportError(
 				`3D viewer unavailable: ${errorMessage(error, "WebGL is not supported in this browser.")}`,
 			);
 		}
 		return () => {
-			runtime.current = null;
-			shownScene.current = null;
+			runtime = undefined;
+			shownScene = null;
 			viewport?.dispose();
 		};
-	}, [
-		mountKey,
-		cameraMode,
-		ariaLabel,
-		interactionHint,
-		selectionEnabled,
-		hoverHighlight,
-		gestureOrbit,
-		lockProjection,
-		fitZoom,
-		pixelsPerMmAt100,
-		cameraState,
-		antialias,
-	]);
-	useEffect(() => {
-		if (!keepView || !runtime.current || shownScene.current === sourceScene)
-			return;
-		let swapped = false;
-		try {
-			swapped = runtime.current.setScene(sourceScene, sceneUpdate.current);
-		} catch (error) {
-			if (import.meta.env?.DEV) console.error(error);
-		}
-		if (swapped) shownScene.current = sourceScene;
-		else setRestarts((count) => count + 1);
-	}, [keepView, sourceScene]);
-	useEffect(() => {
-		runtime.current?.setPhysicalScale(zoomScale);
-	}, [zoomScale]);
-	useEffect(() => {
-		runtime.current?.setGrid(grid);
-	}, [grid]);
-	const shownTheme = useRef(theme);
-	useEffect(() => {
-		if (shownTheme.current === theme) return;
-		shownTheme.current = theme;
-		runtime.current?.refreshTheme();
-	}, [theme]);
-	useEffect(() => {
-		if (size) runtime.current?.resize(size.width, size.height);
-	}, [size]);
-	const exportingRef = useRef(false);
-	// Stable, so toolbars reading it through context don't re-render on zoom.
-	const exportPng = useCallback(async () => {
-		if (!runtime.current || exportingRef.current) return;
-		exportingRef.current = true;
+	});
+	createEffect(
+		() => [props.keepView ?? false, props.scene, props.updateScene] as const,
+		([keepView, scene, update]) => {
+			if (!keepView || !runtime || shownScene === scene) return;
+			let swapped = false;
+			try {
+				swapped = runtime.setScene(scene, update);
+			} catch (error) {
+				if (import.meta.env?.DEV) console.error(error);
+			}
+			if (swapped) shownScene = scene;
+			else setRestarts((count) => count + 1);
+		},
+	);
+	createEffect(zoomScale, (scale) => {
+		runtime?.setPhysicalScale(scale);
+	});
+	createEffect(grid, (options) => {
+		runtime?.setGrid(options);
+	});
+	let shownTheme: string | undefined;
+	createEffect(theme, (current) => {
+		if (shownTheme !== undefined && shownTheme !== current)
+			runtime?.refreshTheme();
+		shownTheme = current;
+	});
+	createEffect(size, (current) => {
+		if (current) runtime?.resize(current.width, current.height);
+	});
+	let exportRunning = false;
+	const exportPng = async () => {
+		if (!runtime || exportRunning) return;
+		exportRunning = true;
 		setExporting(true);
 		setExportError("");
 		try {
-			const blob = await runtime.current.capture();
-			downloadPng(blob, ariaLabel);
+			const blob = await runtime.capture();
+			downloadPng(blob, ariaLabel());
 		} catch (error) {
 			setExportError(
 				`PNG export failed: ${errorMessage(error, "Please try again.")}`,
 			);
 		} finally {
-			exportingRef.current = false;
+			exportRunning = false;
 			setExporting(false);
 		}
-	}, [ariaLabel]);
+	};
+	const toggleProjection = () =>
+		(orbiting() ? setOrbitProjection : setFlatProjection)((current) =>
+			current === "perspective" ? "orthographic" : "perspective",
+		);
+	const actualSize = () => stepZoom((viewport) => viewport.actualSize());
+	const fit = () => stepZoom((viewport) => viewport.fit());
+	const zoom = (factor: number) =>
+		stepZoom((viewport) => viewport.zoom(factor));
+	const view = (direction: Parameters<Viewer3DHandle["view"]>[0]) =>
+		stepZoom((viewport) => viewport.view(direction));
 	return (
 		<>
-			<div ref={host} className="absolute inset-0 z-1 overflow-hidden" />
-			{exportError && (
+			<div ref={setHost} class="absolute inset-0 z-1 overflow-hidden" />
+			<Show when={exportError()}>
 				<p
 					role="alert"
-					className="ui-notice absolute bottom-[calc(var(--chrome-dock)+8px)] left-1/2 z-20 max-w-[calc(100%-2rem)] -translate-x-1/2 px-3 py-2"
+					class="ui-notice absolute bottom-[calc(var(--chrome-dock)+8px)] left-1/2 z-20 max-w-[calc(100%-2rem)] -translate-x-1/2 px-3 py-2"
 				>
-					{exportError}
+					{exportError()}
 				</p>
-			)}
-			{selectionInfo && attributesOpen && (
-				<FloatingPanel
-					label="Selection attributes"
-					position={selectionPosition}
-				>
-					<header className="shrink-0 border-b border-line-subtle px-3 py-2.5">
-						<p className="m-0 break-words text-sm font-semibold">
-							{selectionInfo.name || "Unnamed component"}
-						</p>
-					</header>
-					<div className="min-h-0 overflow-y-auto overscroll-contain px-3 py-1.5">
-						<dl className="m-0 text-xs">
-							{[
-								[
-									"Type",
-									selectionInfo.region === undefined
-										? "3D part"
-										: `Connected shape ${selectionInfo.region + 1}`,
-								],
-								[
-									"Dimensions",
-									`${selectionInfo.dimensions.map((value) => value.toFixed(2)).join(" × ")} mm`,
-								],
-							].map(([label, value]) => (
-								<div
-									key={label}
-									className="flex min-h-8 items-center justify-between gap-3"
+			</Show>
+			<Show when={attributesOpen() ? selectionInfo() : null}>
+				{(info) => (
+					<FloatingPanel
+						label="Selection attributes"
+						position={props.selectionPosition ?? "top-right"}
+					>
+						<header class="shrink-0 border-b border-line-subtle px-3 py-2.5">
+							<p class="m-0 break-words text-sm font-semibold">
+								{info().name || "Unnamed component"}
+							</p>
+						</header>
+						<div class="min-h-0 overflow-y-auto overscroll-contain px-3 py-1.5">
+							<dl class="m-0 text-xs">
+								<For
+									each={[
+										[
+											"Type",
+											info().region === undefined
+												? "3D part"
+												: `Connected shape ${(info().region ?? 0) + 1}`,
+										],
+										[
+											"Dimensions",
+											`${info()
+												.dimensions.map((value) => value.toFixed(2))
+												.join(" × ")} mm`,
+										],
+									]}
 								>
-									<dt className="text-fg-muted">{label}</dt>
-									<dd className="m-0 min-w-0 break-words text-right tabular-nums">
-										{value}
-									</dd>
-								</div>
-							))}
-						</dl>
-					</div>
-				</FloatingPanel>
-			)}
-			{cameraMode === "top" && !orbiting && (
-				<ViewportRulers unit={rulerUnit} ref={rulers} gridBounds={gridBounds} />
-			)}
-			{(cameraMode === "orbit" || orbiting) && <AxisIndicator ref={axes} />}
-			{controlsReady && (
+									{([label, value]) => (
+										<div class="flex min-h-8 items-center justify-between gap-3">
+											<dt class="text-fg-muted">{label}</dt>
+											<dd class="m-0 min-w-0 break-words text-right tabular-nums">
+												{value}
+											</dd>
+										</div>
+									)}
+								</For>
+							</dl>
+						</div>
+					</FloatingPanel>
+				)}
+			</Show>
+			<Show when={rulersShown()}>
+				<ViewportRulers
+					unit={props.rulerUnit}
+					ref={(handle) => {
+						rulers = handle;
+					}}
+					gridBounds={props.gridBounds}
+				/>
+			</Show>
+			<Show when={axesShown()}>
+				<AxisIndicator
+					ref={(handle: AxisIndicatorHandle) => {
+						axes = handle;
+					}}
+				/>
+			</Show>
+			<Show when={controlsReady()}>
 				<ViewControls3D
-					grouped={groupedControls}
-					scrollable={scrollableControls}
-					trailing={trailingControls}
-					label={controlsLabel}
-					enabled={controlsReady}
-					zoomLevel={zoomLevel}
-					absoluteZoom={zoomScale !== null}
-					actualSize={
-						displayScale !== null
-							? () => stepZoom((viewport) => viewport.actualSize())
-							: undefined
-					}
+					grouped={props.groupedControls ?? false}
+					scrollable={props.scrollableControls ?? false}
+					trailing={props.trailingControls}
+					label={props.controlsLabel}
+					enabled={controlsReady()}
+					zoomLevel={zoomLevel()}
+					absoluteZoom={zoomScale() !== null}
+					actualSize={displayScale() !== null ? actualSize : undefined}
 					exportPng={exportPng}
-					exporting={exporting}
-					projection={activeProjection}
-					toggleProjection={
-						lockProjection
-							? undefined
-							: () =>
-									(orbiting ? setOrbitProjection : setFlatProjection)(
-										(current) =>
-											current === "perspective"
-												? "orthographic"
-												: "perspective",
-									)
-					}
-					fit={() => stepZoom((viewport) => viewport.fit())}
-					zoom={(factor) => stepZoom((viewport) => viewport.zoom(factor))}
-					view={
-						cameraMode === "orbit"
-							? (direction) => stepZoom((viewport) => viewport.view(direction))
-							: undefined
-					}
-					fitLabel={cameraMode === "top" ? "Fit drawing" : "Fit model"}
+					exporting={exporting()}
+					projection={activeProjection()}
+					toggleProjection={props.lockProjection ? undefined : toggleProjection}
+					fit={fit}
+					zoom={zoom}
+					view={props.cameraMode === "orbit" ? view : undefined}
+					fitLabel={props.cameraMode === "top" ? "Fit drawing" : "Fit model"}
 				>
-					{extraControls}
+					{props.extraControls}
 				</ViewControls3D>
-			)}
+			</Show>
 		</>
 	);
 }

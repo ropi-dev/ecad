@@ -1,7 +1,7 @@
 import type { ProjectStorage } from "@ecad/core/projects/storage.ts";
 import type { AppSettings } from "@ecad/core/settings/schema.ts";
 import type { SettingsStorage } from "@ecad/core/settings/store.ts";
-import type { SymbolLibraryStorage } from "@ecad/core/symbol-library/storage.tsx";
+import type { SymbolLibraryStorage } from "@ecad/core/symbol-library/storage.ts";
 import type {
 	ConsentStorage,
 	TelemetryConsent,

@@ -1,4 +1,4 @@
-ECAD is a Gerber and STEP viewer with a 2D drawing editor. The web and Electron desktop apps share the same React editor, drawing model, and Three.js engine.
+ECAD is a Gerber and STEP viewer with a 2D drawing editor. The web and Electron desktop apps share the same Solid editor, drawing model, and Three.js engine.
 
 ECAD is experimental. Features, file formats, and UI behavior may change. Keep backups of project files and verify exports before using them for fabrication.
 
@@ -6,7 +6,7 @@ Original application code is under the [MIT license](LICENSE). Third-party code 
 
 | Package | Contents |
 | --- | --- |
-| [`@ecad/core`](packages/core) | Shared React editor and viewers, symbol validation, parsers, workers, and rendering. |
+| [`@ecad/core`](packages/core) | Shared Solid editor and viewers, symbol validation, parsers, workers, and rendering. |
 | [`@ecad/drawing-core`](packages/drawing-core) | Headless drawing model, store, Effect commands, schemas, and MCP tools. |
 | [`@ecad/default-symbols`](packages/default-symbols) | Offline generators for 45 KiCad-derived schematic symbols and portable library exports. |
 | [`@ecad/default-footprints`](packages/default-footprints) | Offline generators for 56 KiCad-derived footprints that built-in symbols use by default. |
@@ -171,7 +171,7 @@ The 2D hover and selection tests check hover counts, selection attributes, and c
 
 Performance budgets stay local. CI excludes `gerber-performance.spec.ts` and does not run `pnpm run perf`. The other browser specs, including rendering and performance diagnostics behavior, still run. CI gates on `pnpm run lint`. Formatting and import organization are available through `pnpm run check`.
 
-Feature threads do not run the timing benchmarks. `pnpm run perf:main` checks main once per batch of merged commits, and `pnpm run perf --grep <scenario>` compares named scenarios against the merge base for performance work. `pnpm run perf:dev` adds React profiling. Live diagnostics are available at `window.__ecadPerformance` in development, or with `?perf=1` in production. See the [performance guide](docs/performance.md) for reports, controls, and measurement limits.
+Feature threads do not run the timing benchmarks. `pnpm run perf:main` checks main once per batch of merged commits, and `pnpm run perf --grep <scenario>` compares named scenarios against the merge base for performance work. `pnpm run perf:dev` measures development builds. Live diagnostics are available at `window.__ecadPerformance` in development, or with `?perf=1` in production. See the [performance guide](docs/performance.md) for reports, controls, and measurement limits.
 
 ## Working in the packages
 

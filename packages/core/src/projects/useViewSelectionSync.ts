@@ -1,5 +1,5 @@
 import type { Circuit } from "@ecad/drawing-core/circuit/model.ts";
-import { useEffect, useEffectEvent, useRef } from "react";
+import { type Accessor, createEffect, createMemo } from "solid-js";
 import type { ViewSelection } from "#/circuit/selection-sync.ts";
 import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
 
@@ -7,47 +7,69 @@ type View = ViewSelection["view"];
 type Of<V extends View> = Extract<ViewSelection, { view: V }>;
 type Selection<V extends View> = Of<V>["selection"];
 
-export function useViewSelectionSync<V extends View>({
-	enabled = true,
-	view,
-	store,
-	selection,
-	equal,
-	receive,
-	apply,
-}: {
+interface ViewSelectionSyncOptions<V extends View> {
 	enabled?: boolean;
 	view: V;
 	store: Of<V>["store"];
-	selection: Selection<V>;
 	equal(a: Selection<V>, b: Selection<V>): boolean;
 	receive(source: ViewSelection, circuit: Circuit | undefined): Selection<V>;
 	apply(selection: Selection<V>): Selection<V>;
-}) {
+}
+
+export function useViewSelectionSync<V extends View>(
+	options: Accessor<ViewSelectionSyncOptions<V>>,
+	selection: Accessor<Selection<V>>,
+) {
 	const project = useProjectSelection(
 		({ rememberViewSelection, takeSelectionHandoff }) => ({
 			rememberViewSelection,
 			takeSelectionHandoff,
 		}),
 	);
-	const handoff = useRef<
-		{ selection: Selection<V>; origin?: ViewSelection } | null | undefined
-	>(undefined);
-	const applied = useRef<{
-		selection: Selection<V>;
-		origin: ViewSelection;
-	} | null>(null);
-	const remember = useEffectEvent(
-		(current: Selection<V>, origin: ViewSelection | undefined) =>
-			project?.rememberViewSelection({
-				view,
-				store,
-				selection: current,
-				...(origin ? { origin } : {}),
-			} as ViewSelection),
+	const state = createMemo(() => {
+		const current = options();
+		return {
+			...current,
+			enabled: current.enabled ?? true,
+			project: project(),
+		};
+	});
+	type State = ReturnType<typeof state>;
+	const remembering = createMemo(
+		() => ({ ...state(), selection: selection() }),
+		{
+			equals: (a, b) =>
+				a.enabled === b.enabled &&
+				a.project === b.project &&
+				a.view === b.view &&
+				a.store === b.store &&
+				a.selection === b.selection &&
+				a.equal === b.equal,
+		},
 	);
-	const take = useEffectEvent(() => {
-		const handed = project?.takeSelectionHandoff(view);
+	const handing = createMemo(() => state(), {
+		equals: (a, b) => a.enabled === b.enabled && a.project === b.project,
+	});
+	let handoff:
+		| { selection: Selection<V>; origin?: ViewSelection }
+		| null
+		| undefined;
+	let applied: { selection: Selection<V>; origin: ViewSelection } | null = null;
+	const remember = (
+		current: State,
+		selection: Selection<V>,
+		origin: ViewSelection | undefined,
+	) => {
+		current.project?.rememberViewSelection({
+			view: current.view,
+			store: current.store,
+			selection,
+			...(origin ? { origin } : {}),
+		} as ViewSelection);
+	};
+	const take = (current: State) => {
+		const { view, store, receive } = current;
+		const handed = current.project?.takeSelectionHandoff(view);
 		if (!handed) return null;
 		const { source, circuit } = handed;
 		if (source.view === view)
@@ -55,29 +77,27 @@ export function useViewSelectionSync<V extends View>({
 				? { selection: source.selection as Selection<V> }
 				: null;
 		return { selection: receive(source, circuit), origin: source };
-	});
-	const applyHandoff = useEffectEvent(() => {
-		if (handoff.current === undefined) handoff.current = take();
-		const next = handoff.current;
+	};
+	const applyHandoff = (current: State) => {
+		if (handoff === undefined) handoff = take(current);
+		const next = handoff;
 		if (!next) return;
-		const result = apply(next.selection);
-		applied.current = next.origin
-			? { selection: result, origin: next.origin }
-			: null;
-		remember(result, next.origin);
+		const result = current.apply(next.selection);
+		applied = next.origin ? { selection: result, origin: next.origin } : null;
+		remember(current, result, next.origin);
+	};
+	createEffect(remembering, (current) => {
+		if (!current.enabled || !current.project) return;
+		if (applied && !current.equal(applied.selection, current.selection))
+			applied = null;
+		remember(current, current.selection, applied?.origin);
 	});
-	useEffect(() => {
-		if (!enabled || !project) return;
-		if (applied.current && !equal(applied.current.selection, selection))
-			applied.current = null;
-		remember(selection, applied.current?.origin);
-	}, [enabled, project, selection, equal]);
-	useEffect(() => {
-		if (!project) return;
-		if (enabled) applyHandoff();
+	createEffect(handing, (current) => {
+		if (!current.project) return;
+		if (current.enabled) applyHandoff(current);
 		else {
-			handoff.current = undefined;
-			applied.current = null;
+			handoff = undefined;
+			applied = null;
 		}
-	}, [enabled, project]);
+	});
 }

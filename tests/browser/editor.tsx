@@ -6,13 +6,12 @@ import {
 	createDrawingStore,
 	DrawingStore,
 } from "@ecad/drawing-core/commands/drawing-store.ts";
+import { render } from "@solidjs/web";
 import { Effect } from "effect";
-import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
 import { Mesh, MeshBasicMaterial, Scene, Vector3 } from "three";
 import { Editor2D } from "#/components/editor/Editor2D.tsx";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
-import { SymbolLibraryProvider } from "#/symbol-library/storage.tsx";
+import { SymbolLibraryProvider } from "#/symbol-library/SymbolLibraryProvider.tsx";
 import { createWebSymbolLibraryStorage } from "#web/symbol-library/storage.ts";
 import { required } from "../helpers/required.ts";
 import "#/styles.css";
@@ -97,12 +96,12 @@ const showDocument = () => {
 };
 drawingStore.subscribe(showDocument);
 showDocument();
-const root = createRoot(required(document.getElementById("root")));
 const symbolLibraryStorage = createWebSymbolLibraryStorage();
-root.render(
-	<StrictMode>
+render(
+	() => (
 		<SymbolLibraryProvider storage={symbolLibraryStorage}>
 			<Editor2D store={drawingStore} />
 		</SymbolLibraryProvider>
-	</StrictMode>,
+	),
+	required(document.getElementById("root")),
 );

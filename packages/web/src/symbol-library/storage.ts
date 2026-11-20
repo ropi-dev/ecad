@@ -8,7 +8,7 @@ import {
 	serializeSymbolConfig,
 	USER_SYMBOL_CONFIG_KEY,
 } from "@ecad/core/symbol-library/config.ts";
-import type { SymbolLibraryStorage } from "@ecad/core/symbol-library/storage.tsx";
+import type { SymbolLibraryStorage } from "@ecad/core/symbol-library/storage.ts";
 
 type BrowserStorage = Pick<Storage, "getItem" | "setItem"> &
 	Partial<Pick<Storage, "removeItem">>;

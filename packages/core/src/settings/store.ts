@@ -1,5 +1,6 @@
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
-import { useSyncExternalStore } from "react";
+import type { Accessor } from "solid-js";
+import { fromExternalStore } from "#/lib/external-store.ts";
 import { createSerialQueue } from "#/lib/serial-queue.ts";
 import {
 	type AppSettings,
@@ -81,11 +82,6 @@ let status: SettingsStatus = {
 	updates: false,
 };
 let stopExternal: (() => void) | undefined;
-const serverSettings = defaultAppSettings();
-const serverStatus: SettingsStatus = {
-	error: "",
-	updates: false,
-};
 
 const notify = () => {
 	for (const listener of listeners) listener();
@@ -166,18 +162,8 @@ export function updateAppSettings(
 	);
 }
 
-export function useAppSettings(): AppSettings {
-	return useSyncExternalStore(
-		subscribeAppSettings,
-		getAppSettings,
-		() => serverSettings,
-	);
-}
+export const useAppSettings = (): Accessor<AppSettings> =>
+	fromExternalStore(subscribeAppSettings, getAppSettings);
 
-export function useSettingsStatus(): SettingsStatus {
-	return useSyncExternalStore(
-		subscribeAppSettings,
-		getSettingsStatus,
-		() => serverStatus,
-	);
-}
+export const useSettingsStatus = (): Accessor<SettingsStatus> =>
+	fromExternalStore(subscribeAppSettings, getSettingsStatus);

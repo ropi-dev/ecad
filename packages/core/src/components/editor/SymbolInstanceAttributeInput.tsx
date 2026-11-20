@@ -1,83 +1,90 @@
-import { useId } from "react";
-import {
-	type FieldPathByValue,
-	type FieldPathValue,
-	useFormContext,
-	useFormState,
-} from "react-hook-form";
+import { createMemo, createRenderEffect, createUniqueId, Show } from "solid-js";
 import {
 	numberInputClassName,
 	textInputClassName,
 	UnitField,
 } from "#/components/editor/SelectionAttributes.tsx";
-import type { SymbolInstanceAttributeValues } from "#/components/editor/SymbolInstanceAttributeForm.tsx";
+import {
+	type SymbolInstanceAttributeName,
+	type SymbolInstanceAttributeValue,
+	useSymbolInstanceAttributeForm,
+} from "#/components/editor/SymbolInstanceAttributeForm.tsx";
 
 export function SymbolInstanceAttributeInput<
-	Name extends FieldPathByValue<
-		SymbolInstanceAttributeValues,
-		string | number | null
-	>,
->({
-	name,
-	label,
-	value,
-	unit,
-	positive = false,
-	step = "any",
-	onCommit,
-}: {
+	Name extends SymbolInstanceAttributeName,
+>(props: {
 	name: Name;
 	label: string;
-	value: FieldPathValue<SymbolInstanceAttributeValues, Name> | "";
+	value: SymbolInstanceAttributeValue<Name> | "";
 	unit?: string;
 	positive?: boolean;
 	step?: string;
-	onCommit: (
-		value: FieldPathValue<SymbolInstanceAttributeValues, Name>,
-	) => void;
+	onCommit: (value: SymbolInstanceAttributeValue<Name>) => void;
 }) {
-	const errorId = useId();
-	const { register, control, trigger, getValues, getFieldState, resetField } =
-		useFormContext<SymbolInstanceAttributeValues>();
-	const formState = useFormState({ control, name, exact: true });
-	const { error } = getFieldState(name, formState);
-	const numeric = unit !== undefined;
-	const field = register(name, { valueAsNumber: numeric });
-	return (
-		<span className="flex flex-col items-end gap-1">
-			<UnitField unit={unit}>
+	const errorId = createUniqueId();
+	const form = useSymbolInstanceAttributeForm();
+	const numeric = () => props.unit !== undefined;
+	const step = () => props.step ?? "any";
+	const error = createMemo(() => form.error(props.name));
+	const shown = createMemo<string>((previous) =>
+		previous !== undefined && form.editing(props.name)
+			? previous
+			: form.shown(props.name),
+	);
+	let input!: HTMLInputElement;
+	const view = (
+		<span class="flex flex-col items-end gap-1">
+			<UnitField unit={props.unit}>
 				<input
-					{...field}
-					type={numeric ? "number" : "text"}
-					aria-label={label}
-					aria-invalid={error ? true : undefined}
-					aria-describedby={error ? errorId : undefined}
-					min={positive ? 0 : undefined}
-					step={numeric ? step : undefined}
-					title={step === "90" ? "Angle in 90° increments" : undefined}
-					placeholder={numeric ? "Mixed" : undefined}
-					data-committed-value={value}
-					className={`${numeric ? numberInputClassName : textInputClassName} aria-invalid:border-danger`}
-					onBlur={async (event) => {
-						await field.onBlur(event);
-						const state = getFieldState(name);
-						if (!state.isDirty && !state.error) return;
-						if (!(await trigger(name)) || !getFieldState(name).isDirty) return;
-						const next = getValues(name);
-						resetField(name, { defaultValue: next });
-						onCommit(next);
+					ref={input}
+					name={props.name}
+					type={numeric() ? "number" : "text"}
+					aria-label={props.label}
+					aria-invalid={error() ? "true" : undefined}
+					aria-describedby={error() ? errorId : undefined}
+					min={props.positive ? 0 : undefined}
+					step={numeric() ? step() : undefined}
+					title={step() === "90" ? "Angle in 90° increments" : undefined}
+					placeholder={numeric() ? "Mixed" : undefined}
+					data-committed-value={props.value}
+					class={[
+						numeric() ? numberInputClassName : textInputClassName,
+						"aria-invalid:border-danger",
+					]}
+					onInput={(event) =>
+						form.input(props.name, {
+							text: event.currentTarget.value,
+							numeric: numeric(),
+						})
+					}
+					onBlur={(event) => {
+						const element = event.currentTarget;
+						const committed = form.commit(
+							props.name,
+							numeric() ? element.valueAsNumber : element.value,
+						);
+						if (committed)
+							props.onCommit(
+								committed.value as SymbolInstanceAttributeValue<Name>,
+							);
 					}}
 				/>
 			</UnitField>
-			{error && (
-				<span
-					id={errorId}
-					role="alert"
-					className="max-w-44 text-right text-xs text-danger"
-				>
-					{error.message}
-				</span>
-			)}
+			<Show when={error()}>
+				{(message) => (
+					<span
+						id={errorId}
+						role="alert"
+						class="max-w-44 text-right text-xs text-danger"
+					>
+						{message()}
+					</span>
+				)}
+			</Show>
 		</span>
 	);
+	createRenderEffect(shown, (text) => {
+		if (input.value !== text) input.value = text;
+	});
+	return view;
 }

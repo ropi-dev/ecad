@@ -1,6 +1,18 @@
+import {
+	CircleArrowUp,
+	LoaderCircle,
+	RefreshCw,
+} from "@ecad/core/components/ui/icons.tsx";
 import { TooltipButton } from "@ecad/core/components/viewer/TooltipButton.tsx";
-import { CircleArrowUp, LoaderCircle, RefreshCw } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+	createMemo,
+	createSignal,
+	For,
+	Match,
+	onSettled,
+	Show,
+	Switch,
+} from "solid-js";
 import type { DesktopUpdateState, DesktopUpdatesBridge } from "#/bridge.ts";
 
 const buildVersion =
@@ -79,8 +91,8 @@ const tones: Partial<
 	installed: { icon: "text-accent", dot: "bg-accent" },
 };
 
-function DownloadProgress({ progress }: { progress: number }) {
-	const done = Math.min(Math.max(progress, 0), 1);
+function DownloadProgress(props: { progress: number }) {
+	const done = () => Math.min(Math.max(props.progress, 0), 1);
 	return (
 		<svg
 			width={18}
@@ -88,23 +100,26 @@ function DownloadProgress({ progress }: { progress: number }) {
 			viewBox="0 0 24 24"
 			fill="none"
 			stroke="currentColor"
-			strokeWidth={2}
-			strokeLinecap="round"
-			strokeLinejoin="round"
+			stroke-width={2}
+			stroke-linecap="round"
+			stroke-linejoin="round"
 			aria-hidden="true"
 			data-testid="update-download-progress"
 		>
-			<circle cx={12} cy={12} r={10} className="opacity-25" />
+			<circle cx={12} cy={12} r={10} class="opacity-25" />
 			<circle
 				cx={12}
 				cy={12}
 				r={10}
 				stroke="currentColor"
 				pathLength={100}
-				strokeDasharray={100}
-				strokeDashoffset={100 * (1 - done)}
+				stroke-dasharray="100"
+				stroke-dashoffset={String(100 * (1 - done()))}
 				transform="rotate(-90 12 12)"
-				className={`text-accent transition-[stroke-dashoffset] duration-300 motion-reduce:transition-none ${done === 0 ? "opacity-0" : ""}`}
+				class={[
+					"text-accent transition-[stroke-dashoffset] duration-300 motion-reduce:transition-none",
+					{ "opacity-0": done() === 0 },
+				]}
 			/>
 			<path d="M12 8v8" />
 			<path d="m8 12 4 4 4-4" />
@@ -112,31 +127,33 @@ function DownloadProgress({ progress }: { progress: number }) {
 	);
 }
 
-function Changelog({ state }: { state: DesktopUpdateState }) {
-	const latest = state.latest;
-	if (!latest?.changes.length) return null;
-	const hidden = latest.changes.length - shownChanges;
+function Changelog(props: { state: DesktopUpdateState }) {
+	const changes = () => props.state.latest?.changes ?? [];
+	const hidden = () => changes().length - shownChanges;
 	return (
-		<span className="mt-2 block border-t border-line-subtle pt-2 font-normal">
-			<span className="block text-fg-muted">Changes since your version</span>
-			<ul className="m-0 mt-1 list-disc pl-4">
-				{latest.changes.slice(0, shownChanges).map((change, index) => (
-					// biome-ignore lint/suspicious/noArrayIndexKey: two changes can share a title
-					<li key={index}>{change}</li>
-				))}
-			</ul>
-			{hidden > 0 && (
-				<span className="mt-1 block text-fg-muted">and {hidden} more</span>
-			)}
-		</span>
+		<Show when={changes().length}>
+			<span class="mt-2 block border-t border-line-subtle pt-2 font-normal">
+				<span class="block text-fg-muted">Changes since your version</span>
+				<ul class="m-0 mt-1 list-disc pl-4">
+					{/* Two changes can share a title. */}
+					<For each={changes().slice(0, shownChanges)} keyed={false}>
+						{(change) => <li>{change()}</li>}
+					</For>
+				</ul>
+				<Show when={hidden() > 0}>
+					<span class="mt-1 block text-fg-muted">and {hidden()} more</span>
+				</Show>
+			</span>
+		</Show>
 	);
 }
 
-export function UpdateButton({ updates }: { updates: DesktopUpdatesBridge }) {
-	const [state, setState] = useState<DesktopUpdateState | null>(null);
-	useEffect(() => {
+export function UpdateButton(props: { updates: DesktopUpdatesBridge }) {
+	const [state, setState] = createSignal<DesktopUpdateState | null>(null);
+	onSettled(() => {
+		const updates = props.updates;
 		let current = true;
-		const unsubscribe = updates.onChanged(setState);
+		const unsubscribe = updates.onChanged((next) => setState(next));
 		void updates.getState().then((initial) => {
 			if (current) setState((state) => state ?? initial);
 		});
@@ -144,64 +161,93 @@ export function UpdateButton({ updates }: { updates: DesktopUpdatesBridge }) {
 			current = false;
 			unsubscribe();
 		};
-	}, [updates]);
-	if (!state) return null;
-	const { label, title = label, detail } = summary(state);
-	const busy =
-		state.status === "checking" ||
-		state.status === "downloading" ||
-		state.status === "installing";
-	const tone = tones[state.status];
+	});
 	return (
-		<TooltipButton
-			aria-label={label}
-			aria-busy={busy}
-			tooltip={
-				<span className="block">
-					<span className="block">{title}</span>
-					{detail && (
-						<span className="mt-1 block font-normal text-fg-muted">
-							{detail}
-						</span>
-					)}
-					<Changelog state={state} />
-				</span>
-			}
-			side="right"
-			data-shortcut-scope="none"
-			className="ui-button relative size-9"
-			data-variant="ghost"
-			data-icon
-			onClick={() => {
-				if (busy) return;
-				if (state.status === "idle") void updates.check();
-				else if (state.status === "installed") void updates.restart();
-				else void updates.install();
+		<Show when={state()}>
+			{(state) => {
+				const described = createMemo(() => summary(state()));
+				const busy = () =>
+					state().status === "checking" ||
+					state().status === "downloading" ||
+					state().status === "installing";
+				const tone = () => tones[state().status];
+				const downloading = () => {
+					const current = state();
+					return current.status === "downloading" ? current : undefined;
+				};
+				return (
+					<TooltipButton
+						aria-label={described().label}
+						aria-busy={busy() ? "true" : "false"}
+						tooltip={
+							<span class="block">
+								<span class="block">
+									{described().title ?? described().label}
+								</span>
+								<Show when={described().detail}>
+									<span class="mt-1 block font-normal text-fg-muted">
+										{described().detail}
+									</span>
+								</Show>
+								<Changelog state={state()} />
+							</span>
+						}
+						side="right"
+						data-shortcut-scope="none"
+						class="ui-button relative size-9"
+						data-variant="ghost"
+						data-icon
+						onClick={() => {
+							if (busy()) return;
+							const status = state().status;
+							if (status === "idle") void props.updates.check();
+							else if (status === "installed") void props.updates.restart();
+							else void props.updates.install();
+						}}
+					>
+						<Switch
+							fallback={
+								<CircleArrowUp
+									size={18}
+									aria-hidden="true"
+									class={tone()?.icon}
+								/>
+							}
+						>
+							<Match when={state().status === "checking"}>
+								<RefreshCw
+									size={18}
+									aria-hidden="true"
+									class="animate-spin motion-reduce:animate-none"
+								/>
+							</Match>
+							<Match when={downloading()}>
+								{(downloading) => (
+									<DownloadProgress progress={downloading().progress} />
+								)}
+							</Match>
+							<Match when={busy()}>
+								<LoaderCircle
+									size={18}
+									aria-hidden="true"
+									class="animate-spin motion-reduce:animate-none"
+								/>
+							</Match>
+						</Switch>
+						<Show when={tone()}>
+							{(tone) => (
+								<span
+									aria-hidden="true"
+									class={[
+										"absolute top-1 right-1 size-1.5 rounded-full",
+										tone().dot,
+									]}
+								/>
+							)}
+						</Show>
+					</TooltipButton>
+				);
 			}}
-		>
-			{state.status === "checking" ? (
-				<RefreshCw
-					size={18}
-					aria-hidden="true"
-					className="animate-spin motion-reduce:animate-none"
-				/>
-			) : state.status === "downloading" ? (
-				<DownloadProgress progress={state.progress} />
-			) : busy ? (
-				<LoaderCircle
-					size={18}
-					aria-hidden="true"
-					className="animate-spin motion-reduce:animate-none"
-				/>
-			) : (
-				<CircleArrowUp size={18} aria-hidden="true" className={tone?.icon} />
-			)}
-			{tone && (
-				<span
-					aria-hidden="true"
-					className={`absolute top-1 right-1 size-1.5 rounded-full ${tone.dot}`}
-				/>
-			)}
-		</TooltipButton>
+		</Show>
 	);
 }

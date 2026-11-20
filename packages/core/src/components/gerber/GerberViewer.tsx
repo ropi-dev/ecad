@@ -1,13 +1,15 @@
-import { Sparkles } from "lucide-react";
+import type { JSX } from "@solidjs/web";
 import {
-	type ReactNode,
-	useCallback,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-} from "react";
+	type Accessor,
+	createEffect,
+	createMemo,
+	createSignal,
+	omit,
+	Show,
+	untrack,
+} from "solid-js";
 import { Box3, Matrix4, Mesh, type Object3D, Vector3 } from "three";
+import { Sparkles } from "#/components/ui/icons.tsx";
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
 import { Viewer2D, type Viewer2DProps } from "#/components/viewer/Viewer2D.tsx";
 import { viewControlButtonClassName } from "#/components/viewer/viewControlStyles.ts";
@@ -78,35 +80,36 @@ const tintParts = (object: Object3D, color: string | undefined) =>
 		}
 	});
 
-function useOpeningMask(sources: readonly PlanarGeometry[] | undefined) {
-	const layout = sources?.map((source) => source.edges.length).join(",");
-	const [epoch, setEpoch] = useState(0);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: a mask follows its openings' layout, which layout names, and repaints moved openings in place; epoch replaces a mask its openings outgrew
-	const mask = useMemo(
-		() => sources && createHoleMask(sources),
-		[layout, epoch],
-	);
-	useEffect(() => () => mask?.dispose(), [mask]);
-	const outgrow = useCallback(() => setEpoch((next) => next + 1), []);
+const layoutOf = (sources: readonly PlanarGeometry[] | undefined) =>
+	sources?.map((source) => source.edges.length).join(",");
+
+function useOpeningMask(
+	sources: Accessor<readonly PlanarGeometry[] | undefined>,
+) {
+	const layout = createMemo(() => layoutOf(sources()));
+	const [epoch, setEpoch] = createSignal(0);
+	// A mask follows its openings' layout and repaints moved openings in place;
+	// epoch replaces a mask its openings outgrew.
+	const mask = createMemo(() => {
+		layout();
+		epoch();
+		const current = untrack(sources);
+		return current && createHoleMask(current);
+	});
+	createEffect(mask, (shown) => () => shown?.dispose());
+	const outgrow = () => setEpoch((next) => next + 1);
 	return [mask, outgrow] as const;
 }
 
-/** Applies Gerber layer controls to planar objects in the shared viewport. */
-export function GerberViewer({
-	scene,
-	focusedLayerIds,
-	flat: controlledFlat,
-	onFlatChange,
-	surfaceZ,
-	placeLayers = placeBoardLayers,
-	orbitGesture = "shift",
-	updateFlatScene,
-	controls,
-	realistic: controlledRealistic,
-	boardShape,
-	models,
-	...props
-}: Omit<
+const drillKeyOf = (drills: readonly ParsedGerberObject[]) =>
+	drills.map((object) => object.object.uuid).join(",");
+
+const profileKeyOf = (profile: ReturnType<typeof boardOutline> | undefined) =>
+	profile
+		? `${profile.minX},${profile.minY},${profile.maxX},${profile.maxY}`
+		: "";
+
+type GerberViewerProps = Omit<
 	Viewer2DProps,
 	| "scene"
 	| "updateScene"
@@ -117,116 +120,161 @@ export function GerberViewer({
 	| "ref"
 > & {
 	scene: readonly (PlanarObject | ParsedGerberObject)[];
-	focusedLayerIds?: ReadonlySet<string>;
-	flat?: boolean;
-	onFlatChange?: (flat: boolean) => void;
-	surfaceZ?: number;
+	focusedLayerIds?: ReadonlySet<string> | undefined;
+	flat?: boolean | undefined;
+	onFlatChange?: ((flat: boolean) => void) | undefined;
+	surfaceZ?: number | undefined;
 	placeLayers?: typeof placeBoardLayers;
 	orbitGesture?: OrbitGesture;
-	updateFlatScene?: (object: Object3D) => void;
-	controls?: ReactNode;
-	realistic?: boolean;
+	updateFlatScene?: ((object: Object3D) => void) | undefined;
+	controls?: JSX.Element;
+	realistic?: boolean | undefined;
 	/** The board's shape for the realistic view; the profile layer's bounds otherwise. */
-	boardShape?: BoardShape;
-	models?: { readonly object: Object3D };
-}) {
-	const [ownFlat, setOwnFlat] = useState(true);
-	const flat = controlledFlat ?? ownFlat;
-	const [ownRealistic, setOwnRealistic] = useState(false);
-	const realistic = controlledRealistic ?? ownRealistic;
-	const [orbiting, setOrbiting] = useState(false);
-	const layersShown = !updateFlatScene || orbiting || realistic;
+	boardShape?: BoardShape | undefined;
+	models?: { readonly object: Object3D } | undefined;
+};
+
+/** Applies Gerber layer controls to planar objects in the shared viewport. */
+export function GerberViewer(props: GerberViewerProps) {
+	const rest = omit(
+		props,
+		"scene",
+		"focusedLayerIds",
+		"flat",
+		"onFlatChange",
+		"surfaceZ",
+		"placeLayers",
+		"orbitGesture",
+		"updateFlatScene",
+		"controls",
+		"realistic",
+		"boardShape",
+		"models",
+	);
+	const [ownFlat, setOwnFlat] = createSignal(true);
+	const flat = () => props.flat ?? ownFlat();
+	const [ownRealistic, setOwnRealistic] = createSignal(false);
+	const realistic = createMemo(() => props.realistic ?? ownRealistic());
+	const [orbiting, setOrbiting] = createSignal(false);
+	const layersShown = createMemo(
+		() => !props.updateFlatScene || orbiting() || realistic(),
+	);
 	const setFlat = (next: boolean) => {
 		setOwnFlat(next);
-		onFlatChange?.(next);
+		props.onFlatChange?.(next);
 	};
 	// Display settings do not rebuild geometry or reset the camera.
-	const [geometryScene, setGeometryScene] = useState(scene);
-	const current = new Map(scene.map((object) => [object.id, object]));
-	if (
-		geometryScene.length !== scene.length ||
-		geometryScene.some((previous) => {
-			const next = current.get(previous.id);
-			if (!next) return true;
-			return next.type === "spatial" && previous.type === "spatial"
-				? next.object !== previous.object
-				: next.objects !== previous.objects || next.bounds !== previous.bounds;
-		})
-	)
-		setGeometryScene(scene);
-	const drills = visibleDrills(scene);
-	const drillKey = drills.map((object) => object.object.uuid).join(",");
-	const drillRevision = drills.map((object) => object.revision ?? 0).join(",");
-	const [maskEpoch, setMaskEpoch] = useState(0);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: the mask follows the visible drill layers, which drillKey names; maskEpoch replaces a mask its holes outgrew
-	const holes = useMemo(
-		() => createHoleMask(drillGeometry(visibleDrills(scene))),
-		[drillKey, maskEpoch],
-	);
-	const repainted = useRef("");
-	useEffect(() => () => holes?.dispose(), [holes]);
-	const openings = boardShape?.openings;
-	const openingSources = useMemo(
-		() =>
-			realistic
-				? Object.fromEntries(
-						SIDES.map((side): [string, PlanarGeometry[]] => [
-							side,
-							[
-								...drillGeometry(
-									roleObjects(scene, "mask", side === "top" ? 1 : -1),
-								),
-								ringGeometry(openings?.[side] ?? []),
-							],
-						]),
-					)
-				: undefined,
-		[realistic, scene, openings],
-	);
-	const [topOpenings, outgrowTop] = useOpeningMask(openingSources?.top);
+	const geometryScene = createMemo(() => props.scene, {
+		equals: (previous, scene) => {
+			const current = new Map(scene.map((object) => [object.id, object]));
+			return (
+				previous.length === scene.length &&
+				!previous.some((shown) => {
+					const next = current.get(shown.id);
+					if (!next) return true;
+					return next.type === "spatial" && shown.type === "spatial"
+						? next.object !== shown.object
+						: next.objects !== shown.objects || next.bounds !== shown.bounds;
+				})
+			);
+		},
+	});
+	// The mask follows the visible drill layers, which drillKey names; maskEpoch
+	// replaces a mask its holes outgrew.
+	const drills = createMemo(() => visibleDrills(props.scene), {
+		equals: (a, b) => drillKeyOf(a) === drillKeyOf(b),
+	});
+	const drillKey = () => drillKeyOf(drills());
+	const [maskEpoch, setMaskEpoch] = createSignal(0);
+	const holes = createMemo(() => {
+		maskEpoch();
+		return createHoleMask(drillGeometry(drills()));
+	});
+	let repainted = "";
+	createEffect(holes, (shown) => () => shown?.dispose());
+	const openingSources = createMemo(() => {
+		if (!realistic()) return undefined;
+		const scene = props.scene;
+		const openings = props.boardShape?.openings;
+		return Object.fromEntries(
+			SIDES.map((side): [string, PlanarGeometry[]] => [
+				side,
+				[
+					...drillGeometry(roleObjects(scene, "mask", side === "top" ? 1 : -1)),
+					ringGeometry(openings?.[side] ?? []),
+				],
+			]),
+		);
+	});
+	const [topOpenings, outgrowTop] = useOpeningMask(() => openingSources()?.top);
 	const [bottomOpenings, outgrowBottom] = useOpeningMask(
-		openingSources?.bottom,
+		() => openingSources()?.bottom,
 	);
-	const profile =
-		realistic && !boardShape?.outline.length ? boardOutline(scene) : undefined;
-	const profileKey = profile
-		? `${profile.minX},${profile.minY},${profile.maxX},${profile.maxY}`
-		: "";
+	const profile = createMemo(
+		() =>
+			realistic() && !props.boardShape?.outline.length
+				? boardOutline(props.scene)
+				: undefined,
+		{ equals: (a, b) => profileKeyOf(a) === profileKeyOf(b) },
+	);
 	const [buildRealistic, setBuildRealistic] =
-		useState<typeof createRealisticBoard>();
-	const reportError = props.onError;
-	useEffect(() => {
-		if (!realistic || buildRealistic) return;
+		createSignal<typeof createRealisticBoard>();
+	const needsRealistic = createMemo(() => realistic() && !buildRealistic());
+	createEffect(needsRealistic, (needed) => {
+		if (!needed) return;
 		let current = true;
 		import("#/engine/realistic-board-mesh.ts").then(
 			(module) => {
 				if (current) setBuildRealistic(() => module.createRealisticBoard);
 			},
 			() => {
-				if (current) reportError?.("Unable to load the realistic board view.");
+				if (current)
+					props.onError?.("Unable to load the realistic board view.");
 			},
 		);
 		return () => {
 			current = false;
 		};
-	}, [realistic, buildRealistic, reportError]);
-	const outline = boardShape?.outline;
-	// biome-ignore lint/correctness/useExhaustiveDependencies: profileKey names the fallback outline
-	const realisticBoard = useMemo(() => {
-		if (!realistic || !buildRealistic) return undefined;
-		const shape = outline?.length ? outline : profile && boundsPolygon(profile);
-		return shape ? buildRealistic(shape) : undefined;
-	}, [realistic, buildRealistic, outline, profileKey]);
-	useEffect(() => () => realisticBoard?.dispose(), [realisticBoard]);
-	const shownModels = realistic ? models : undefined;
+	});
+	const realisticBoard = createMemo(() => {
+		const build = buildRealistic();
+		if (!realistic() || !build) return undefined;
+		const outline = props.boardShape?.outline;
+		const fallback = profile();
+		const shape = outline?.length
+			? outline
+			: fallback && boundsPolygon(fallback);
+		return shape ? build(shape) : undefined;
+	});
+	createEffect(realisticBoard, (board) => () => board?.dispose());
 	const film = useViewerTheme();
-	const styleLayers = useCallback(
-		(meshes: readonly Object3D[]) => {
-			const drilled = `${drillKey}:${maskEpoch}:${drillRevision}`;
-			if (holes && repainted.current !== drilled) {
-				repainted.current = drilled;
-				if (!holes.repaint(drillGeometry(visibleDrills(scene))))
-					setMaskEpoch((epoch) => epoch + 1);
+	const updateScene = createMemo(() => {
+		const scene = props.scene;
+		const shownGeometry = geometryScene();
+		const focusedLayerIds = props.focusedLayerIds;
+		const mask = holes();
+		const placeLayers = props.placeLayers ?? placeBoardLayers;
+		const drilledKey = drillKey();
+		const drillRevision = visibleDrills(scene)
+			.map((object) => object.revision ?? 0)
+			.join(",");
+		const epoch = maskEpoch();
+		const theme = film();
+		const isRealistic = realistic();
+		const shown = layersShown();
+		const updateFlatScene = props.updateFlatScene;
+		const surfaceZ = props.surfaceZ;
+		const board = realisticBoard();
+		const shownModels = isRealistic ? props.models : undefined;
+		const top = topOpenings();
+		const bottom = bottomOpenings();
+		const sources = openingSources();
+		const styleLayers = (meshes: readonly Object3D[]) => {
+			const drilled = `${drilledKey}:${epoch}:${drillRevision}`;
+			if (mask && repainted !== drilled) {
+				repainted = drilled;
+				if (!mask.repaint(drillGeometry(visibleDrills(scene))))
+					setMaskEpoch((next) => next + 1);
 			}
 			const entries = new Map(
 				scene.map((object, index) => [object.id, { object, index }]),
@@ -238,12 +286,12 @@ export function GerberViewer({
 					object.opacity > 0,
 			);
 			const inFocus = (id: string) =>
-				realistic || !focused || !!focusedLayerIds?.has(id);
+				isRealistic || !focused || !!focusedLayerIds?.has(id);
 			const placements = placeLayers(scene);
-			const sheet = realistic ? undefined : boardOutline(scene);
+			const sheet = isRealistic ? undefined : boardOutline(scene);
 			const finish = 2 * scene.length + 1;
 			meshes.forEach((mesh, index) => {
-				const source = geometryScene[index];
+				const source = shownGeometry[index];
 				const entry = source && entries.get(source.id);
 				if (!entry) {
 					mesh.visible = false;
@@ -252,7 +300,7 @@ export function GerberViewer({
 				const { object, index: order } = entry;
 				const placement = placements[order];
 				const role = boardLayerRole(object).role;
-				const look = realistic
+				const look = isRealistic
 					? realisticLayerStyle(role, isUnplatedDrillLayer(object))
 					: undefined;
 				mesh.visible = object.visible && (look?.visible ?? true);
@@ -260,63 +308,53 @@ export function GerberViewer({
 				mesh.position.z = placement?.z ?? 0;
 				// Draw the focused fill last so other layers' X-ray contours cannot tint it.
 				mesh.renderOrder =
-					focused && inFocus(object.id) && !realistic
+					focused && inFocus(object.id) && !isRealistic
 						? 2 * scene.length
 						: placement?.through
 							? scene.length + order
-							: realistic && role === "legend"
+							: isRealistic && role === "legend"
 								? finish + 1
 								: 0;
 				stylePlanarObject3D(
 					mesh,
 					look?.color ?? object.color,
-					realistic ? 1 : object.opacity,
+					isRealistic ? 1 : object.opacity,
 					!inFocus(object.id),
-					placement && { ...placement, sheet, holes },
-					film,
+					placement && { ...placement, sheet, holes: mask },
+					theme,
 				);
 				tintParts(mesh, look?.color);
 			});
-		},
-		[
-			scene,
-			geometryScene,
-			focusedLayerIds,
-			holes,
-			placeLayers,
-			drillKey,
-			drillRevision,
-			maskEpoch,
-			film,
-			realistic,
-		],
-	);
-	const updateScene = useCallback(
-		(group: Object3D) => {
-			const layers = group.children.slice(0, geometryScene.length);
-			if (layersShown) styleLayers(layers);
+		};
+		return (group: Object3D) => {
+			const layers = group.children.slice(0, shownGeometry.length);
+			if (shown) styleLayers(layers);
 			else for (const mesh of layers) mesh.visible = false;
-			for (const child of group.children.slice(geometryScene.length))
+			for (const child of group.children.slice(shownGeometry.length))
 				if (
-					(child.userData.realisticBoard && child !== realisticBoard?.object) ||
+					(child.userData.realisticBoard && child !== board?.object) ||
 					(child.userData.footprintModels && child !== shownModels?.object)
 				)
 					group.remove(child);
 			updateFlatScene?.(group);
-			for (const flatObject of group.children.slice(geometryScene.length))
-				flatObject.visible = !layersShown;
-			if (realisticBoard) {
-				const board = realisticBoard.object;
-				if (board.parent !== group) group.add(board);
-				board.visible = layersShown;
-				board.renderOrder = 2 * scene.length + 1;
+			for (const flatObject of group.children.slice(shownGeometry.length))
+				flatObject.visible = !shown;
+			if (board) {
+				const boardObject = board.object;
+				if (boardObject.parent !== group) group.add(boardObject);
+				boardObject.visible = shown;
+				boardObject.renderOrder = 2 * scene.length + 1;
 				for (const side of SIDES) {
-					const mask = side === "top" ? topOpenings : bottomOpenings;
-					const sources = openingSources?.[side];
-					if (mask && sources && !mask.repaint(sources))
+					const openingMask = side === "top" ? top : bottom;
+					const openingGeometry = sources?.[side];
+					if (
+						openingMask &&
+						openingGeometry &&
+						!openingMask.repaint(openingGeometry)
+					)
 						(side === "top" ? outgrowTop : outgrowBottom)();
 				}
-				for (const part of board.children) {
+				for (const part of boardObject.children) {
 					if (!(part instanceof Mesh)) continue;
 					const side: (typeof SIDES)[number] | undefined =
 						part.userData.realisticMask;
@@ -325,20 +363,16 @@ export function GerberViewer({
 							scene,
 							"mask",
 							side === "top" ? 1 : -1,
-						).every((mask) => mask.visible);
-						cutHoles(
-							part.material,
-							IDENTITY,
-							side === "top" ? topOpenings : bottomOpenings,
-						);
+						).every((layer) => layer.visible);
+						cutHoles(part.material, IDENTITY, side === "top" ? top : bottom);
 					} else if (part.userData.realisticPart === "laminate")
-						cutHoles(part.material, IDENTITY, holes);
+						cutHoles(part.material, IDENTITY, mask);
 				}
 			}
 			if (shownModels) {
 				const models = shownModels.object;
 				if (models.parent !== group) group.add(models);
-				models.visible = layersShown;
+				models.visible = shown;
 			}
 			group.position.set(0, 0, 0);
 			if (surfaceZ !== undefined) {
@@ -352,40 +386,26 @@ export function GerberViewer({
 				const center = bounds.getCenter(new Vector3());
 				group.position.set(-center.x, -center.y, -center.z);
 			}
-		},
-		[
-			scene,
-			geometryScene,
-			layersShown,
-			styleLayers,
-			updateFlatScene,
-			surfaceZ,
-			realisticBoard,
-			shownModels,
-			topOpenings,
-			bottomOpenings,
-			outgrowTop,
-			outgrowBottom,
-			openingSources,
-			holes,
-		],
-	);
-	const toggle = geometryScene.length > 0 && (
-		<>
+		};
+	});
+	const hasGeometry = createMemo(() => geometryScene().length > 0);
+	const suppliedControls = () => "controls" in props;
+	const defaultControls = () => (
+		<Show when={hasGeometry()}>
 			<TooltipButton
 				type="button"
-				className={`${viewControlButtonClassName} px-2.5`}
-				aria-pressed={flat}
-				tooltip={flat ? "Show layers in 3D" : "Show the flat top view"}
-				onClick={() => setFlat(!flat)}
+				class={`${viewControlButtonClassName} px-2.5`}
+				aria-pressed={flat() ? "true" : "false"}
+				tooltip={flat() ? "Show layers in 3D" : "Show the flat top view"}
+				onClick={() => setFlat(!flat())}
 			>
 				2D
 			</TooltipButton>
 			<RealisticToggle
-				realistic={realistic}
-				onToggle={() => setOwnRealistic(!realistic)}
+				realistic={realistic()}
+				onToggle={() => setOwnRealistic(!realistic())}
 			/>
-		</>
+		</Show>
 	);
 	return (
 		<Viewer2D
@@ -393,32 +413,27 @@ export function GerberViewer({
 			interactionHint="Drag or swipe to pan, and Shift + drag or Shift + swipe to orbit in 3D. Pinch or Ctrl + scroll to zoom. Arrow keys pan, plus or minus zooms, and F6 fits the scene."
 			hoverHighlight={false}
 			selectionPosition="top-left"
-			scrollableControls={controls === undefined}
-			{...props}
-			showGrid={!realistic}
-			scene={geometryScene}
-			updateScene={updateScene}
-			orbit={!flat && geometryScene.length > 0}
+			scrollableControls={!suppliedControls()}
+			{...rest}
+			showGrid={!realistic()}
+			scene={geometryScene()}
+			updateScene={updateScene()}
+			orbit={!flat() && hasGeometry()}
 			gestureOrbit={
-				(controlledFlat === undefined || onFlatChange) &&
-				geometryScene.length > 0
-					? orbitGesture
+				(props.flat === undefined || props.onFlatChange) && hasGeometry()
+					? (props.orbitGesture ?? "shift")
 					: undefined
 			}
-			onOrbit={(next) => {
+			onOrbit={(next: boolean) => {
 				setOrbiting(next);
 				setFlat(!next);
 			}}
-			extraControls={controls ?? toggle}
+			extraControls={suppliedControls() ? props.controls : defaultControls()}
 		/>
 	);
 }
 
-function RealisticToggle({
-	realistic,
-	onToggle,
-	disabled,
-}: {
+function RealisticToggle(props: {
 	realistic: boolean;
 	onToggle: () => void;
 	disabled?: boolean;
@@ -426,14 +441,16 @@ function RealisticToggle({
 	return (
 		<TooltipButton
 			type="button"
-			className={viewControlButtonClassName}
+			class={viewControlButtonClassName}
 			aria-label="Realistic board"
-			aria-pressed={realistic}
-			disabled={disabled}
+			aria-pressed={props.realistic ? "true" : "false"}
+			disabled={props.disabled}
 			tooltip={
-				realistic ? "Show the layer colors" : "Show the board as manufactured"
+				props.realistic
+					? "Show the layer colors"
+					: "Show the board as manufactured"
 			}
-			onClick={onToggle}
+			onClick={() => props.onToggle()}
 		>
 			<Sparkles size={18} aria-hidden="true" />
 		</TooltipButton>

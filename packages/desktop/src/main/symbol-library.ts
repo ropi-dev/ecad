@@ -32,7 +32,7 @@ import {
 	serializeSymbolConfig,
 	validateSymbolLibraries,
 } from "@ecad/core/symbol-library/config.ts";
-import type { SymbolLibrarySnapshot } from "@ecad/core/symbol-library/storage.tsx";
+import type { SymbolLibrarySnapshot } from "@ecad/core/symbol-library/storage.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { configPaths } from "#/main/config-directory.ts";
 

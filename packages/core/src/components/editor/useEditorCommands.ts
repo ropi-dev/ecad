@@ -13,7 +13,7 @@ import {
 	symbolChildren,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
-import { type Dispatch, type SetStateAction, useCallback } from "react";
+import type { Accessor } from "solid-js";
 import type {
 	DrawingCommand,
 	EditorSession,
@@ -46,154 +46,127 @@ type Gestures = Pick<
  * The editor's selection and history commands. Each one first ends any
  * gesture in progress so the command applies to committed shapes.
  */
-export function useEditorCommands({
-	session,
-	gestures: {
-		getDrag,
-		getWire,
-		finishDrag,
-		finishWire,
-		canRotatePlacement,
-		rotatePlacement,
-	},
-	tool,
-	setTool,
-	ready,
-	selectedChildKey,
-	symbolLibrary,
-	setCreatingSymbol,
-}: {
-	session: EditorSession;
-	gestures: Gestures;
-	tool: CanvasTool;
-	setTool: Dispatch<SetStateAction<CanvasTool>>;
-	ready: boolean;
-	selectedChildKey: string | null;
-	symbolLibrary: ReturnType<typeof useSymbolLibrary>;
-	setCreatingSymbol: Dispatch<SetStateAction<boolean>>;
-}) {
-	const editSelection = useCallback(
-		(edit: SelectionEdit) => {
-			const current = session.getState();
-			const shapes = session.shapes();
-			const selection = shapes.filter(
-				(shape) =>
-					current.selection.has(shape.id) &&
-					canSelectShape(shape, current.allowLocked),
-			);
-			const symbol =
-				selection.length === 1 && selection[0].kind === "symbol"
-					? selection[0]
-					: undefined;
-			const selectedChild =
-				symbol && current.childKey
-					? symbolChildren(symbol).find(
-							(child) =>
-								child.key === current.childKey &&
-								canInspectSymbolChild(symbol, child, current.allowLocked),
-						)
-					: undefined;
-			const child =
-				symbol &&
-				selectedChild &&
-				(canSelectSymbolChild(symbol, selectedChild, current.allowLocked) ||
-					editsFixedPin(edit))
-					? selectedChild
-					: undefined;
-			// A pin stays fixed to its symbol, so it takes no other edits.
-			if (selectedChild && !child) return;
-			const result = applySelectionEdit(edit, {
-				selection,
-				child: symbol && child ? { symbol, child } : undefined,
-				shapes,
-				nextId: session.nextId(),
-				allowLocked: current.allowLocked,
-				measureText,
-			});
-			if (result?.error) session.setError(result.error);
-			else if (result) session.replace(result.replacements, result.label);
-			if (edit.kind === "lock" && child) session.selectChild(null);
-		},
-		[session],
-	);
+export function useEditorCommands(
+	options: Accessor<{
+		session: EditorSession;
+		gestures: Gestures;
+		tool: CanvasTool;
+		setTool: (tool: CanvasTool) => void;
+		ready: boolean;
+		selectedChildKey: string | null;
+		symbolLibrary: ReturnType<typeof useSymbolLibrary>;
+		setCreatingSymbol: (open: boolean) => void;
+	}>,
+) {
+	const editSelection = (edit: SelectionEdit) => {
+		const { session } = options();
+		const current = session.getState();
+		const shapes = session.shapes();
+		const selection = shapes.filter(
+			(shape) =>
+				current.selection.has(shape.id) &&
+				canSelectShape(shape, current.allowLocked),
+		);
+		const symbol =
+			selection.length === 1 && selection[0].kind === "symbol"
+				? selection[0]
+				: undefined;
+		const selectedChild =
+			symbol && current.childKey
+				? symbolChildren(symbol).find(
+						(child) =>
+							child.key === current.childKey &&
+							canInspectSymbolChild(symbol, child, current.allowLocked),
+					)
+				: undefined;
+		const child =
+			symbol &&
+			selectedChild &&
+			(canSelectSymbolChild(symbol, selectedChild, current.allowLocked) ||
+				editsFixedPin(edit))
+				? selectedChild
+				: undefined;
+		// A pin stays fixed to its symbol, so it takes no other edits.
+		if (selectedChild && !child) return;
+		const result = applySelectionEdit(edit, {
+			selection,
+			child: symbol && child ? { symbol, child } : undefined,
+			shapes,
+			nextId: session.nextId(),
+			allowLocked: current.allowLocked,
+			measureText,
+		});
+		if (result?.error) session.setError(result.error);
+		else if (result) session.replace(result.replacements, result.label);
+		if (edit.kind === "lock" && child) session.selectChild(null);
+	};
 
-	const restoreHistory = useCallback(
-		(program: DrawingCommand<unknown>) => {
-			finishDrag(true);
-			finishWire();
-			if (tool === "symbol") setTool("select");
-			session.restore(program);
-		},
-		[finishDrag, finishWire, tool, session, setTool],
-	);
-	const undo = useCallback(() => restoreHistory(undoEffect), [restoreHistory]);
-	const redo = useCallback(() => restoreHistory(redoEffect), [restoreHistory]);
-	const rotateItems = useCallback(
-		(angle: number) => {
-			if (!ready) return;
-			if (canRotatePlacement) {
-				rotatePlacement(angle);
+	const restoreHistory = (program: DrawingCommand<unknown>) => {
+		const { session, gestures, tool, setTool } = options();
+		gestures.finishDrag(true);
+		gestures.finishWire();
+		if (tool === "symbol") setTool("select");
+		session.restore(program);
+	};
+	const undo = () => restoreHistory(undoEffect);
+	const redo = () => restoreHistory(redoEffect);
+	const rotateItems = (angle: number) => {
+		const { session, gestures, ready, selectedChildKey, setTool } = options();
+		if (!ready) return;
+		if (gestures.canRotatePlacement) {
+			gestures.rotatePlacement(angle);
+			return;
+		}
+		if (!session.getState().selection.size) return;
+		const active = gestures.getDrag();
+		const childKey = active ? active.previousChild : selectedChildKey;
+		gestures.finishDrag(true);
+		gestures.finishWire();
+		setTool("select");
+
+		const { selection, allowLocked } = session.getState();
+		const parent = session.shapes().find((shape) => selection.has(shape.id));
+		if (childKey && parent?.kind === "symbol") {
+			const child = symbolChildren(parent).find(
+				(item) => item.key === childKey,
+			);
+			if (!child) return;
+			// A pin stays fixed to its symbol, so rotating it turns the symbol.
+			if (canSelectSymbolChild(parent, child, allowLocked)) {
+				session.replace(
+					[
+						replaceSymbolChild(parent, childKey, {
+							...child.shape,
+							rotation: child.shape.rotation + angle,
+						}),
+					],
+					"Rotate symbol child",
+				);
 				return;
 			}
-			if (!session.getState().selection.size) return;
-			const active = getDrag();
-			const childKey = active ? active.previousChild : selectedChildKey;
-			finishDrag(true);
-			finishWire();
-			setTool("select");
+		}
 
-			const { selection, allowLocked } = session.getState();
-			const parent = session.shapes().find((shape) => selection.has(shape.id));
-			if (childKey && parent?.kind === "symbol") {
-				const child = symbolChildren(parent).find(
-					(item) => item.key === childKey,
-				);
-				if (!child) return;
-				// A pin stays fixed to its symbol, so rotating it turns the symbol.
-				if (canSelectSymbolChild(parent, child, allowLocked)) {
-					session.replace(
-						[
-							replaceSymbolChild(parent, childKey, {
-								...child.shape,
-								rotation: child.shape.rotation + angle,
-							}),
-						],
-						"Rotate symbol child",
-					);
-					return;
-				}
-			}
-
-			session.commit(rotateShapesEffect([...selection], angle));
-		},
-		[
-			ready,
-			canRotatePlacement,
-			rotatePlacement,
-			session,
-			getDrag,
-			selectedChildKey,
-			finishDrag,
-			finishWire,
-			setTool,
-		],
-	);
-	const removeSelected = useCallback(() => {
-		finishDrag();
-		if (getWire()) {
-			finishWire();
+		session.commit(rotateShapesEffect([...selection], angle));
+	};
+	const removeSelected = () => {
+		const { session, gestures, setTool } = options();
+		gestures.finishDrag();
+		if (gestures.getWire()) {
+			gestures.finishWire();
 			setTool("select");
 		}
 		session.commit(
 			removeShapesEffect([...session.getState().selection]),
 			new Set(),
 		);
-	}, [finishDrag, getWire, finishWire, session, setTool]);
+	};
 	const createSelectionSymbol = async (
 		name: string,
 	): Promise<string | undefined> => {
-		finishDrag();
-		finishWire();
+		const { session, gestures, symbolLibrary, setTool, setCreatingSymbol } =
+			options();
+		gestures.finishDrag();
+		gestures.finishWire();
 		const originalDrawing = session.drawing();
 		const previousHistoryId = originalDrawing.history.currentId;
 		const { selection } = session.getState();

@@ -14,8 +14,7 @@ export function createBrowserPerformance(development: boolean) {
 			for (const listener of listeners) listener(sample);
 			if (
 				sample.name.startsWith("browser.") ||
-				sample.name === "renderer.frame" ||
-				sample.name.startsWith("react.")
+				sample.name === "renderer.frame"
 			)
 				return;
 			try {

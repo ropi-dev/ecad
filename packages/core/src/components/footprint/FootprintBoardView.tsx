@@ -3,11 +3,12 @@ import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
 import {
 	type ComponentProps,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-} from "react";
+	createEffect,
+	createMemo,
+	omit,
+	onSettled,
+	Show,
+} from "solid-js";
 import { boardInterior } from "#/board/fill.ts";
 import { maskOpenings } from "#/board/mask.ts";
 import { useFootprintModels } from "#/components/footprint/useFootprintModels.ts";
@@ -31,65 +32,67 @@ import type { ModelPlacement } from "#/footprint/models.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 import { useSchematicTheme } from "#/settings/theme.ts";
 
-export function FootprintBoardView({
-	shapes,
-	regions,
-	ariaLabel = "Footprint editor",
-	controlsLabel = "Footprint tools",
-	hiddenLayers,
-	focusedLayer,
-	flat,
-	onFlatChange,
-	onBuildError,
-	realistic = false,
-	models = [],
-	onModelError,
-	maskMargin,
-	copperLayers,
-
-	...viewer
-}: Pick<
-	Viewer2DProps,
-	| "cameraState"
-	| "pixelsPerMmAt100"
-	| "fitZoom"
-	| "getFitBounds"
-	| "onChange"
-	| "onReady"
-	| "onError"
-	| "interactionHint"
-	| "rulerUnit"
-> &
-	Pick<
-		ComponentProps<typeof GerberViewer>,
-		"controls" | "orbitGesture" | "updateFlatScene"
-	> & {
-		shapes: readonly EditorShape[];
-		regions?: readonly BoardRegion[];
-		ariaLabel?: string;
-		controlsLabel?: string;
-		hiddenLayers: ReadonlySet<FootprintLayer>;
-		focusedLayer?: FootprintLayer;
-		flat: boolean;
-		onFlatChange: (flat: boolean) => void;
-		onBuildError: (message: string) => void;
-		realistic?: boolean;
-		models?: readonly ModelPlacement[];
-		onModelError?: (message: string) => void;
-		maskMargin?: number;
-		copperLayers?: number | undefined;
-	}) {
-	const [builder] = useState(() => createBoardBuilder(createBoardObjects()));
-	useEffect(() => () => builder.dispose(), [builder]);
-	const [board, setBoard] = useState<BoardObject[]>();
-	useEffect(() => {
-		if (board) builder.release(board);
-	}, [builder, board]);
-	const colors = useSchematicTheme().appearance;
-	useEffect(() => {
+export function FootprintBoardView(
+	props: Pick<
+		Viewer2DProps,
+		| "cameraState"
+		| "pixelsPerMmAt100"
+		| "fitZoom"
+		| "getFitBounds"
+		| "onChange"
+		| "onReady"
+		| "onError"
+		| "interactionHint"
+		| "rulerUnit"
+	> &
+		Pick<
+			ComponentProps<typeof GerberViewer>,
+			"controls" | "orbitGesture" | "updateFlatScene"
+		> & {
+			shapes: readonly EditorShape[];
+			regions?: readonly BoardRegion[];
+			ariaLabel?: string;
+			controlsLabel?: string;
+			hiddenLayers: ReadonlySet<FootprintLayer>;
+			focusedLayer?: FootprintLayer;
+			flat: boolean;
+			onFlatChange: (flat: boolean) => void;
+			onBuildError: (message: string) => void;
+			realistic?: boolean;
+			models?: readonly ModelPlacement[];
+			onModelError?: (message: string) => void;
+			maskMargin?: number;
+			copperLayers?: number | undefined;
+		},
+) {
+	const viewer = omit(
+		props,
+		"shapes",
+		"regions",
+		"ariaLabel",
+		"controlsLabel",
+		"hiddenLayers",
+		"focusedLayer",
+		"flat",
+		"onFlatChange",
+		"onBuildError",
+		"realistic",
+		"models",
+		"onModelError",
+		"maskMargin",
+		"copperLayers",
+	);
+	const builder = createBoardBuilder(createBoardObjects());
+	onSettled(() => () => builder.dispose());
+	const theme = useSchematicTheme();
+	const build = createMemo(() => {
+		const shapes = props.shapes;
+		const regions = props.regions;
+		const colors = theme().appearance;
+		const copperLayers = props.copperLayers;
 		try {
-			setBoard(
-				measurePerformance(
+			return {
+				objects: measurePerformance(
 					"footprint.board-build",
 					() =>
 						builder.build(shapes, {
@@ -99,84 +102,119 @@ export function FootprintBoardView({
 						}),
 					{ shapes: shapes.length },
 				),
-			);
-			onBuildError("");
+				error: "",
+			};
 		} catch (cause) {
 			if (import.meta.env?.DEV) console.error(cause);
-			setBoard([]);
-			onBuildError("Unable to build the 3D view of this footprint.");
+			return {
+				objects: [] as BoardObject[],
+				error: "Unable to build the 3D view of this footprint.",
+			};
 		}
-	}, [builder, shapes, regions, colors, copperLayers, onBuildError]);
-	const scene = useMemo(
-		() =>
-			board?.map((object) => ({
-				...object,
-				visible: boardObjectVisible(object.id, hiddenLayers, copperLayers),
-			})),
-		[board, hiddenLayers, copperLayers],
+	});
+	const board = () => build().objects;
+	createEffect(board, (shown) => {
+		builder.release(shown);
+	});
+	createEffect(
+		() => build().error,
+		(error) => {
+			props.onBuildError(error);
+		},
 	);
-	const focusedLayerIds = useMemo(
-		() =>
-			focusedLayer && board
-				? new Set(
-						board
-							.filter((object) => boardObjectOnLayer(object.id, focusedLayer))
-							.map((object) => object.id),
-					)
-				: undefined,
-		[board, focusedLayer],
+	const scene = createMemo(() =>
+		board()?.map((object) => ({
+			...object,
+			visible: boardObjectVisible(
+				object.id,
+				props.hiddenLayers,
+				props.copperLayers,
+			),
+		})),
 	);
-	const segments = realistic ? boardOutlineSegments(shapes) : [];
-	const edge = realistic && !segments.length ? boardEdgeBounds(shapes) : null;
-	const outlineKey = edge
-		? `${edge.minX},${edge.minY},${edge.maxX},${edge.maxY}`
-		: JSON.stringify(segments);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: outlineKey names the Edge.Cuts strokes, or the drawing's bounds without them, so other edits keep the outline
-	const outline = useMemo(() => {
+	const focusedLayerIds = createMemo(() => {
+		const layer = props.focusedLayer;
+		const objects = board();
+		return layer && objects
+			? new Set(
+					objects
+						.filter((object) => boardObjectOnLayer(object.id, layer))
+						.map((object) => object.id),
+				)
+			: undefined;
+	});
+	// The key names the Edge.Cuts strokes, or the drawing's bounds without
+	// them, so other edits keep the outline.
+	const outlineSource = createMemo(
+		() => {
+			const shapes = props.shapes;
+			const realistic = props.realistic ?? false;
+			const segments = realistic ? boardOutlineSegments(shapes) : [];
+			const edge =
+				realistic && !segments.length ? boardEdgeBounds(shapes) : null;
+			const key = edge
+				? `${edge.minX},${edge.minY},${edge.maxX},${edge.maxY}`
+				: JSON.stringify(segments);
+			return { realistic, key, shapes };
+		},
+		{
+			equals: (previous, next) =>
+				previous.realistic === next.realistic && previous.key === next.key,
+		},
+	);
+	const outline = createMemo(() => {
+		const { realistic, shapes } = outlineSource();
 		if (!realistic) return undefined;
 		const interior = boardInterior(shapes);
 		return interior.length ? interior : boundsPolygon(boardEdgeBounds(shapes));
-	}, [realistic, outlineKey]);
-	const boardShape = useMemo(
-		() =>
-			outline && {
-				outline,
-				openings: maskOpenings(shapes, maskMargin),
-			},
-		[outline, shapes, maskMargin],
-	);
+	});
+	const boardShape = createMemo(() => {
+		const current = outline();
+		return (
+			current && {
+				outline: current,
+				openings: maskOpenings(props.shapes, props.maskMargin),
+			}
+		);
+	});
 	const modelObjects = useFootprintModels(
-		models,
-		realistic && models.length > 0,
-		onModelError,
+		() => props.models ?? [],
+		() => (props.realistic ?? false) && (props.models?.length ?? 0) > 0,
+		(message) => props.onModelError?.(message),
 	);
-	const shownFlat = useRef(true);
-	useEffect(() => {
-		if (flat && shownFlat.current) onFlatChange(true);
-	}, [flat, onFlatChange]);
-	if (!scene) return null;
+	let shownFlat = true;
+	createEffect(
+		() => props.flat,
+		(flat) => {
+			if (flat && shownFlat) props.onFlatChange(true);
+		},
+	);
 	return (
-		<GerberViewer
-			ariaLabel={ariaLabel}
-			scene={scene}
-			focusedLayerIds={focusedLayerIds}
-			flat={flat}
-			onFlatChange={(next) => {
-				shownFlat.current = next;
-				onFlatChange(next);
-			}}
-			surfaceZ={BOARD_SURFACE_Z}
-			realistic={realistic}
-			boardShape={boardShape}
-			models={modelObjects}
-			placeLayers={footprintBoardPlacer(copperLayers)}
-			keepView
-			projection="orthographic"
-			lockProjection
-			selectionEnabled={false}
-			groupedControls
-			controlsLabel={controlsLabel}
-			{...viewer}
-		/>
+		<Show when={scene()}>
+			{(shown) => (
+				<GerberViewer
+					ariaLabel={props.ariaLabel ?? "Footprint editor"}
+					scene={shown()}
+					focusedLayerIds={focusedLayerIds()}
+					flat={props.flat}
+					onFlatChange={(next) => {
+						shownFlat = next;
+						props.onFlatChange(next);
+					}}
+					surfaceZ={BOARD_SURFACE_Z}
+					realistic={props.realistic ?? false}
+					boardShape={boardShape()}
+					models={modelObjects()}
+					placeLayers={footprintBoardPlacer(props.copperLayers)}
+					keepView
+					projection="orthographic"
+					lockProjection
+					selectionEnabled={false}
+					groupedControls
+					controlsLabel={props.controlsLabel ?? "Footprint tools"}
+					{...viewer}
+				/>
+			)}
+		</Show>
 	);
 }

@@ -13,7 +13,7 @@ import type {
 	ConfiguredSymbolLibrary,
 	SymbolLibraryConfig,
 } from "#/symbol-library/config.ts";
-import type { SymbolLibraryStorage } from "#/symbol-library/storage.tsx";
+import type { SymbolLibraryStorage } from "#/symbol-library/storage.ts";
 
 export function createProjectSymbolStorage(
 	epoch: number,

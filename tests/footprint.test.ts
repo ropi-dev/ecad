@@ -52,7 +52,7 @@ import {
 	ProjectRepository,
 } from "#/projects/repository.ts";
 import type { ProjectStorage } from "#/projects/storage.ts";
-import type { SymbolLibraryStorage } from "#/symbol-library/storage.tsx";
+import type { SymbolLibraryStorage } from "#/symbol-library/storage.ts";
 import { required } from "./helpers/required.ts";
 
 const measure = (text: string) => text.length * 57.6;

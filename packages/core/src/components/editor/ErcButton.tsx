@@ -1,13 +1,9 @@
-import { ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "#/components/ui/icons.tsx";
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
 import { viewControlButtonClassName } from "#/components/viewer/viewControlStyles.ts";
 
 /** Toolbar toggle for the electrical rules check panel. */
-export function ErcButton({
-	open,
-	disabled = false,
-	onClick,
-}: {
+export function ErcButton(props: {
 	open: boolean;
 	disabled?: boolean;
 	onClick(): void;
@@ -15,12 +11,12 @@ export function ErcButton({
 	return (
 		<TooltipButton
 			type="button"
-			className={viewControlButtonClassName}
+			class={viewControlButtonClassName}
 			tooltip="Electrical rules check"
 			aria-label="Electrical rules check"
-			aria-pressed={open}
-			disabled={disabled}
-			onClick={onClick}
+			aria-pressed={props.open ? "true" : "false"}
+			disabled={props.disabled ?? false}
+			onClick={() => props.onClick()}
 		>
 			<ShieldCheck size={18} aria-hidden="true" />
 		</TooltipButton>

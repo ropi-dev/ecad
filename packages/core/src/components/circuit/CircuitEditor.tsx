@@ -6,27 +6,26 @@ import {
 import { snapCircuitPoint } from "@ecad/drawing-core/circuit/grid.ts";
 import type { CircuitCommand } from "@ecad/drawing-core/circuit/store.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
-import { Workflow } from "lucide-react";
 import {
+	createEffect,
+	createMemo,
+	createSignal,
+	For,
+	Loading,
 	lazy,
-	memo,
-	type MouseEvent as ReactMouseEvent,
-	Suspense,
-	useEffect,
-	useLayoutEffect,
-	useMemo,
-	useRef,
-	useState,
-	useSyncExternalStore,
-} from "react";
+	onSettled,
+	Show,
+} from "solid-js";
 import { componentFromSymbol } from "#/circuit/symbol-components.ts";
 import { untangleCircuit } from "#/circuit/untangle-client.ts";
 import {
 	type CircuitTool,
 	CircuitToolbar,
 } from "#/components/circuit/CircuitToolbar.tsx";
+import { Workflow } from "#/components/ui/icons.tsx";
 import type { SymbolDefinition } from "#/drawing/symbols.ts";
 import { handleViewerKeyDown } from "#/engine/navigation.ts";
+import { useExternalStore } from "#/lib/external-store.ts";
 import {
 	arrowDelta,
 	handleHistoryKeyDown,
@@ -44,9 +43,9 @@ import { CircuitGraphLayer } from "#/components/circuit/CircuitGraphLayer.tsx";
 import {
 	type CircuitGraph,
 	type CircuitGraphActions,
+	type GraphButtonEvent,
 	type CircuitSelection as Selection,
 	usePruneToSnapshot,
-	useStableHandlers,
 } from "#/components/circuit/circuitEditorState.ts";
 import {
 	type CircuitMenu,
@@ -80,11 +79,7 @@ const ErcPanel = lazy(() =>
 
 const viewStates = new WeakMap<CircuitDocument["store"], CircuitView>();
 
-const CircuitDocumentBar = memo(function CircuitDocumentBar({
-	name,
-	id,
-	active,
-}: {
+function CircuitDocumentBar(props: {
 	name: string;
 	id: string;
 	active: boolean;
@@ -92,131 +87,131 @@ const CircuitDocumentBar = memo(function CircuitDocumentBar({
 	return (
 		<DocumentBar
 			icon={Workflow}
-			title={name}
-			selection={`circuit:${id}`}
+			title={props.name}
+			selection={`circuit:${props.id}`}
 			view="circuit"
-			active={active}
+			active={props.active}
 		>
 			<EditorViewSwitch view="circuit" />
 		</DocumentBar>
 	);
-});
+}
 
-export function CircuitEditor({
-	document,
-	active = true,
-}: {
+export function CircuitEditor(props: {
 	document: CircuitDocument;
 	active?: boolean;
 }) {
+	const active = () => props.active ?? true;
 	const project = useProjectSelection(({ dirty, error, libraryErrors }) => ({
 		dirty,
 		error,
 		libraryErrors,
 	}));
-	const store = document.store;
-	const snapshot = useSyncExternalStore(
-		store.subscribe,
-		store.getSnapshot,
-		store.getSnapshot,
+	const store = createMemo(() => props.document.store);
+	const snapshotOf = createMemo(() => useExternalStore(store()));
+	const snapshot = () => snapshotOf()();
+	const circuit = () => snapshot().circuit;
+	const components = createMemo(() => circuit().components);
+	const nets = createMemo(() => circuit().nets);
+	const collapseKey = createMemo(() =>
+		(snapshot().graph.collapsedComponentIds ?? []).join(","),
 	);
-	const { circuit } = snapshot;
-	const collapseKey = (snapshot.graph.collapsedComponentIds ?? []).join(",");
-	const [collapseMotion, setCollapseMotion] = useState({
-		key: collapseKey,
-		active: false,
-	});
-	if (collapseMotion.key !== collapseKey)
-		setCollapseMotion({ key: collapseKey, active: true });
-	useEffect(() => {
-		if (!collapseMotion.active) return;
-		const timer = window.setTimeout(
-			() => setCollapseMotion((current) => ({ ...current, active: false })),
-			220,
-		);
+	const [settledCollapseKey, setSettledCollapseKey] = createSignal<string>();
+	createEffect(collapseKey, (key) => {
+		const timer = window.setTimeout(() => setSettledCollapseKey(key), 220);
 		return () => window.clearTimeout(timer);
-	}, [collapseMotion]);
+	});
+	const collapsing = () => {
+		const settled = settledCollapseKey();
+		return settled !== undefined && settled !== collapseKey();
+	};
 
-	const [ercOpen, setErcOpen] = useState(false);
-	const [selection, setSelection] = useState<Selection>(null);
-	const [pendingPin, setPendingPin] = useState<string | null>(null);
-	const [tool, setTool] = useState<CircuitTool>("select");
-	const [placement, setPlacement] = useState<SymbolDefinition | null>(null);
-	const [placementPoint, setPlacementPoint] = useState<{
+	const [ercOpen, setErcOpen] = createSignal(false);
+	const [selection, setSelection] = createSignal<Selection>(null);
+	const [pendingPin, setPendingPin] = createSignal<string | null>(null);
+	const [tool, setTool] = createSignal<CircuitTool>("select");
+	const [placement, setPlacement] = createSignal<SymbolDefinition | null>(null);
+	const [placementPoint, setPlacementPoint] = createSignal<{
 		x: number;
 		y: number;
 	} | null>(null);
-	const placementPinCount = useMemo(
+	const placementPinCount = createMemo(
 		() =>
-			placement?.children.filter((child) => child.kind === "pin").length ?? 0,
-		[placement],
+			placement()?.children.filter((child) => child.kind === "pin").length ?? 0,
 	);
-	const connecting = tool === "connect";
-	const [editing, setEditing] = useState<Selection>(null);
-	const [menu, setMenu] = useState<CircuitMenu | null>(null);
+	const connecting = () => tool() === "connect";
+	const [editing, setEditing] = createSignal<Selection>(null);
+	const [menu, setMenu] = createSignal<CircuitMenu | null>(null);
 	const pointer = useCircuitPointerState();
 	const { drag, setDrag, connectionDrag, setConnectionDrag, setPan } = pointer;
-	const [checkedPins, setCheckedPins] = useState<string[]>([]);
-	const [error, setError] = useState("");
-	const untangle = useRef<AbortController>(null);
-	const [untangling, setUntangling] = useState(false);
-	useEffect(() => () => untangle.current?.abort(), []);
-	const circuitMessages = [
+	const [checkedPins, setCheckedPins] = createSignal<string[]>([]);
+	const [error, setError] = createSignal("");
+	let untangle: AbortController | null = null;
+	const [untangling, setUntangling] = createSignal(false);
+	onSettled(() => () => untangle?.abort());
+	const circuitMessages = createMemo(() => [
 		...new Set(
-			[error || project?.error, ...(project?.libraryErrors ?? [])].filter(
+			[error() || project()?.error, ...(project()?.libraryErrors ?? [])].filter(
 				(message): message is string => !!message,
 			),
 		),
-	];
-	const svg = useRef<SVGSVGElement>(null);
-	const fittedStore = useRef<CircuitDocument["store"] | null>(null);
-	const { view, setView, zoom, gridStyle, gridStep, scale } =
-		useCircuitNavigation(svg, viewStates.get(store));
-	useEffect(() => {
-		viewStates.set(store, view);
-	}, [store, view]);
-	const graph = useMemo(
-		() =>
-			buildCircuitGraph({
-				circuit: snapshot.circuit,
-				graph: drag
-					? {
-							...snapshot.graph,
-							positions: [
-								...snapshot.graph.positions.filter(
-									(position) => position.id !== drag.position.id,
-								),
-								{ ...drag.position, x: drag.x, y: drag.y },
-							],
-						}
-					: snapshot.graph,
-			}),
-		[snapshot.circuit, snapshot.graph, drag],
+	]);
+	let svg: SVGSVGElement | undefined;
+	const navigation = useCircuitNavigation(
+		() => svg,
+		() => viewStates.get(store()),
 	);
-	const pins = useMemo(
+	const { setView, zoom } = navigation;
+	createEffect(store, (current) => {
+		const savedView = viewStates.get(current);
+		if (savedView) setView(savedView);
+		else fit(buildCircuitGraph(current.getSnapshot()), false);
+	});
+	createEffect(
+		() => ({ store: store(), view: navigation.view }),
+		(current) => {
+			viewStates.set(current.store, current.view);
+		},
+	);
+	const graph = createMemo(() => {
+		const current = snapshot();
+		const dragging = drag();
+		return buildCircuitGraph({
+			circuit: current.circuit,
+			graph: dragging
+				? {
+						...current.graph,
+						positions: [
+							...current.graph.positions.filter(
+								(position) => position.id !== dragging.position.id,
+							),
+							{ ...dragging.position, x: dragging.x, y: dragging.y },
+						],
+					}
+				: current.graph,
+		});
+	});
+	const pins = createMemo(
 		() =>
 			new Map(
-				circuit.components.flatMap((component) =>
+				components().flatMap((component) =>
 					component.pins.map((pin) => [pin.id, { ...pin, component }] as const),
 				),
 			),
-		[circuit.components],
 	);
-	const pinNets = useMemo(
+	const pinNets = createMemo(
 		() =>
 			new Map(
-				circuit.nets.flatMap((net) =>
-					net.pinIds.map((id) => [id, net] as const),
-				),
+				nets().flatMap((net) => net.pinIds.map((id) => [id, net] as const)),
 			),
-		[circuit.nets],
 	);
-	const net =
-		selection?.kind === "net"
-			? circuit.nets.find((net) => net.id === selection.id)
-			: undefined;
-	const selectedNetId =
-		net?.id ?? (selection ? pinNets.get(selection.id)?.id : undefined);
+	const selectedNetId = createMemo(() => {
+		const current = selection();
+		if (!current) return undefined;
+		if (current.kind === "net")
+			return nets().find((net) => net.id === current.id)?.id;
+		return pinNets().get(current.id)?.id;
+	});
 
 	usePruneToSnapshot(snapshot, {
 		selection,
@@ -228,14 +223,18 @@ export function CircuitEditor({
 		setEditing,
 		setPendingPin,
 	});
-	useCircuitSelectionSync({
-		enabled: active,
-		store,
-		selection,
-		checkedPins,
-		setSelection,
-		setCheckedPins,
-	});
+	useCircuitSelectionSync(
+		() => ({
+			enabled: active(),
+			store: store(),
+			setSelection,
+			setCheckedPins,
+		}),
+		() => ({ item: selection(), checkedPins: checkedPins() }),
+	);
+	function focusGraph() {
+		svg?.focus({ preventScroll: true });
+	}
 	function select(next: Selection) {
 		setSelection(next);
 		setCheckedPins([]);
@@ -244,42 +243,47 @@ export function CircuitEditor({
 	function finishEditing() {
 		setEditing(null);
 		setError("");
-		svg.current?.focus({ preventScroll: true });
+		focusGraph();
 	}
 	function edit(item: NonNullable<Selection>) {
 		select(item);
 		setEditing(item);
 	}
-	const removable =
-		selection &&
-		(selection.kind === "component" ||
-			selection.kind === "net" ||
-			pinNets.has(selection.id) ||
-			circuit.noConnectPinIds.includes(selection.id));
-	function deleteSelection(item = selection) {
+	const removable = createMemo(() => {
+		const current = selection();
+		return (
+			!!current &&
+			(current.kind === "component" ||
+				current.kind === "net" ||
+				pinNets().has(current.id) ||
+				circuit().noConnectPinIds.includes(current.id))
+		);
+	});
+	function deleteSelection(item = selection()) {
 		if (!item) return;
+		const checked = checkedPins();
 		const command: CircuitCommand =
 			item.kind === "component"
 				? { type: "remove-component", id: item.id }
 				: item.kind === "net"
 					? { type: "remove-net", id: item.id }
-					: pinNets.has(item.id)
+					: pinNets().has(item.id)
 						? {
 								type: "disconnect",
 								pinIds:
-									item.kind === "connection" && checkedPins.includes(item.id)
-										? checkedPins
+									item.kind === "connection" && checked.includes(item.id)
+										? checked
 										: [item.id],
 							}
 						: { type: "no-connect", pinId: item.id, enabled: false };
 		if (run(command)) {
 			select(null);
-			svg.current?.focus({ preventScroll: true });
+			focusGraph();
 		}
 	}
 	function selectConnection(id: string, mode: SelectionMode) {
-		if (tool !== "select") return;
-		const next = [...applySelection(checkedPins, [id], mode)];
+		if (tool() !== "select") return;
+		const next = [...applySelection(checkedPins(), [id], mode)];
 		setSelection(
 			next.length
 				? {
@@ -289,33 +293,36 @@ export function CircuitEditor({
 				: null,
 		);
 		setCheckedPins(next);
-		svg.current?.focus({ preventScroll: true });
+		focusGraph();
 	}
 	function openMenu(
-		event: ReactMouseEvent<HTMLButtonElement>,
+		event: GraphButtonEvent<MouseEvent>,
 		item: NonNullable<Selection>,
 	) {
 		event.preventDefault();
 		event.stopPropagation();
 		if (item.kind === "connection") {
-			if (!checkedPins.includes(item.id)) selectConnection(item.id, "replace");
+			if (!checkedPins().includes(item.id))
+				selectConnection(item.id, "replace");
 		} else select(item);
-		const bounds = svg.current?.getBoundingClientRect();
+		const bounds = svg?.getBoundingClientRect();
 		if (bounds)
 			setMenu({ selection: item, ...circuitMenuPosition(event, bounds) });
 	}
-	const menuActions = circuitMenuActions(menu, {
-		circuit,
-		pinNets,
-		checkedPins,
-		run,
-		startConnecting: (pinId) => {
-			setConnecting(true);
-			setPendingPin(pinId);
-		},
-		edit,
-		deleteSelection,
-	});
+	const menuActions = createMemo(() =>
+		circuitMenuActions(menu(), {
+			circuit: circuit(),
+			pinNets: pinNets(),
+			checkedPins: checkedPins(),
+			run,
+			startConnecting: (pinId) => {
+				setConnecting(true);
+				setPendingPin(pinId);
+			},
+			edit,
+			deleteSelection,
+		}),
+	);
 	function setConnecting(value: boolean) {
 		setPlacement(null);
 		setPlacementPoint(null);
@@ -323,7 +330,7 @@ export function CircuitEditor({
 	}
 	function run(command: CircuitCommand) {
 		try {
-			store.execute(command);
+			store().execute(command);
 			setError("");
 			return true;
 		} catch (cause) {
@@ -332,19 +339,23 @@ export function CircuitEditor({
 		}
 	}
 	function selectPin(id: string) {
-		if (tool !== "select" && tool !== "connect") return;
-		if (connecting && pendingPin && pendingPin !== id) {
-			if (run({ type: "connect", pinIds: [pendingPin, id] })) {
+		const current = tool();
+		if (current !== "select" && current !== "connect") return;
+		const pending = pendingPin();
+		if (connecting() && pending && pending !== id) {
+			if (run({ type: "connect", pinIds: [pending, id] })) {
 				setPendingPin(null);
 				setConnecting(false);
 			}
-		} else if (connecting) setPendingPin(id);
+		} else if (connecting()) setPendingPin(id);
 		select({ kind: "pin", id });
 	}
 	function selectNet(id: string) {
-		if (tool !== "select" && tool !== "connect") return;
-		if (connecting && pendingPin) {
-			if (run({ type: "connect", pinIds: [pendingPin], netId: id })) {
+		const current = tool();
+		if (current !== "select" && current !== "connect") return;
+		const pending = pendingPin();
+		if (connecting() && pending) {
+			if (run({ type: "connect", pinIds: [pending], netId: id })) {
 				setPendingPin(null);
 				setConnecting(false);
 			}
@@ -353,7 +364,7 @@ export function CircuitEditor({
 		select({ kind: "net", id });
 	}
 	function snap<T extends { x: number; y: number }>(position: T) {
-		return snapCircuitPoint(position, gridStep);
+		return snapCircuitPoint(position, navigation.gridStep);
 	}
 	function componentPosition(
 		position: { x: number; y: number },
@@ -365,7 +376,8 @@ export function CircuitEditor({
 		});
 	}
 	function placeAt(position: { x: number; y: number }) {
-		if (tool === "net") {
+		const current = tool();
+		if (current === "net") {
 			const id = crypto.randomUUID();
 			if (
 				run({
@@ -380,21 +392,23 @@ export function CircuitEditor({
 			}
 			return;
 		}
-		if (tool !== "component" || !placement || placement.netSymbol) return;
+		const definition = placement();
+		if (current !== "component" || !definition || definition.netSymbol) return;
 		try {
-			const component = componentFromSymbol(placement, circuit.components);
+			const component = componentFromSymbol(definition, components());
 			if (run({ type: "add-component", component, position: snap(position) })) {
 				setTool("select");
 				setPlacement(null);
 				setPlacementPoint(null);
 				select({ kind: "component", id: component.id });
-				svg.current?.focus({ preventScroll: true });
+				focusGraph();
 			}
 		} catch (cause) {
 			setError(errorMessage(cause, "Unable to place component."));
 		}
 	}
 	function placementCenter(definition?: SymbolDefinition) {
+		const view = navigation.view;
 		const center = { x: view.x + view.width / 2, y: view.y + view.height / 2 };
 		return definition
 			? componentPosition(
@@ -403,31 +417,30 @@ export function CircuitEditor({
 				)
 			: snap(center);
 	}
-	useEffect(() => {
-		if (tool !== "net" && (tool !== "component" || !placement)) return;
-		const frame = requestAnimationFrame(() =>
-			svg.current?.focus({ preventScroll: true }),
-		);
-		return () => cancelAnimationFrame(frame);
-	}, [tool, placement]);
+	createEffect(
+		() => ({ tool: tool(), placement: placement() }),
+		(current) => {
+			if (
+				current.tool !== "net" &&
+				(current.tool !== "component" || !current.placement)
+			)
+				return;
+			const frame = requestAnimationFrame(focusGraph);
+			return () => cancelAnimationFrame(frame);
+		},
+	);
 
-	function fit(nextGraph: CircuitGraph = graph, resetZoom = true) {
-		setView(
-			fitCircuitView(
-				nextGraph,
-				svg.current?.getBoundingClientRect(),
-				resetZoom,
-			),
-		);
+	function fit(nextGraph: CircuitGraph = graph(), resetZoom = true) {
+		setView(fitCircuitView(nextGraph, svg?.getBoundingClientRect(), resetZoom));
 	}
 	const { cancelConnectionDrag, startConnectionDrag, startDrag, svgHandlers } =
 		circuitPointerHandlers({
 			state: pointer,
-			svg,
+			svg: () => svg,
 			tool,
 			placement,
 			placementPinCount,
-			view,
+			view: () => navigation.view,
 			setView,
 			pinNets,
 			snap,
@@ -441,7 +454,7 @@ export function CircuitEditor({
 			placeAt,
 			run,
 		});
-	const graphActions = useStableHandlers<CircuitGraphActions>({
+	const graphActions: CircuitGraphActions = {
 		select,
 		edit,
 		finishEditing,
@@ -453,209 +466,227 @@ export function CircuitEditor({
 		startConnectionDrag,
 		run,
 		snap,
-	});
-	const toolbarHandlers = useStableHandlers({
-		onErc: () => setErcOpen((open) => !open),
-		onToolChange: (next: CircuitTool) => {
+	};
+	function changeTool(next: CircuitTool) {
+		cancelConnectionDrag();
+		setEditing(null);
+		setTool(next);
+		setPlacement(null);
+		setPlacementPoint(next === "net" ? placementCenter() : null);
+		setPendingPin(null);
+	}
+	function startUntangle() {
+		if (untangle) return;
+		cancelConnectionDrag();
+		setDrag(null);
+		setPendingPin(null);
+		const controller = new AbortController();
+		untangle = controller;
+		const source = store();
+		const { circuit, graph } = source.getSnapshot();
+		setUntangling(true);
+		void untangleCircuit({ circuit, graph }, controller.signal)
+			.then(
+				(positions) => {
+					const current = source.getSnapshot();
+					if (
+						controller.signal.aborted ||
+						current.circuit !== circuit ||
+						current.graph !== graph
+					)
+						return;
+					if (run({ type: "move", positions }))
+						fit(buildCircuitGraph(source.getSnapshot()), false);
+				},
+				(cause: unknown) => {
+					if (!controller.signal.aborted)
+						setError(errorMessage(cause, "Unable to untangle circuit."));
+				},
+			)
+			.finally(() => {
+				if (untangle !== controller) return;
+				untangle = null;
+				setUntangling(false);
+			});
+	}
+	function chooseComponent(definition: SymbolDefinition) {
+		setEditing(null);
+		setPlacement(definition);
+		setPlacementPoint(placementCenter(definition));
+		setTool("component");
+		setPendingPin(null);
+	}
+	function onKeyDown(event: KeyboardEvent) {
+		if (event.key === "Escape") {
 			cancelConnectionDrag();
-			setEditing(null);
-			setTool(next);
+			setConnecting(false);
 			setPlacement(null);
-			setPlacementPoint(next === "net" ? placementCenter() : null);
+			setPlacementPoint(null);
 			setPendingPin(null);
-		},
-		onDelete: () => deleteSelection(),
-		onZoom: zoom,
-		onFit: () => fit(),
-		onUntangle: () => {
-			if (untangle.current) return;
-			cancelConnectionDrag();
 			setDrag(null);
-			setPendingPin(null);
-			const controller = new AbortController();
-			untangle.current = controller;
-			const { circuit, graph } = store.getSnapshot();
-			setUntangling(true);
-			void untangleCircuit({ circuit, graph }, controller.signal)
-				.then(
-					(positions) => {
-						const current = store.getSnapshot();
-						if (
-							controller.signal.aborted ||
-							current.circuit !== circuit ||
-							current.graph !== graph
-						)
-							return;
-						if (run({ type: "move", positions }))
-							fit(buildCircuitGraph(store.getSnapshot()), false);
-					},
-					(cause: unknown) => {
-						if (!controller.signal.aborted)
-							setError(errorMessage(cause, "Unable to untangle circuit."));
-					},
-				)
-				.finally(() => {
-					if (untangle.current !== controller) return;
-					untangle.current = null;
-					setUntangling(false);
-				});
-		},
-		onChooseComponent: (definition: SymbolDefinition) => {
+			setPan(null);
+			setMenu(null);
 			setEditing(null);
-			setPlacement(definition);
-			setPlacementPoint(placementCenter(definition));
-			setTool("component");
-			setPendingPin(null);
-		},
-		onUndo: () => store.undo(),
-		onRedo: () => store.redo(),
-	});
-	useLayoutEffect(() => {
-		if (fittedStore.current === store) return;
-		fittedStore.current = store;
-		const savedView = viewStates.get(store);
-		if (savedView) setView(savedView);
-		else fit(buildCircuitGraph(store.getSnapshot()), false);
-	});
+			select(null);
+		}
+		if (event.defaultPrevented || isEditableTarget(event)) return;
+		const current = tool();
+		if (
+			(current === "net" || current === "component") &&
+			event.target === svg
+		) {
+			const delta = arrowDelta(
+				event.key,
+				navigation.gridStep * (event.shiftKey ? 10 : 1),
+			);
+			const position =
+				placementPoint() ?? placementCenter(placement() ?? undefined);
+			if (delta) {
+				event.preventDefault();
+				setPlacementPoint(
+					snap({ x: position.x + delta.x, y: position.y + delta.y }),
+				);
+				return;
+			}
+			if (event.key === "Enter" || event.key === " ") {
+				event.preventDefault();
+				placeAt(position);
+				return;
+			}
+		}
+		if ((event.key === "Delete" || event.key === "Backspace") && removable()) {
+			event.preventDefault();
+			deleteSelection();
+			return;
+		}
+		const selected = selection();
+		if (
+			event.key === "F2" &&
+			selected &&
+			(selected.kind === "net" || selected.kind === "component")
+		) {
+			event.preventDefault();
+			edit(selected);
+			return;
+		}
+		handleViewerKeyDown(event, { fit, zoom, fitOnF6: true });
+		handleHistoryKeyDown(event, store());
+	}
 	return (
 		<section
-			className="circuit-editor"
-			data-pending-changes={project?.dirty ?? false}
-			aria-label="Circuit editor"
-			onPointerDownCapture={(event) => {
-				if (
-					!(event.target instanceof Element) ||
-					!event.target.closest(".circuit-context-menu")
+			ref={(element) =>
+				element.addEventListener(
+					"pointerdown",
+					(event) => {
+						if (
+							!(event.target instanceof Element) ||
+							!event.target.closest(".circuit-context-menu")
+						)
+							setMenu(null);
+					},
+					{ capture: true },
 				)
-					setMenu(null);
-			}}
-			onKeyDown={(event) => {
-				if (event.key === "Escape") {
-					cancelConnectionDrag();
-					setConnecting(false);
-					setPlacement(null);
-					setPlacementPoint(null);
-					setPendingPin(null);
-					setDrag(null);
-					setPan(null);
-					setMenu(null);
-					setEditing(null);
-					select(null);
-				}
-				if (event.defaultPrevented || isEditableTarget(event)) return;
-				if (
-					(tool === "net" || tool === "component") &&
-					event.target === svg.current
-				) {
-					const delta = arrowDelta(
-						event.key,
-						gridStep * (event.shiftKey ? 10 : 1),
-					);
-					if (delta) {
-						event.preventDefault();
-						const position =
-							placementPoint ?? placementCenter(placement ?? undefined);
-						setPlacementPoint(
-							snap({ x: position.x + delta.x, y: position.y + delta.y }),
-						);
-						return;
-					}
-					if (event.key === "Enter" || event.key === " ") {
-						event.preventDefault();
-						placeAt(placementPoint ?? placementCenter(placement ?? undefined));
-						return;
-					}
-				}
-				if (
-					(event.key === "Delete" || event.key === "Backspace") &&
-					removable
-				) {
-					event.preventDefault();
-					deleteSelection();
-					return;
-				}
-				if (
-					event.key === "F2" &&
-					selection &&
-					(selection.kind === "net" || selection.kind === "component")
-				) {
-					event.preventDefault();
-					edit(selection);
-					return;
-				}
-				handleViewerKeyDown(event, { fit, zoom, fitOnF6: true });
-				handleHistoryKeyDown(event, store);
-			}}
+			}
+			class="circuit-editor"
+			data-pending-changes={project()?.dirty ? "true" : "false"}
+			aria-label="Circuit editor"
+			onKeyDown={onKeyDown}
 		>
-			<h1 className="sr-only">{circuit.name}</h1>
-			<CircuitDocumentBar name={circuit.name} id={circuit.id} active={active} />
-			{circuitMessages.length > 0 && (
+			<h1 class="sr-only">{circuit().name}</h1>
+			<CircuitDocumentBar
+				name={circuit().name}
+				id={circuit().id}
+				active={active()}
+			/>
+			<Show when={circuitMessages().length > 0}>
 				<div
 					role="alert"
-					data-beside-panel={ercOpen}
-					className="ui-notice circuit-error"
+					data-beside-panel={ercOpen() ? "true" : "false"}
+					class="ui-notice circuit-error"
 				>
-					{circuitMessages.map((message) => (
-						<p key={message}>{message}</p>
-					))}
+					<For each={circuitMessages()}>{(message) => <p>{message}</p>}</For>
 				</div>
-			)}
-			<div className="circuit-workspace">
+			</Show>
+			<div class="circuit-workspace">
 				<div
-					className={`circuit-canvas ${collapseMotion.active ? "is-collapsing" : ""} ${tool === "pan" ? "is-panning" : tool === "component" || tool === "net" ? "is-placing" : ""}`}
+					class={[
+						"circuit-canvas",
+						{
+							"is-collapsing": collapsing(),
+							"is-panning": tool() === "pan",
+							"is-placing": tool() === "component" || tool() === "net",
+						},
+					]}
 				>
 					<div
-						className="circuit-grid"
+						class="circuit-grid"
 						data-shortcut-mutations="ignore"
-						style={gridStyle}
+						style={navigation.gridStyle}
 					/>
 					<svg
-						ref={svg}
+						ref={(element) => {
+							svg = element;
+							element.addEventListener(
+								"pointerdown",
+								svgHandlers.onPointerDownCapture,
+								{ capture: true },
+							);
+							element.addEventListener("click", svgHandlers.onClickCapture, {
+								capture: true,
+							});
+						}}
 						role="application"
-						tabIndex={-1}
+						tabindex={-1}
 						aria-label="Circuit connections graph"
 						data-shortcut-scope="none"
 						data-shortcut-mutations="ignore"
-						viewBox={`${view.x} ${view.y} ${view.width} ${view.height}`}
-						{...svgHandlers}
+						viewBox={`${navigation.view.x} ${navigation.view.y} ${navigation.view.width} ${navigation.view.height}`}
+						onPointerLeave={svgHandlers.onPointerLeave}
+						onPointerDown={svgHandlers.onPointerDown}
+						onPointerMove={svgHandlers.onPointerMove}
+						onPointerUp={svgHandlers.onPointerUp}
+						onPointerCancel={svgHandlers.onPointerCancel}
+						onLostPointerCapture={svgHandlers.onLostPointerCapture}
 					>
 						<title>Components, pins, and shared electrical nets</title>
-						{active && (
+						<Show when={active()}>
 							<CircuitGraphLayer
-								graph={graph}
-								pins={pins}
-								pinNets={pinNets}
-								noConnectPinIds={circuit.noConnectPinIds}
-								tool={tool}
-								gridStep={gridStep}
-								selection={selection}
-								selectedNetId={selectedNetId}
-								checkedPins={checkedPins}
-								editing={editing}
-								pendingPin={pendingPin}
-								connectionDrag={connectionDrag}
-								placement={placement}
-								placementPoint={placementPoint}
-								placementPinCount={placementPinCount}
+								graph={graph()}
+								pins={pins()}
+								pinNets={pinNets()}
+								noConnectPinIds={circuit().noConnectPinIds}
+								tool={tool()}
+								gridStep={navigation.gridStep}
+								selection={selection()}
+								selectedNetId={selectedNetId()}
+								checkedPins={checkedPins()}
+								editing={editing()}
+								pendingPin={pendingPin()}
+								connectionDrag={connectionDrag()}
+								placement={placement()}
+								placementPoint={placementPoint()}
+								placementPinCount={placementPinCount()}
 								actions={graphActions}
 							/>
-						)}
+						</Show>
 					</svg>
-					{menu && (
-						<CircuitContextMenu
-							x={menu.x}
-							y={menu.y}
-							actions={menuActions}
-							onClose={() => {
-								setMenu(null);
-								svg.current?.focus({ preventScroll: true });
-							}}
-						/>
-					)}
+					<Show when={menu()}>
+						{(current) => (
+							<CircuitContextMenu
+								x={current().x}
+								y={current().y}
+								actions={menuActions()}
+								onClose={() => {
+									setMenu(null);
+									focusGraph();
+								}}
+							/>
+						)}
+					</Show>
 				</div>
 			</div>
-			{ercOpen && (
-				<Suspense
+			<Show when={ercOpen()}>
+				<Loading
 					fallback={
 						<FloatingPanel
 							label="Electrical rules check"
@@ -663,49 +694,59 @@ export function CircuitEditor({
 							position="top-left"
 							raised
 						>
-							<output className="p-3 text-xs text-fg-muted">
+							<output class="p-3 text-xs text-fg-muted">
 								Loading electrical checks...
 							</output>
 						</FloatingPanel>
 					}
 				>
 					<ErcPanel
-						circuit={circuit}
+						circuit={circuit()}
 						onClose={() => {
 							setErcOpen(false);
-							svg.current?.focus();
+							svg?.focus();
 						}}
 						onSelect={(subject) =>
 							revealCircuitSubject(subject, {
-								graph,
-								store,
+								graph: graph(),
+								store: store(),
 								run,
 								select,
 								setView,
 							})
 						}
 					/>
-				</Suspense>
-			)}
+				</Loading>
+			</Show>
 			<CircuitToolbar
-				ercOpen={ercOpen}
-				tool={tool}
-				canUndo={snapshot.canUndo}
-				canRedo={snapshot.canRedo}
-				canDelete={Boolean(removable)}
-				zoomLevel={scale}
-				untangling={untangling}
-				{...toolbarHandlers}
+				ercOpen={ercOpen()}
+				tool={tool()}
+				canUndo={snapshot().canUndo}
+				canRedo={snapshot().canRedo}
+				canDelete={removable()}
+				zoomLevel={navigation.scale}
+				untangling={untangling()}
+				onErc={() => setErcOpen((open) => !open)}
+				onToolChange={changeTool}
+				onDelete={() => deleteSelection()}
+				onZoom={zoom}
+				onFit={() => fit()}
+				onUntangle={startUntangle}
+				onChooseComponent={chooseComponent}
+				onUndo={() => store().undo()}
+				onRedo={() => store().redo()}
 			/>
-			{connecting && (
-				<footer className="circuit-status">
-					<output className="circuit-connection-status">
-						{pendingPin
-							? `Connect ${pins.get(pendingPin)?.component.reference}.${pins.get(pendingPin)?.number}`
-							: "Select pin"}
+			<Show when={connecting()}>
+				<footer class="circuit-status">
+					<output class="circuit-connection-status">
+						<Show when={pendingPin()} fallback="Select pin">
+							{(pin) =>
+								`Connect ${pins().get(pin())?.component.reference}.${pins().get(pin())?.number}`
+							}
+						</Show>
 					</output>
 				</footer>
-			)}
+			</Show>
 		</section>
 	);
 }

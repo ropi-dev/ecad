@@ -1,11 +1,5 @@
 import { circuitGridStep } from "@ecad/drawing-core/circuit/grid.ts";
-import {
-	type RefObject,
-	useCallback,
-	useEffect,
-	useLayoutEffect,
-	useState,
-} from "react";
+import { type Accessor, createMemo, createSignal, onSettled } from "solid-js";
 import { wheelDelta } from "#/engine/navigation.ts";
 
 export type CircuitView = {
@@ -15,65 +9,60 @@ export type CircuitView = {
 	height: number;
 };
 
+const defaultView: CircuitView = { x: 0, y: 0, width: 1600, height: 760 };
+
 export function useCircuitNavigation(
-	svg: RefObject<SVGSVGElement | null>,
-	initialView?: CircuitView,
+	svg: Accessor<SVGSVGElement | undefined>,
+	initialView: Accessor<CircuitView | undefined>,
 ) {
-	const [view, setView] = useState(
-		initialView ?? { x: 0, y: 0, width: 1600, height: 760 },
+	const [view, setView] = createSignal<CircuitView>(
+		() => initialView() ?? defaultView,
 	);
-	const [size, setSize] = useState({ width: 0, height: 0 });
-	useLayoutEffect(() => {
-		const element = svg.current;
+	const [size, setSize] = createSignal(
+		{ width: 0, height: 0 },
+		{ equals: (a, b) => a.width === b.width && a.height === b.height },
+	);
+	const scaleOf = (current: CircuitView) =>
+		Math.min(size().width / current.width, size().height / current.height) || 1;
+	const scale = createMemo(() => scaleOf(view()));
+	const gridStep = createMemo(() => circuitGridStep(scale()));
+	const gridStyle = createMemo(() => {
+		const current = view();
+		const { width, height } = size();
+		const spacing = gridStep() * scale();
+		return {
+			"background-size": `${spacing}px ${spacing}px`,
+			"background-position": `${(width - current.width * scale()) / 2 - current.x * scale() - spacing / 2}px ${(height - current.height * scale()) / 2 - current.y * scale() - spacing / 2}px`,
+		};
+	});
+	function zoom(factor: number, anchor = { x: 0.5, y: 0.5 }) {
+		if (!Number.isFinite(factor) || factor <= 0) return;
+		setView((current) => {
+			const currentScale = scaleOf(current);
+			const targetScale = Math.min(10, Math.max(0.1, currentScale * factor));
+			if (Math.abs(targetScale - currentScale) < 1e-9) return current;
+			const ratio = targetScale / currentScale;
+			const width = current.width / ratio;
+			const height = current.height / ratio;
+			return {
+				x: current.x + (current.width - width) * anchor.x,
+				y: current.y + (current.height - height) * anchor.y,
+				width,
+				height,
+			};
+		});
+	}
+
+	onSettled(() => {
+		const element = svg();
 		if (!element) return;
-		function resize({ width, height }: { width: number; height: number }) {
-			setSize((current) =>
-				current.width === width && current.height === height
-					? current
-					: { width, height },
-			);
-		}
+		const resize = ({ width, height }: { width: number; height: number }) =>
+			setSize({ width, height });
 		resize(element.getBoundingClientRect());
 		const observer = new ResizeObserver(([entry]) => {
 			if (entry) resize(entry.contentRect);
 		});
 		observer.observe(element);
-		return () => observer.disconnect();
-	}, [svg]);
-	const scale =
-		Math.min(size.width / view.width, size.height / view.height) || 1;
-	const gridStep = circuitGridStep(scale);
-	const gridSpacing = gridStep * scale;
-	const gridStyle = {
-		backgroundSize: `${gridSpacing}px ${gridSpacing}px`,
-		backgroundPosition: `${(size.width - view.width * scale) / 2 - view.x * scale - gridSpacing / 2}px ${(size.height - view.height * scale) / 2 - view.y * scale - gridSpacing / 2}px`,
-	};
-	const zoom = useCallback(
-		(factor: number, anchor = { x: 0.5, y: 0.5 }) => {
-			if (!Number.isFinite(factor) || factor <= 0) return;
-			setView((current) => {
-				const currentScale =
-					Math.min(size.width / current.width, size.height / current.height) ||
-					1;
-				const targetScale = Math.min(10, Math.max(0.1, currentScale * factor));
-				if (Math.abs(targetScale - currentScale) < 1e-9) return current;
-				const ratio = targetScale / currentScale;
-				const width = current.width / ratio;
-				const height = current.height / ratio;
-				return {
-					x: current.x + (current.width - width) * anchor.x,
-					y: current.y + (current.height - height) * anchor.y,
-					width,
-					height,
-				};
-			});
-		},
-		[size.width, size.height],
-	);
-
-	useEffect(() => {
-		const element = svg.current;
-		if (!element) return;
 		let safariScale: number | null = null;
 		function anchor(event: { clientX: number; clientY: number }) {
 			const matrix = element?.getScreenCTM()?.inverse();
@@ -138,13 +127,32 @@ export function useCircuitNavigation(
 		element.addEventListener("gestureend", onGestureEnd);
 		window.addEventListener("blur", onGestureEnd);
 		return () => {
+			observer.disconnect();
 			element.removeEventListener("wheel", onWheel);
 			element.removeEventListener("gesturestart", onGestureStart);
 			element.removeEventListener("gesturechange", onGestureChange);
 			element.removeEventListener("gestureend", onGestureEnd);
 			window.removeEventListener("blur", onGestureEnd);
 		};
-	}, [svg, zoom]);
+	});
 
-	return { view, setView, zoom, gridStyle, gridStep, scale };
+	return {
+		get view() {
+			return view();
+		},
+		setView(next: CircuitView | ((current: CircuitView) => CircuitView)) {
+			if (typeof next === "function") setView(next);
+			else setView(() => next);
+		},
+		zoom,
+		get gridStyle() {
+			return gridStyle();
+		},
+		get gridStep() {
+			return gridStep();
+		},
+		get scale() {
+			return scale();
+		},
+	};
 }

@@ -9,7 +9,7 @@ import type {
 import type {
 	SymbolLibrarySnapshot,
 	SymbolLibraryStorage,
-} from "@ecad/core/symbol-library/storage.tsx";
+} from "@ecad/core/symbol-library/storage.ts";
 import type { TelemetryConsent } from "@ecad/core/telemetry/consent.ts";
 import type { TelemetryBatch } from "@ecad/core/telemetry/schema.ts";
 import type {

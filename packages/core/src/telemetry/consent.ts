@@ -1,5 +1,6 @@
-import { useSyncExternalStore } from "react";
+import type { Accessor } from "solid-js";
 import { z } from "zod";
+import { fromExternalStore } from "#/lib/external-store.ts";
 
 export const TELEMETRY_CONSENT_KEY = "ecad.telemetry.v1";
 
@@ -122,10 +123,8 @@ export async function setTelemetryEnabled(enabled: boolean) {
 	notify();
 }
 
-export function useTelemetryEnabled() {
-	return useSyncExternalStore(
+export const useTelemetryEnabled = (): Accessor<boolean> =>
+	fromExternalStore(
 		subscribeTelemetryConsent,
 		() => getTelemetryConsent()?.enabled === true,
-		() => false,
 	);
-}

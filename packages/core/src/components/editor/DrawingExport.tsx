@@ -1,6 +1,6 @@
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
-import { useEffect, useId, useState } from "react";
+import { createEffect, createSignal, createUniqueId, Show } from "solid-js";
 import { AppDialog, dialogBodyClassName } from "#/components/ui/Dialog.tsx";
 import { toastManager } from "#/components/ui/toast.ts";
 import { downloadPng } from "#/components/viewer/exportPng.ts";
@@ -9,56 +9,54 @@ import type { DrawingExportFormat } from "#/drawing/export-client.ts";
 import type { SheetSize } from "#/drawing/worksheet.ts";
 import { measurePerformanceAsync } from "#/performance/runtime.ts";
 
+const setNumber = (set: (value: number) => void, value: number) => {
+	if (!Number.isNaN(value)) set(value);
+};
+const fieldLabel =
+	"flex min-w-0 flex-col gap-1.5 text-xs font-medium text-fg-muted";
+
 /** Export dialog. It stays mounted while closed to keep the chosen settings. */
-export function DrawingExport({
-	shapes,
-	sheet,
-	label,
-	layered = false,
-	zoneFills,
-	maskMargin,
-	copperLayers,
-	open,
-	onClose,
-}: {
+export function DrawingExport(props: {
 	shapes: EditorShape[];
 	sheet: SheetSize;
 	label: string;
 	layered?: boolean;
-	zoneFills?: () => Promise<readonly DrawingZoneFill[]>;
+	zoneFills?: (() => Promise<readonly DrawingZoneFill[]>) | undefined;
 	maskMargin?: number | undefined;
 	copperLayers?: number | undefined;
 	open: boolean;
 	onClose: () => void;
 }) {
-	const [width, setWidth] = useState(9600);
-	const [height, setHeight] = useState(6400);
-	const [area, setArea] = useState<"sheet" | "drawing">("sheet");
-	const [background, setBackground] = useState<
+	const [width, setWidth] = createSignal(9600);
+	const [height, setHeight] = createSignal(6400);
+	const [area, setArea] = createSignal<"sheet" | "drawing">("sheet");
+	const [background, setBackground] = createSignal<
 		"white" | "dark" | "transparent"
 	>("white");
-	const [format, setFormat] = useState<DrawingExportFormat>("png");
-	const [busy, setBusy] = useState(false);
-	const [error, setError] = useState("");
-	const formId = useId();
-	useEffect(() => {
-		if (open)
-			void import("#/drawing/export-client.ts")
-				.then(({ warmDrawingExport }) => warmDrawingExport())
-				.catch(() => undefined);
-	}, [open]);
-	const fieldLabel =
-		"flex min-w-0 flex-col gap-1.5 text-xs font-medium text-fg-muted";
+	const [format, setFormat] = createSignal<DrawingExportFormat>("png");
+	const [busy, setBusy] = createSignal(false);
+	const [error, setError] = createSignal("");
+	const formId = createUniqueId();
+	const layered = () => props.layered ?? false;
+	createEffect(
+		() => props.open,
+		(open) => {
+			if (open)
+				void import("#/drawing/export-client.ts")
+					.then(({ warmDrawingExport }) => warmDrawingExport())
+					.catch(() => undefined);
+		},
+	);
 	return (
 		<AppDialog
-			open={open}
+			open={props.open}
 			onOpenChange={(next) => {
-				if (!next && !busy) onClose();
+				if (!next && !busy()) props.onClose();
 			}}
 			size="sm"
 			title="Export drawing"
 			description={
-				format === "pdf"
+				format() === "pdf"
 					? "The grid, selection and editor controls are left out."
 					: "Content is fitted without stretching. The grid, selection and editor controls are left out."
 			}
@@ -66,35 +64,42 @@ export function DrawingExport({
 				<>
 					<button
 						type="button"
-						className="ui-button"
+						class="ui-button"
 						data-variant="ghost"
 						data-size="md"
-						disabled={busy}
-						onClick={() => onClose()}
+						disabled={busy()}
+						onClick={() => props.onClose()}
 					>
 						Cancel
 					</button>
 					<button
-						className="ui-button"
+						class="ui-button"
 						data-variant="primary"
 						data-size="md"
-						disabled={busy}
+						disabled={busy()}
 						type="submit"
 						form={formId}
 					>
-						{busy ? "Exporting..." : "Download"}
+						{busy() ? "Exporting..." : "Download"}
 					</button>
 				</>
 			}
 		>
 			<form
 				id={formId}
-				className={`${dialogBodyClassName} flex flex-col gap-3.5`}
+				class={`${dialogBodyClassName} flex flex-col gap-3.5`}
 				onSubmit={async (event) => {
 					event.preventDefault();
-					if (busy) return;
+					if (busy()) return;
 					setBusy(true);
 					setError("");
+					const shapes = props.shapes;
+					const label = props.label;
+					const chosen = format();
+					const size = { width: width(), height: height() };
+					const zoneFills = props.zoneFills;
+					const maskMargin = props.maskMargin;
+					const copperLayers = props.copperLayers;
 					try {
 						await measurePerformanceAsync(
 							"drawing.export",
@@ -107,30 +112,29 @@ export function DrawingExport({
 									await exportDrawing(
 										shapes,
 										{
-											width,
-											height,
-											area,
-											background,
-											sheet,
+											...size,
+											area: area(),
+											background: background(),
+											sheet: props.sheet,
 											title: label,
-											layers: layered,
+											layers: layered(),
 											...(fills ? { zoneFills: fills } : {}),
 											...(maskMargin === undefined ? {} : { maskMargin }),
 											...(copperLayers === undefined ? {} : { copperLayers }),
 										},
-										format,
+										chosen,
 									),
 									label,
-									format,
+									chosen,
 								);
 							},
-							{ shapes: shapes.length, width, height, format },
+							{ shapes: shapes.length, ...size, format: chosen },
 						);
-						onClose();
+						props.onClose();
 						toastManager.add({
 							type: "success",
 							title: "Drawing exported",
-							description: `${format.toUpperCase()} download is ready.`,
+							description: `${chosen.toUpperCase()} download is ready.`,
 						});
 					} catch (cause) {
 						setError(errorMessage(cause, "Export failed."));
@@ -139,37 +143,43 @@ export function DrawingExport({
 					}
 				}}
 			>
-				<label className={fieldLabel}>
+				<label class={fieldLabel}>
 					Output
 					<select
-						className="ui-select h-8 w-full"
-						value={area}
-						onChange={(e) => setArea(e.target.value as typeof area)}
+						class="ui-select h-8 w-full"
+						value={area()}
+						onChange={(e) =>
+							setArea(e.currentTarget.value as ReturnType<typeof area>)
+						}
 					>
 						<option value="sheet">Full sheet and drawing</option>
 						<option value="drawing">Drawing only</option>
 					</select>
 				</label>
-				<div className="grid grid-cols-2 gap-3">
-					<label className={fieldLabel}>
+				<div class="grid grid-cols-2 gap-3">
+					<label class={fieldLabel}>
 						Format
 						<select
-							className="ui-select h-8 w-full"
-							value={format}
-							onChange={(e) => setFormat(e.target.value as typeof format)}
+							class="ui-select h-8 w-full"
+							value={format()}
+							onChange={(e) =>
+								setFormat(e.currentTarget.value as DrawingExportFormat)
+							}
 						>
 							<option value="png">PNG</option>
 							<option value="svg">SVG vector</option>
 							<option value="pdf">PDF vector</option>
 						</select>
 					</label>
-					<label className={fieldLabel}>
+					<label class={fieldLabel}>
 						Background
 						<select
-							className="ui-select h-8 w-full"
-							value={background}
+							class="ui-select h-8 w-full"
+							value={background()}
 							onChange={(e) =>
-								setBackground(e.target.value as typeof background)
+								setBackground(
+									e.currentTarget.value as ReturnType<typeof background>,
+								)
 							}
 						>
 							<option value="white">White</option>
@@ -178,52 +188,59 @@ export function DrawingExport({
 						</select>
 					</label>
 				</div>
-				{format === "pdf" ? (
-					<p className="m-0 text-xs text-fg-faint">
-						{layered ? "Each layer gets its own page. " : ""}
-						{area === "sheet"
-							? `${layered ? "Pages are" : "The page is"} the ${sheet.width} × ${sheet.height} mm sheet at 1:1 scale.`
-							: `${layered ? "Pages fit" : "The page fits"} the drawing at 1:1 scale in millimetres.`}{" "}
+				<Show
+					when={format() === "pdf"}
+					fallback={
+						<>
+							<div class="grid grid-cols-2 gap-3">
+								<label class={fieldLabel}>
+									Width in pixels
+									<input
+										class="ui-input h-8 w-full"
+										type="number"
+										min="1"
+										max="16384"
+										required
+										value={width()}
+										onInput={(e) =>
+											setNumber(setWidth, e.currentTarget.valueAsNumber)
+										}
+									/>
+								</label>
+								<label class={fieldLabel}>
+									Height in pixels
+									<input
+										class="ui-input h-8 w-full"
+										type="number"
+										min="1"
+										max="16384"
+										required
+										value={height()}
+										onInput={(e) =>
+											setNumber(setHeight, e.currentTarget.valueAsNumber)
+										}
+									/>
+								</label>
+							</div>
+							<p class="m-0 text-xs text-fg-faint">
+								SVG text stays sharp at any zoom.
+							</p>
+						</>
+					}
+				>
+					<p class="m-0 text-xs text-fg-faint">
+						{layered() ? "Each layer gets its own page. " : ""}
+						{area() === "sheet"
+							? `${layered() ? "Pages are" : "The page is"} the ${props.sheet.width} × ${props.sheet.height} mm sheet at 1:1 scale.`
+							: `${layered() ? "Pages fit" : "The page fits"} the drawing at 1:1 scale in millimetres.`}{" "}
 						Text can be searched and copied.
 					</p>
-				) : (
-					<>
-						<div className="grid grid-cols-2 gap-3">
-							<label className={fieldLabel}>
-								Width in pixels
-								<input
-									className="ui-input h-8 w-full"
-									type="number"
-									min="1"
-									max="16384"
-									required
-									value={width}
-									onChange={(e) => setWidth(e.target.valueAsNumber)}
-								/>
-							</label>
-							<label className={fieldLabel}>
-								Height in pixels
-								<input
-									className="ui-input h-8 w-full"
-									type="number"
-									min="1"
-									max="16384"
-									required
-									value={height}
-									onChange={(e) => setHeight(e.target.valueAsNumber)}
-								/>
-							</label>
-						</div>
-						<p className="m-0 text-xs text-fg-faint">
-							SVG text stays sharp at any zoom.
-						</p>
-					</>
-				)}
-				{error && (
-					<p role="alert" className="m-0 text-sm text-danger">
-						{error}
+				</Show>
+				<Show when={error()}>
+					<p role="alert" class="m-0 text-sm text-danger">
+						{error()}
 					</p>
-				)}
+				</Show>
 			</form>
 		</AppDialog>
 	);

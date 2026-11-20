@@ -1,5 +1,5 @@
 import { StepWorkspace } from "@ecad/core/components/step/StepWorkspace.tsx";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/solid-router";
 
 export const Route = createFileRoute("/step")({
 	component: StepWorkspace,

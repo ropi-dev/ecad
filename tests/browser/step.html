@@ -4,11 +4,11 @@
   <body>
     <div id="root"></div>
     <script type="module">
-      import { createElement, StrictMode } from 'react';
-      import { createRoot } from 'react-dom/client';
+      import { render } from '@solidjs/web';
+      import { createComponent } from 'solid-js';
       import { StepWorkspace } from '/packages/core/src/components/step/StepWorkspace.tsx';
       import '/packages/core/src/styles.css';
-      createRoot(document.getElementById('root')).render(createElement(StrictMode, null, createElement(StepWorkspace)));
+      render(() => createComponent(StepWorkspace, {}), document.getElementById('root'));
     </script>
   </body>
 </html>

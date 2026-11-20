@@ -1,7 +1,7 @@
 import type { DefaultFootprint } from "@ecad/default-footprints";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { isPad } from "@ecad/drawing-core/footprint/shapes.ts";
-import { useEffect, useState } from "react";
+import { type Accessor, createEffect, createSignal } from "solid-js";
 import { measurePerformance } from "#/performance/runtime.ts";
 
 export interface BuiltinFootprintLibrary {
@@ -43,25 +43,37 @@ export interface BuiltinFootprints {
 	readonly failed: boolean;
 }
 
-export function useBuiltinFootprints(enabled = true): BuiltinFootprints {
-	const [library, setLibrary] = useState(loaded);
-	const [failed, setFailed] = useState(false);
-	useEffect(() => {
-		if (library || !enabled) return;
-		let current = true;
-		loadBuiltinFootprints().then(
-			(next) => {
-				if (current) setLibrary(next);
-			},
-			() => {
-				if (current) setFailed(true);
-			},
-		);
-		return () => {
-			current = false;
-		};
-	}, [library, enabled]);
-	return { library, failed };
+export function useBuiltinFootprints(
+	enabled: Accessor<boolean> = () => true,
+): BuiltinFootprints {
+	const [library, setLibrary] = createSignal(loaded);
+	const [failed, setFailed] = createSignal(false);
+	createEffect(
+		() => !library() && enabled(),
+		(load) => {
+			if (!load) return;
+			let current = true;
+			loadBuiltinFootprints().then(
+				(next) => {
+					if (current) setLibrary(next);
+				},
+				() => {
+					if (current) setFailed(true);
+				},
+			);
+			return () => {
+				current = false;
+			};
+		},
+	);
+	return {
+		get library() {
+			return library();
+		},
+		get failed() {
+			return failed();
+		},
+	};
 }
 
 export const footprintPadNumbers = (shapes: readonly EditorShape[]) =>

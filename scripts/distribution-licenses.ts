@@ -38,8 +38,20 @@ async function dependencyDirectory(name: string, parent: string) {
 	return undefined;
 }
 
+async function removedDependencies() {
+	const workspace = await readFile(join(root, "pnpm-workspace.yaml"), "utf8");
+	return new Set(
+		[
+			...workspace.matchAll(
+				/^\s*["']?([^"'\n]+>[^"'\n]+?)["']?\s*:\s*["']-["']/gm,
+			),
+		].map((match) => match[1]),
+	);
+}
+
 async function dependencyNotices(workspace: string) {
 	const seen = new Set<string>();
+	const removed = await removedDependencies();
 	const notices = new Map<string, string>();
 	const overrides: Record<string, LicenseOverride> = JSON.parse(
 		await readFile(join(root, "licenses/dependency-overrides.json"), "utf8"),
@@ -98,7 +110,7 @@ async function dependencyNotices(workspace: string) {
 		for (const name of names) {
 			const dependency = await dependencyDirectory(name, directory);
 			if (dependency) await visit(dependency);
-			else if (required.has(name))
+			else if (required.has(name) && !removed.has(`${pkg.name}>${name}`))
 				throw new Error(`Missing dependency ${name} of ${pkg.name}`);
 		}
 	}

@@ -7,7 +7,7 @@ import { createLinkedPcbAssembler } from "#/projects/linked-pcb.ts";
 import { createProjectSession } from "#/projects/ProjectSession.ts";
 import { ProjectRepository } from "#/projects/repository.ts";
 import type { ProjectStorage } from "#/projects/storage.ts";
-import type { SymbolLibraryStorage } from "#/symbol-library/storage.tsx";
+import type { SymbolLibraryStorage } from "#/symbol-library/storage.ts";
 import { memoryDirectory } from "./helpers/project-directory.ts";
 import { required } from "./helpers/required.ts";
 

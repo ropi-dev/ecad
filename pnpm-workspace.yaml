@@ -5,3 +5,6 @@ onlyBuiltDependencies:
   - electron
   - esbuild
   - lightningcss
+
+overrides:
+  "@tanstack/solid-router>@solidjs/meta": "-"

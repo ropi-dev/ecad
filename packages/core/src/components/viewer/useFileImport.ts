@@ -1,6 +1,6 @@
 import { runEffect } from "@ecad/drawing-core/lib/effect.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { createSignal, onSettled } from "solid-js";
 import { toastManager } from "#/components/ui/toast.ts";
 import {
 	type ExpandFile,
@@ -15,120 +15,114 @@ export function useFileImport<T>(
 	parse: ImportFile<T>,
 	dispose?: (value: T) => void,
 	expand?: ExpandFile,
-	kind?: AssetKind,
+	kind?: () => AssetKind | undefined,
 ) {
-	const importAssets = useProjectActions()?.importAssets;
-	const request = useRef<AbortController | null>(null);
-	const mounted = useRef(true);
-	const [loading, setLoading] = useState(false);
-	const [messages, setMessages] = useState<readonly string[]>([]);
-	useEffect(() => {
-		mounted.current = true;
+	const actions = useProjectActions();
+	let request: AbortController | null = null;
+	let mounted = true;
+	const [loading, setLoading] = createSignal(false);
+	const [messages, setMessages] = createSignal<readonly string[]>([]);
+	onSettled(() => {
+		mounted = true;
 		return () => {
-			mounted.current = false;
-			request.current?.abort();
-			request.current = null;
+			mounted = false;
+			request?.abort();
+			request = null;
 		};
-	}, []);
-	const cancel = useCallback(() => {
-		request.current?.abort();
-		request.current = null;
+	});
+	const cancel = () => {
+		request?.abort();
+		request = null;
 		setLoading(false);
-	}, []);
-	const clearMessage = useCallback(() => setMessages([]), []);
-	const readFiles = useCallback(
-		async (
-			files: readonly File[],
-			accept: (values: T[]) => void,
-			persist = true,
-		) => {
-			request.current?.abort();
-			const controller = new AbortController();
-			request.current = controller;
-			setLoading(true);
-			setMessages([]);
+	};
+	const clearMessage = () => setMessages([]);
+	const readFiles = async (
+		files: readonly File[],
+		accept: (values: T[]) => void,
+		persist = true,
+	) => {
+		const assetKind = kind?.();
+		const importAssets = actions()?.importAssets;
+		request?.abort();
+		const controller = new AbortController();
+		request = controller;
+		setLoading(true);
+		setMessages([]);
+		try {
+			const imported = await measurePerformanceAsync(
+				`import.${assetKind ?? "files"}`,
+				() =>
+					runEffect(importFilesEffect(files, parse, expand), controller.signal),
+				{
+					files: files.length,
+					bytes: files.reduce((sum, file) => sum + file.size, 0),
+				},
+			);
+			if (controller.signal.aborted || request !== controller || !mounted) {
+				for (const value of imported.values) dispose?.(value);
+				return null;
+			}
 			try {
-				const imported = await measurePerformanceAsync(
-					`import.${kind ?? "files"}`,
-					() =>
-						runEffect(
-							importFilesEffect(files, parse, expand),
-							controller.signal,
-						),
-					{
-						files: files.length,
-						bytes: files.reduce((sum, file) => sum + file.size, 0),
-					},
-				);
-				if (
-					controller.signal.aborted ||
-					request.current !== controller ||
-					!mounted.current
-				) {
+				// Rejected inputs, such as files over the size limit, are not stored.
+				if (assetKind && persist && imported.accepted.length)
+					await importAssets?.(imported.accepted, assetKind);
+				if (controller.signal.aborted || request !== controller || !mounted) {
 					for (const value of imported.values) dispose?.(value);
 					return null;
 				}
-				try {
-					// Rejected inputs, such as files over the size limit, are not stored.
-					if (kind && persist && imported.accepted.length)
-						await importAssets?.(imported.accepted, kind);
-					if (
-						controller.signal.aborted ||
-						request.current !== controller ||
-						!mounted.current
-					) {
-						for (const value of imported.values) dispose?.(value);
-						return null;
-					}
-					accept(imported.values);
-				} catch (error) {
-					for (const value of imported.values) dispose?.(value);
-					throw error;
-				}
-				setMessages(imported.messages);
-				if (persist || imported.messages.length)
-					toastManager.add({
-						type: imported.messages.length
-							? imported.values.length
-								? "warning"
-								: "error"
-							: "success",
-						title: imported.messages.length
-							? imported.values.length
-								? "Import completed with issues"
-								: "Import failed"
-							: "Files imported",
-						description: imported.messages.length
-							? imported.messages.join("\n")
-							: `${imported.values.length} item${imported.values.length === 1 ? "" : "s"} added.`,
-					});
-				return imported.values;
+				accept(imported.values);
 			} catch (error) {
-				if (controller.signal.aborted) return null;
-				if (mounted.current) {
-					const description = errorMessage(error, "Unable to import files.");
-					setMessages([description]);
-					toastManager.add({
-						type: "error",
-						title: "Import failed",
-						description,
-					});
-				}
-				return null;
-			} finally {
-				if (request.current === controller) {
-					request.current = null;
-					if (mounted.current) setLoading(false);
-				}
+				for (const value of imported.values) dispose?.(value);
+				throw error;
 			}
-		},
-		[parse, dispose, expand, kind, importAssets],
-	);
+			setMessages(imported.messages);
+			if (persist || imported.messages.length)
+				toastManager.add({
+					type: imported.messages.length
+						? imported.values.length
+							? "warning"
+							: "error"
+						: "success",
+					title: imported.messages.length
+						? imported.values.length
+							? "Import completed with issues"
+							: "Import failed"
+						: "Files imported",
+					description: imported.messages.length
+						? imported.messages.join("\n")
+						: `${imported.values.length} item${imported.values.length === 1 ? "" : "s"} added.`,
+				});
+			return imported.values;
+		} catch (error) {
+			if (controller.signal.aborted) return null;
+			if (mounted) {
+				const description = errorMessage(error, "Unable to import files.");
+				setMessages([description]);
+				toastManager.add({
+					type: "error",
+					title: "Import failed",
+					description,
+				});
+			}
+			return null;
+		} finally {
+			if (request === controller) {
+				request = null;
+				if (mounted) setLoading(false);
+			}
+		}
+	};
 	return {
-		loading,
-		message: messages.join("; "),
+		get loading() {
+			return loading();
+		},
+		get message() {
+			return messages().join("; ");
+		},
 		/** One entry per file problem, for workspaces that list them separately. */
-		messages,
+		get messages() {
+			return messages();
+		},
 		readFiles,
 		cancel,
 		clearMessage,

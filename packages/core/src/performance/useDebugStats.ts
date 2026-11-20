@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { type Accessor, createMemo, onSettled } from "solid-js";
 import { updateAppSettings, useAppSettings } from "#/settings/store.ts";
 
 export const setDebugStats = (debugStats: boolean) =>
@@ -10,9 +10,9 @@ export const setDebugStats = (debugStats: boolean) =>
  * Listens for Ctrl+Shift+D, which toggles the debug stats window, and returns
  * whether the window is shown.
  */
-export function useDebugStats(): boolean {
-	const shown = useAppSettings().debugStats ?? false;
-	useEffect(() => {
+export function useDebugStats(): Accessor<boolean> {
+	const settings = useAppSettings();
+	onSettled(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
 			if (
 				!event.ctrlKey ||
@@ -32,6 +32,6 @@ export function useDebugStats(): boolean {
 		};
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
-	}, []);
-	return shown;
+	});
+	return createMemo(() => settings().debugStats ?? false);
 }

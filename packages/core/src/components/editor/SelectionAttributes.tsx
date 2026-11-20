@@ -10,7 +10,7 @@ import {
 	pinElectricalTypeLabels,
 	pinElectricalTypes,
 } from "@ecad/drawing-core/drawing/pin-types.ts";
-import type { SymbolAttribute } from "@ecad/drawing-core/drawing/shape-kinds.ts";
+import type { ShapeZone } from "@ecad/drawing-core/drawing/schema.ts";
 import {
 	boxBorder,
 	boxText,
@@ -49,7 +49,6 @@ import {
 	padTypes,
 } from "@ecad/drawing-core/footprint/layers.ts";
 import {
-	type HoleShape,
 	isDrilled,
 	isHole,
 	isPad,
@@ -61,16 +60,26 @@ import {
 	padOutline,
 	shapeLayer,
 	shapeLayers,
-	type ViaShape,
 } from "@ecad/drawing-core/footprint/shapes.ts";
-import { Lock, X } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import type { JSX } from "@solidjs/web";
+import {
+	createEffect,
+	createMemo,
+	createRenderEffect,
+	createSignal,
+	For,
+	Match,
+	Show,
+	Switch,
+} from "solid-js";
 import {
 	type FootprintChoices,
 	SymbolFootprintField,
 } from "#/components/editor/SymbolFootprintField.tsx";
 import { SymbolInstanceAttributeForm } from "#/components/editor/SymbolInstanceAttributeForm.tsx";
 import { SymbolInstanceAttributeInput } from "#/components/editor/SymbolInstanceAttributeInput.tsx";
+import { Lock, X } from "#/components/ui/icons.tsx";
+import { Keyed } from "#/components/ui/Keyed.tsx";
 import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 import { panelIconButtonClassName } from "#/components/viewer/viewControlStyles.ts";
 import type { LabelRole } from "#/drawing/placement.ts";
@@ -80,24 +89,18 @@ export const numberInputClassName = "ui-input w-28 pr-8 text-right";
 export const textInputClassName = "ui-input w-36";
 
 /** A number input with its unit shown inside the field's right edge. */
-export function UnitField({
-	unit,
-	children,
-}: {
-	unit?: string;
-	children: ReactNode;
-}) {
+export function UnitField(props: { unit?: string; children: JSX.Element }) {
 	return (
-		<span className="relative inline-flex">
-			{children}
-			{unit && (
+		<span class="relative inline-flex">
+			{props.children}
+			<Show when={props.unit}>
 				<span
 					aria-hidden="true"
-					className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-2xs text-fg-faint"
+					class="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-2xs text-fg-faint"
 				>
-					{unit}
+					{props.unit}
 				</span>
-			)}
+			</Show>
 		</span>
 	);
 }
@@ -116,27 +119,23 @@ const kindLabels: Record<string, string> = {
 	"supply label": "Supply label",
 };
 
-function PanelHeader({
-	title,
-	subtitle,
-	onClear,
-}: {
-	title: ReactNode;
-	subtitle: ReactNode;
+function PanelHeader(props: {
+	title: JSX.Element;
+	subtitle: JSX.Element;
 	onClear: () => void;
 }) {
 	return (
-		<header className="flex shrink-0 items-start gap-2 border-b border-line-subtle py-2.5 pr-2 pl-3">
-			<div className="min-w-0 flex-1">
-				{title}
-				<div className="mt-0.5 flex gap-1 text-2xs text-fg-faint">
-					{subtitle}
+		<header class="flex shrink-0 items-start gap-2 border-b border-line-subtle py-2.5 pr-2 pl-3">
+			<div class="min-w-0 flex-1">
+				{props.title}
+				<div class="mt-0.5 flex gap-1 text-2xs text-fg-faint">
+					{props.subtitle}
 				</div>
 			</div>
 			<button
 				type="button"
-				className={panelIconButtonClassName}
-				onClick={onClear}
+				class={panelIconButtonClassName}
+				onClick={() => props.onClear()}
 				aria-label="Clear selection"
 				title="Clear selection"
 			>
@@ -149,11 +148,11 @@ function PanelHeader({
 const titleClassName =
 	"m-0 flex items-center gap-1.5 text-sm font-semibold break-words text-fg";
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section(props: { title: string; children: JSX.Element }) {
 	return (
-		<section className="border-t border-line-subtle px-3 pt-2.5 pb-2 first:border-t-0">
-			<h3 className="ui-section-label m-0 mb-1">{title}</h3>
-			{children}
+		<section class="border-t border-line-subtle px-3 pt-2.5 pb-2 first:border-t-0">
+			<h3 class="ui-section-label m-0 mb-1">{props.title}</h3>
+			{props.children}
 		</section>
 	);
 }
@@ -161,26 +160,26 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 const rowClassName =
 	"flex min-h-8 items-center justify-between gap-3 text-xs text-fg-muted";
 
-function Rows({ rows }: { rows: [string, ReactNode][] }) {
+function Rows(props: { children: JSX.Element }) {
+	return <dl class="m-0">{props.children}</dl>;
+}
+
+function Row(props: { label: string; children: JSX.Element }) {
 	return (
-		<dl className="m-0">
-			{rows.map(([label, value]) => (
-				<div key={label} className={rowClassName}>
-					<dt>{label}</dt>
-					<dd className="m-0 text-fg tabular-nums">{value}</dd>
-				</div>
-			))}
-		</dl>
+		<div class={rowClassName}>
+			<dt>{props.label}</dt>
+			<dd class="m-0 text-fg tabular-nums">{props.children}</dd>
+		</div>
 	);
 }
 
-function Tips({ children }: { children: ReactNode }) {
+function Tips(props: { children: JSX.Element }) {
 	return (
-		<details className="group border-t border-line-subtle px-3 py-2 text-xs text-fg-muted">
-			<summary className="-mx-1 cursor-pointer rounded-sm px-1 py-0.5 font-medium select-none hover:text-fg">
+		<details class="group border-t border-line-subtle px-3 py-2 text-xs text-fg-muted">
+			<summary class="-mx-1 cursor-pointer rounded-sm px-1 py-0.5 font-medium select-none hover:text-fg">
 				Keyboard tips
 			</summary>
-			<p className="m-0 mt-1.5 leading-[1.125rem]">{children}</p>
+			<p class="m-0 mt-1.5 leading-[1.125rem]">{props.children}</p>
 		</details>
 	);
 }
@@ -188,64 +187,90 @@ function Tips({ children }: { children: ReactNode }) {
 const actionClassName = "ui-button w-full";
 const noDefinition = "This symbol's definition is read-only or unavailable.";
 
-function SymbolDefinitionAction({
-	onEditSymbol,
-	onCopySymbol,
-}: {
+function SymbolDefinitionAction(props: {
 	onEditSymbol?: () => void;
 	onCopySymbol?: () => Promise<void>;
 }) {
-	const [copying, setCopying] = useState(false);
-	if (!onEditSymbol && onCopySymbol)
-		return (
-			<button
-				type="button"
-				onClick={() => {
-					setCopying(true);
-					void onCopySymbol().finally(() => setCopying(false));
-				}}
-				disabled={copying}
-				title="Copy the definition into this project's symbols to edit it"
-				className={actionClassName}
-				data-variant="secondary"
-			>
-				{copying ? "Copying…" : "Copy symbol to project"}
-			</button>
-		);
+	const [copying, setCopying] = createSignal(false);
 	return (
-		<>
-			<button
-				type="button"
-				onClick={onEditSymbol}
-				disabled={!onEditSymbol}
-				title={onEditSymbol ? "Open the library definition" : noDefinition}
-				className={actionClassName}
-				data-variant="secondary"
-			>
-				Edit symbol
-			</button>
-			{!onEditSymbol && (
-				<p className="m-0 text-xs text-fg-faint">{noDefinition}</p>
+		<Show
+			when={!props.onEditSymbol && props.onCopySymbol}
+			fallback={
+				<>
+					<button
+						type="button"
+						onClick={() => props.onEditSymbol?.()}
+						disabled={!props.onEditSymbol}
+						title={
+							props.onEditSymbol ? "Open the library definition" : noDefinition
+						}
+						class={actionClassName}
+						data-variant="secondary"
+					>
+						Edit symbol
+					</button>
+					<Show when={!props.onEditSymbol}>
+						<p class="m-0 text-xs text-fg-faint">{noDefinition}</p>
+					</Show>
+				</>
+			}
+		>
+			{(onCopySymbol) => (
+				<button
+					type="button"
+					onClick={() => {
+						setCopying(true);
+						void onCopySymbol()().finally(() => setCopying(false));
+					}}
+					disabled={copying()}
+					title="Copy the definition into this project's symbols to edit it"
+					class={actionClassName}
+					data-variant="secondary"
+				>
+					{copying() ? "Copying…" : "Copy symbol to project"}
+				</button>
 			)}
-		</>
+		</Show>
 	);
 }
 
-function AttributeInput({
-	label,
-	value,
-	unit = "mil",
-	positive = false,
-	nonNegative = false,
-	above = Number.NEGATIVE_INFINITY,
-	below = Number.POSITIVE_INFINITY,
-	step = "any",
-	placeholder = "Mixed",
-	onChange,
-	onClear,
-}: {
+/**
+ * An input that commits its text on blur. It shows the committed value again
+ * when that value changes or a different item is selected.
+ */
+function CommitInput(props: {
+	label: string;
+	identity: string | number;
+	value: string;
+	maxlength?: number;
+	onCommit: (value: string) => void;
+}) {
+	const identity = createMemo(() => props.identity);
+	const value = createMemo(() => props.value);
+	let input!: HTMLInputElement;
+	const view = (
+		<input
+			ref={input}
+			aria-label={props.label}
+			maxlength={props.maxlength}
+			class={textInputClassName}
+			onBlur={(event) => props.onCommit(event.currentTarget.value)}
+		/>
+	);
+	createRenderEffect(
+		() => [identity(), value()] as const,
+		([, text]) => {
+			input.value = text;
+		},
+	);
+	return view;
+}
+
+function AttributeInput(props: {
 	label: string;
 	value: number | "";
+	/** Shows the value again, as a remount would, when the selected item changes. */
+	identity?: string | number;
 	unit?: string;
 	positive?: boolean;
 	nonNegative?: boolean;
@@ -256,51 +281,53 @@ function AttributeInput({
 	onChange: (value: number) => void;
 	onClear?: () => void;
 }) {
-	const inputRef = useRef<HTMLInputElement>(null);
-	const converted = value === "" ? "" : unit === "mil" ? toMils(value) : value;
-	const displayValue =
-		converted === "" ? "" : Number(converted.toFixed(4)) || converted;
-	useEffect(() => {
-		const input = inputRef.current;
-		// Hide pointer-conversion noise without rewriting a value being typed.
-		if (input && input.valueAsNumber !== displayValue)
-			input.value = String(displayValue);
-	}, [displayValue]);
-	return (
-		<UnitField unit={unit}>
+	const unit = () => props.unit ?? "mil";
+	const step = () => props.step ?? "any";
+	const identity = createMemo(() => props.identity);
+	const displayValue = createMemo(() => {
+		const value = props.value;
+		const converted =
+			value === "" ? "" : unit() === "mil" ? toMils(value) : value;
+		return converted === "" ? "" : Number(converted.toFixed(4)) || converted;
+	});
+	let input!: HTMLInputElement;
+	const view = (
+		<UnitField unit={unit()}>
 			<input
-				ref={inputRef}
+				ref={input}
 				type="number"
-				aria-label={label}
-				min={positive || nonNegative ? 0 : undefined}
-				step={step}
-				title={step === "90" ? "Angle in 90° increments" : undefined}
-				placeholder={placeholder}
-				defaultValue={displayValue}
-				data-committed-value={value}
-				className={numberInputClassName}
+				aria-label={props.label}
+				min={props.positive || props.nonNegative ? 0 : undefined}
+				step={step()}
+				title={step() === "90" ? "Angle in 90° increments" : undefined}
+				placeholder={props.placeholder ?? "Mixed"}
+				data-committed-value={props.value}
+				class={numberInputClassName}
 				onBlur={(event) => {
+					const element = event.currentTarget;
+					const value = props.value;
+					const display = displayValue();
 					if (
-						onClear &&
-						event.currentTarget.value === "" &&
-						!event.currentTarget.validity.badInput
+						props.onClear &&
+						element.value === "" &&
+						!element.validity.badInput
 					) {
-						if (value !== "") onClear();
+						if (value !== "") props.onClear();
 						return;
 					}
-					const entered = event.currentTarget.valueAsNumber;
-					const next = unit === "mil" ? fromMils(entered) : entered;
+					const entered = element.valueAsNumber;
+					const next = unit() === "mil" ? fromMils(entered) : entered;
 					if (
 						Number.isFinite(next) &&
-						(!positive || next > 0) &&
-						(!nonNegative || next >= 0) &&
-						next > above &&
-						next < below &&
-						(step !== "90" || next % 90 === 0) &&
-						(step !== "1" || Number.isInteger(next))
+						(!props.positive || next > 0) &&
+						(!props.nonNegative || next >= 0) &&
+						next > (props.above ?? Number.NEGATIVE_INFINITY) &&
+						next < (props.below ?? Number.POSITIVE_INFINITY) &&
+						(step() !== "90" || next % 90 === 0) &&
+						(step() !== "1" || Number.isInteger(next))
 					) {
-						if (next !== value && entered !== displayValue) onChange(next);
-					} else event.currentTarget.value = String(displayValue);
+						if (next !== value && entered !== display) props.onChange(next);
+					} else element.value = String(display);
 				}}
 				onKeyDown={(event) => {
 					if (event.key === "Enter" || event.key === "Escape")
@@ -309,6 +336,18 @@ function AttributeInput({
 			/>
 		</UnitField>
 	);
+	createRenderEffect(
+		() => [identity(), displayValue()] as const,
+		([id, display], previous) => {
+			// Hide pointer-conversion noise without rewriting a value being typed.
+			if (
+				input.valueAsNumber !== display ||
+				(previous !== undefined && previous[0] !== id)
+			)
+				input.value = String(display);
+		},
+	);
+	return view;
 }
 
 interface SelectionAttributesProps {
@@ -337,102 +376,84 @@ interface SelectionAttributesProps {
 	onTextFocus: () => void;
 }
 
-function PinTypeSelect({
-	pin,
-	onEdit,
-}: {
-	pin: { readonly electricalType?: PinElectricalType };
+function PinSignalRows(props: {
+	pin: Pick<PinShape, "electricalType" | "activeLow">;
 	onEdit: (edit: SelectionEdit) => void;
 }) {
 	return (
-		<select
-			aria-label="Electrical type"
-			className="ui-select w-36"
-			value={pinElectricalType(pin)}
-			onChange={(event) =>
-				onEdit({
-					kind: "pin",
-					attribute: "electricalType",
-					value: event.currentTarget.value as PinElectricalType,
-				})
-			}
-		>
-			{pinElectricalTypes.map((type) => (
-				<option key={type} value={type}>
-					{pinElectricalTypeLabels[type]}
-				</option>
-			))}
-		</select>
+		<>
+			<Row label="Electrical type">
+				<select
+					aria-label="Electrical type"
+					class="ui-select w-36"
+					value={pinElectricalType(props.pin)}
+					onChange={(event) =>
+						props.onEdit({
+							kind: "pin",
+							attribute: "electricalType",
+							value: event.currentTarget.value as PinElectricalType,
+						})
+					}
+				>
+					<For each={pinElectricalTypes}>
+						{(type) => (
+							<option value={type}>{pinElectricalTypeLabels[type]}</option>
+						)}
+					</For>
+				</select>
+			</Row>
+			<Row label="Active level">
+				<select
+					aria-label="Active level"
+					class="ui-select w-36"
+					value={props.pin.activeLow ? "low" : "high"}
+					onChange={(event) =>
+						props.onEdit({
+							kind: "pin",
+							attribute: "activeLow",
+							value: event.currentTarget.value === "low",
+						})
+					}
+				>
+					<option value="high">High</option>
+					<option value="low">Low</option>
+				</select>
+			</Row>
+		</>
 	);
-}
-
-function PinActiveLevelSelect({
-	pin,
-	onEdit,
-}: {
-	pin: { readonly activeLow?: boolean };
-	onEdit: (edit: SelectionEdit) => void;
-}) {
-	return (
-		<select
-			aria-label="Active level"
-			className="ui-select w-36"
-			value={pin.activeLow ? "low" : "high"}
-			onChange={(event) =>
-				onEdit({
-					kind: "pin",
-					attribute: "activeLow",
-					value: event.currentTarget.value === "low",
-				})
-			}
-		>
-			<option value="high">High</option>
-			<option value="low">Low</option>
-		</select>
-	);
-}
-
-function pinSignalRows(
-	pin: Pick<PinShape, "electricalType" | "activeLow">,
-	onEdit: (edit: SelectionEdit) => void,
-): [string, ReactNode][] {
-	return [
-		[
-			"Electrical type",
-			<PinTypeSelect key="electricalType" pin={pin} onEdit={onEdit} />,
-		],
-		[
-			"Active level",
-			<PinActiveLevelSelect key="activeLow" pin={pin} onEdit={onEdit} />,
-		],
-	];
 }
 
 /** Show name and Show number checkboxes for one pin. */
-function pinLabelRows(
-	pin: Pick<PinShape, "showLabels" | "showName" | "showNumber">,
-	onEdit: (edit: SelectionEdit) => void,
-): [string, ReactNode][] {
-	return (["showName", "showNumber"] as const).map((attribute) => {
-		const label = attribute === "showName" ? "Show name" : "Show number";
-		return [
-			label,
-			<input
-				key={attribute}
-				type="checkbox"
-				aria-label={label}
-				className="ui-checkbox"
-				checked={pin[attribute] ?? pin.showLabels ?? true}
-				onChange={(event) =>
-					onEdit({
-						kind: "pin",
-						attribute,
-						value: event.currentTarget.checked,
-					})
-				}
-			/>,
-		];
-	});
+function PinLabelRows(props: {
+	pin: Pick<PinShape, "showLabels" | "showName" | "showNumber">;
+	onEdit: (edit: SelectionEdit) => void;
+}) {
+	return (
+		<For each={["showName", "showNumber"] as const}>
+			{(attribute) => {
+				const label = attribute === "showName" ? "Show name" : "Show number";
+				return (
+					<Row label={label}>
+						<input
+							type="checkbox"
+							aria-label={label}
+							class="ui-checkbox"
+							checked={props.pin[attribute] ?? props.pin.showLabels ?? true}
+							onChange={(event) => {
+								const next = event.currentTarget.checked;
+								event.currentTarget.checked = !next;
+								props.onEdit({
+									kind: "pin",
+									attribute,
+									value: next,
+								});
+							}}
+						/>
+					</Row>
+				);
+			}}
+		</For>
+	);
 }
 
 function selectionType(shape: EditorShape, footprint: boolean): string {
@@ -445,1100 +466,1416 @@ function selectionType(shape: EditorShape, footprint: boolean): string {
 	return footprint && shape.kind === "line" ? "wire" : shape.kind;
 }
 
-function padRows(
-	pad: PadShape,
-	unit: LengthUnit,
-	onEdit: (edit: SelectionEdit) => void,
-	hiddenLayers?: ReadonlySet<FootprintLayer>,
-): [string, ReactNode][] {
-	const pasteKeepsPadVisible =
-		pad.pad.paste === true && hiddenLayers?.has(shapeLayer(pad)) === true;
-	return [
-		[
-			"Pad number",
-			<input
-				key={`${pad.id}:number:${pad.pad.number}`}
-				aria-label="Pad number"
-				defaultValue={pad.pad.number}
-				maxLength={16}
-				className={textInputClassName}
-				onBlur={(event) =>
-					onEdit({
-						kind: "pad",
-						edit: { attribute: "number", value: event.currentTarget.value },
-					})
-				}
-			/>,
-		],
-		[
-			"Pad type",
-			<select
-				key="type"
-				aria-label="Pad type"
-				className="ui-select w-36"
-				value={pad.pad.type}
-				onChange={(event) =>
-					onEdit({
-						kind: "pad",
-						edit: {
-							attribute: "type",
-							value: event.currentTarget.value as PadType,
-						},
-					})
-				}
-			>
-				{padTypes.map((type) => (
-					<option key={type} value={type}>
-						{padTypeLabels[type]}
-					</option>
-				))}
-			</select>,
-		],
-		[
-			"Pad shape",
-			<select
-				key="shape"
-				aria-label="Pad shape"
-				className="ui-select w-36"
-				value={padOutline(pad)}
-				onChange={(event) =>
-					onEdit({
-						kind: "pad",
-						edit: {
-							attribute: "shape",
-							value: event.currentTarget.value as PadOutline,
-						},
-					})
-				}
-			>
-				<option value="rectangle">Rectangle</option>
-				<option value="circle">Circle</option>
-				<option value="oval">Oval</option>
-			</select>,
-		],
-		...(pad.kind === "rectangle"
-			? [
-					[
-						"Corner radius",
-						<AttributeInput
-							key={`${pad.id}:corner-radius`}
-							label="Corner radius"
-							value={padCornerRadius(pad)}
-							unit={unit}
-							nonNegative
-							onChange={(value) =>
-								onEdit({
-									kind: "pad",
-									edit: { attribute: "cornerRadius", value },
-								})
-							}
-						/>,
-					] as [string, ReactNode],
-				]
-			: []),
-		...(pad.pad.type === "smd"
-			? [
-					[
-						"Solder paste",
-						<input
-							key="paste"
-							type="checkbox"
-							aria-label="Solder paste"
-							className="ui-checkbox"
-							checked={pad.pad.paste ?? false}
-							disabled={pasteKeepsPadVisible}
-							title={
-								pasteKeepsPadVisible
-									? "Show the pad's copper layer to remove its paste"
-									: undefined
-							}
-							onChange={(event) =>
-								onEdit({
-									kind: "pad",
-									edit: {
-										attribute: "paste",
-										value: event.currentTarget.checked,
-									},
-								})
-							}
-						/>,
-					] as [string, ReactNode],
-				]
-			: []),
-		...(pad.pad.drill === undefined
-			? []
-			: padHoleRows(pad, pad.pad.drill, unit, onEdit)),
-	];
+function PadRows(props: {
+	pad: PadShape;
+	unit: LengthUnit;
+	onEdit: (edit: SelectionEdit) => void;
+	hiddenLayers?: ReadonlySet<FootprintLayer>;
+}) {
+	const pasteKeepsPadVisible = () =>
+		props.pad.pad.paste === true &&
+		props.hiddenLayers?.has(shapeLayer(props.pad)) === true;
+	return (
+		<>
+			<Row label="Pad number">
+				<CommitInput
+					label="Pad number"
+					identity={props.pad.id}
+					value={props.pad.pad.number}
+					maxlength={16}
+					onCommit={(value) =>
+						props.onEdit({
+							kind: "pad",
+							edit: { attribute: "number", value },
+						})
+					}
+				/>
+			</Row>
+			<Row label="Pad type">
+				<select
+					aria-label="Pad type"
+					class="ui-select w-36"
+					value={props.pad.pad.type}
+					onChange={(event) =>
+						props.onEdit({
+							kind: "pad",
+							edit: {
+								attribute: "type",
+								value: event.currentTarget.value as PadType,
+							},
+						})
+					}
+				>
+					<For each={padTypes}>
+						{(type) => <option value={type}>{padTypeLabels[type]}</option>}
+					</For>
+				</select>
+			</Row>
+			<Row label="Pad shape">
+				<select
+					aria-label="Pad shape"
+					class="ui-select w-36"
+					value={padOutline(props.pad)}
+					onChange={(event) =>
+						props.onEdit({
+							kind: "pad",
+							edit: {
+								attribute: "shape",
+								value: event.currentTarget.value as PadOutline,
+							},
+						})
+					}
+				>
+					<option value="rectangle">Rectangle</option>
+					<option value="circle">Circle</option>
+					<option value="oval">Oval</option>
+				</select>
+			</Row>
+			<Show when={props.pad.kind === "rectangle"}>
+				<Row label="Corner radius">
+					<AttributeInput
+						identity={props.pad.id}
+						label="Corner radius"
+						value={padCornerRadius(props.pad)}
+						unit={props.unit}
+						nonNegative
+						onChange={(value) =>
+							props.onEdit({
+								kind: "pad",
+								edit: { attribute: "cornerRadius", value },
+							})
+						}
+					/>
+				</Row>
+			</Show>
+			<Show when={props.pad.pad.type === "smd"}>
+				<Row label="Solder paste">
+					<input
+						type="checkbox"
+						aria-label="Solder paste"
+						class="ui-checkbox"
+						checked={props.pad.pad.paste ?? false}
+						disabled={pasteKeepsPadVisible()}
+						title={
+							pasteKeepsPadVisible()
+								? "Show the pad's copper layer to remove its paste"
+								: undefined
+						}
+						onChange={(event) => {
+							const next = event.currentTarget.checked;
+							event.currentTarget.checked = !next;
+							props.onEdit({
+								kind: "pad",
+								edit: {
+									attribute: "paste",
+									value: next,
+								},
+							});
+						}}
+					/>
+				</Row>
+			</Show>
+			<Show when={props.pad.pad.drill !== undefined}>
+				<PadHoleRows
+					pad={props.pad}
+					drill={props.pad.pad.drill ?? 0}
+					unit={props.unit}
+					onEdit={props.onEdit}
+				/>
+			</Show>
+		</>
+	);
 }
 
-function padHoleRows(
-	pad: PadShape,
-	drill: number,
-	unit: LengthUnit,
-	onEdit: (edit: SelectionEdit) => void,
-): [string, ReactNode][] {
-	const { slot } = pad.pad;
-	return [
-		[
-			"Hole",
-			<select
-				key="hole"
-				aria-label="Hole"
-				className="ui-select w-36"
-				value={slot === undefined ? "round" : "slot"}
-				onChange={(event) =>
-					onEdit({
-						kind: "pad",
-						edit: {
-							attribute: "hole",
-							value: event.currentTarget.value === "slot" ? "slot" : "round",
-						},
-					})
-				}
-			>
-				<option value="round">Round</option>
-				<option value="slot">Slot</option>
-			</select>,
-		],
-		[
-			slot === undefined ? "Drill" : "Slot width",
-			<AttributeInput
-				key={`${pad.id}:drill`}
-				label={slot === undefined ? "Drill" : "Slot width"}
-				value={drill}
-				unit={unit}
-				positive
-				below={Math.min(padMinorSize(pad), slot ?? Number.POSITIVE_INFINITY)}
-				onChange={(value) =>
-					onEdit({ kind: "pad", edit: { attribute: "drill", value } })
-				}
-			/>,
-		],
-		...(slot === undefined
-			? []
-			: [
-					[
-						"Slot length",
+function PadHoleRows(props: {
+	pad: PadShape;
+	drill: number;
+	unit: LengthUnit;
+	onEdit: (edit: SelectionEdit) => void;
+}) {
+	const slot = () => props.pad.pad.slot;
+	const drillLabel = () => (slot() === undefined ? "Drill" : "Slot width");
+	return (
+		<>
+			<Row label="Hole">
+				<select
+					aria-label="Hole"
+					class="ui-select w-36"
+					value={slot() === undefined ? "round" : "slot"}
+					onChange={(event) =>
+						props.onEdit({
+							kind: "pad",
+							edit: {
+								attribute: "hole",
+								value: event.currentTarget.value === "slot" ? "slot" : "round",
+							},
+						})
+					}
+				>
+					<option value="round">Round</option>
+					<option value="slot">Slot</option>
+				</select>
+			</Row>
+			<Row label={drillLabel()}>
+				<AttributeInput
+					identity={props.pad.id}
+					label={drillLabel()}
+					value={props.drill}
+					unit={props.unit}
+					positive
+					below={Math.min(
+						padMinorSize(props.pad),
+						slot() ?? Number.POSITIVE_INFINITY,
+					)}
+					onChange={(value) =>
+						props.onEdit({ kind: "pad", edit: { attribute: "drill", value } })
+					}
+				/>
+			</Row>
+			<Show when={slot()}>
+				{(length) => (
+					<Row label="Slot length">
 						<AttributeInput
-							key={`${pad.id}:slot`}
+							identity={props.pad.id}
 							label="Slot length"
-							value={slot}
-							unit={unit}
-							above={drill}
-							below={pad.width}
+							value={length()}
+							unit={props.unit}
+							above={props.drill}
+							below={props.pad.width}
 							onChange={(value) =>
-								onEdit({ kind: "pad", edit: { attribute: "slot", value } })
+								props.onEdit({
+									kind: "pad",
+									edit: { attribute: "slot", value },
+								})
 							}
-						/>,
-					] as [string, ReactNode],
-				]),
-	];
+						/>
+					</Row>
+				)}
+			</Show>
+		</>
+	);
 }
 
-function viaRows(
-	via: ViaShape,
-	unit: LengthUnit,
-	onEdit: (edit: SelectionEdit) => void,
-): [string, ReactNode][] {
-	return [
-		[
-			"Drill",
+function DrillRow(props: {
+	id: number;
+	drill: number;
+	below?: number;
+	unit: LengthUnit;
+	onChange: (drill: number) => void;
+}) {
+	return (
+		<Row label="Drill">
 			<AttributeInput
-				key={`${via.id}:drill`}
+				identity={props.id}
 				label="Drill"
-				value={via.via.drill}
-				unit={unit}
+				value={props.drill}
+				unit={props.unit}
 				positive
-				below={via.width}
-				onChange={(drill) => onEdit({ kind: "via-drill", drill })}
-			/>,
-		],
-	];
+				below={props.below}
+				onChange={(drill) => props.onChange(drill)}
+			/>
+		</Row>
+	);
 }
 
-function holeRows(
-	hole: HoleShape,
-	unit: LengthUnit,
-	onEdit: (edit: SelectionEdit) => void,
-): [string, ReactNode][] {
-	return [
-		[
-			"Drill",
+type ZoneShape = EditorShape & { readonly zone: ShapeZone };
+
+function ZoneRows(props: {
+	zone: ZoneShape;
+	unit: LengthUnit;
+	onEdit: (edit: SelectionEdit) => void;
+}) {
+	const settings = () => props.zone.zone;
+	const ZoneLength = (row: {
+		label: string;
+		setting: "clearance" | "thermalGap" | "thermalSpokeWidth";
+	}) => (
+		<Row label={row.label}>
 			<AttributeInput
-				key={`${hole.id}:drill`}
-				label="Drill"
-				value={hole.hole.drill}
-				unit={unit}
+				identity={props.zone.id}
+				label={row.label}
+				value={settings()[row.setting] ?? ""}
+				unit={props.unit}
 				positive
-				onChange={(drill) => onEdit({ kind: "hole-drill", drill })}
-			/>,
-		],
-	];
+				below={row.setting === "clearance" ? undefined : 100 + 1e-9}
+				placeholder="Board"
+				onChange={(value) =>
+					props.onEdit({ kind: "zone", zone: { [row.setting]: value } })
+				}
+				onClear={() =>
+					props.onEdit({ kind: "zone", zone: { [row.setting]: undefined } })
+				}
+			/>
+		</Row>
+	);
+	return (
+		<>
+			<ZoneLength label="Zone clearance" setting="clearance" />
+			<Row label="Pad connection">
+				<select
+					aria-label="Pad connection"
+					class="ui-select w-36"
+					value={settings().padConnection ?? "thermal"}
+					onChange={(event) =>
+						props.onEdit({
+							kind: "zone",
+							zone: {
+								padConnection:
+									event.currentTarget.value === "solid" ? "solid" : undefined,
+							},
+						})
+					}
+				>
+					<option value="thermal">Thermal relief</option>
+					<option value="solid">Solid</option>
+				</select>
+			</Row>
+			<Show when={settings().padConnection !== "solid"}>
+				<ZoneLength label="Thermal gap" setting="thermalGap" />
+				<ZoneLength label="Spoke width" setting="thermalSpokeWidth" />
+			</Show>
+			<Row label="Zone priority">
+				<AttributeInput
+					identity={props.zone.id}
+					label="Zone priority"
+					value={settings().priority ?? 0}
+					unit=""
+					nonNegative
+					below={1001}
+					step="1"
+					onChange={(priority) =>
+						props.onEdit({ kind: "zone-priority", priority })
+					}
+				/>
+			</Row>
+		</>
+	);
 }
 
 /** Net, zone and side rows for items on a board. */
-function boardRows(
-	shapes: EditorShape[],
-	nets: readonly { id: string; name: string }[],
-	unit: LengthUnit,
-	onEdit: (edit: SelectionEdit) => void,
-): [string, ReactNode][] {
-	const rows: [string, ReactNode][] = [];
-	const copper = shapes.filter(
-		(shape) =>
-			canCarryNet(shape) && (isVia(shape) || isCopperLayer(shape.layer)),
-	);
-	if (copper.length === shapes.length && copper.length) {
+function BoardRows(props: {
+	shapes: EditorShape[];
+	nets: readonly { id: string; name: string }[];
+	unit: LengthUnit;
+	onEdit: (edit: SelectionEdit) => void;
+}) {
+	const net = createMemo(() => {
+		const { shapes } = props;
+		const copper = shapes.filter(
+			(shape) =>
+				canCarryNet(shape) && (isVia(shape) || isCopperLayer(shape.layer)),
+		);
+		if (copper.length !== shapes.length || !copper.length) return undefined;
 		const first = "net" in copper[0] ? copper[0].net : undefined;
 		const same = copper.every(
 			(shape) => ("net" in shape ? shape.net : undefined) === first,
 		);
-		const value = same ? (first ?? "") : "mixed";
-		const sorted = [...nets].sort((a, b) =>
-			a.name.localeCompare(b.name, "en", { numeric: true }),
+		return {
+			first,
+			value: same ? (first ?? "") : "mixed",
+			sorted: [...props.nets].sort((a, b) =>
+				a.name.localeCompare(b.name, "en", { numeric: true }),
+			),
+		};
+	});
+	const zone = createMemo(() => {
+		const { shapes } = props;
+		const shape =
+			shapes.length === 1 && shapes[0].kind === "rectangle"
+				? shapes[0]
+				: undefined;
+		return shape?.zone ? (shape as ZoneShape) : undefined;
+	});
+	const side = createMemo(() => {
+		const { shapes } = props;
+		const footprints = shapes.filter(
+			(shape) => shape.kind === "symbol" && shape.footprint,
 		);
-		rows.push([
-			"Net",
-			<select
-				key="net"
-				aria-label="Net"
-				className="ui-select w-36"
-				value={value}
-				onChange={(event) =>
-					onEdit({
-						kind: "net",
-						net: event.currentTarget.value || undefined,
-					})
-				}
-			>
-				{value === "mixed" && (
-					<option value="mixed" disabled>
-						Mixed
-					</option>
-				)}
-				<option value="">No net</option>
-				{first && !nets.some((net) => net.id === first) && (
-					<option value={first}>Missing net</option>
-				)}
-				{sorted.map((net) => (
-					<option key={net.id} value={net.id}>
-						{net.name}
-					</option>
-				))}
-			</select>,
-		]);
-	}
-	const zone =
-		shapes.length === 1 && shapes[0].kind === "rectangle"
-			? shapes[0]
-			: undefined;
-	if (zone?.zone) {
-		const settings = zone.zone;
-		const length = (
-			label: string,
-			key: "clearance" | "thermalGap" | "thermalSpokeWidth",
-		): [string, ReactNode] => [
-			label,
-			<AttributeInput
-				key={`${zone.id}:${key}`}
-				label={label}
-				value={settings[key] ?? ""}
-				unit={unit}
-				positive
-				below={key === "clearance" ? undefined : 100 + 1e-9}
-				placeholder="Board"
-				onChange={(value) => onEdit({ kind: "zone", zone: { [key]: value } })}
-				onClear={() => onEdit({ kind: "zone", zone: { [key]: undefined } })}
-			/>,
-		];
-		rows.push(length("Zone clearance", "clearance"), [
-			"Pad connection",
-			<select
-				key={`${zone.id}:padConnection`}
-				aria-label="Pad connection"
-				className="ui-select w-36"
-				value={settings.padConnection ?? "thermal"}
-				onChange={(event) =>
-					onEdit({
-						kind: "zone",
-						zone: {
-							padConnection:
-								event.currentTarget.value === "solid" ? "solid" : undefined,
-						},
-					})
-				}
-			>
-				<option value="thermal">Thermal relief</option>
-				<option value="solid">Solid</option>
-			</select>,
-		]);
-		if (settings.padConnection !== "solid")
-			rows.push(
-				length("Thermal gap", "thermalGap"),
-				length("Spoke width", "thermalSpokeWidth"),
-			);
-		rows.push([
-			"Zone priority",
-			<AttributeInput
-				key={`${zone.id}:priority`}
-				label="Zone priority"
-				value={zone.zone.priority ?? 0}
-				unit=""
-				nonNegative
-				below={1001}
-				step="1"
-				onChange={(priority) => onEdit({ kind: "zone-priority", priority })}
-			/>,
-		]);
-	}
-	const footprints = shapes.filter(
-		(shape) => shape.kind === "symbol" && shape.footprint,
-	);
-	if (footprints.length === shapes.length && footprints.length) {
+		if (footprints.length !== shapes.length || !footprints.length)
+			return undefined;
 		const back = footprints.every(
 			(shape) => shape.kind === "symbol" && shape.flipped,
 		);
 		const front = footprints.every(
 			(shape) => shape.kind === "symbol" && !shape.flipped,
 		);
-		rows.push([
-			"Side",
-			<select
-				key="side"
-				aria-label="Side"
-				className="ui-select w-36"
-				value={back ? "back" : front ? "front" : "mixed"}
-				onChange={(event) =>
-					onEdit({ kind: "side", back: event.currentTarget.value === "back" })
-				}
-			>
-				{!back && !front && (
-					<option value="mixed" disabled>
-						Mixed
-					</option>
+		return back ? "back" : front ? "front" : "mixed";
+	});
+	return (
+		<>
+			<Show when={net()}>
+				{(current) => (
+					<Row label="Net">
+						<select
+							aria-label="Net"
+							class="ui-select w-36"
+							value={current().value}
+							onChange={(event) =>
+								props.onEdit({
+									kind: "net",
+									net: event.currentTarget.value || undefined,
+								})
+							}
+						>
+							<Show when={current().value === "mixed"}>
+								<option value="mixed" disabled>
+									Mixed
+								</option>
+							</Show>
+							<option value="">No net</option>
+							<Show
+								when={
+									current().first &&
+									!props.nets.some((item) => item.id === current().first)
+								}
+							>
+								<option value={current().first}>Missing net</option>
+							</Show>
+							<For each={current().sorted}>
+								{(item) => <option value={item.id}>{item.name}</option>}
+							</For>
+						</select>
+					</Row>
 				)}
-				<option value="front">Front</option>
-				<option value="back">Back</option>
-			</select>,
-		]);
-	}
-	return rows;
+			</Show>
+			<Show when={zone()}>
+				{(shape) => (
+					<ZoneRows zone={shape()} unit={props.unit} onEdit={props.onEdit} />
+				)}
+			</Show>
+			<Show when={side()}>
+				{(value) => (
+					<Row label="Side">
+						<select
+							aria-label="Side"
+							class="ui-select w-36"
+							value={value()}
+							onChange={(event) =>
+								props.onEdit({
+									kind: "side",
+									back: event.currentTarget.value === "back",
+								})
+							}
+						>
+							<Show when={value() === "mixed"}>
+								<option value="mixed" disabled>
+									Mixed
+								</option>
+							</Show>
+							<option value="front">Front</option>
+							<option value="back">Back</option>
+						</select>
+					</Row>
+				)}
+			</Show>
+		</>
+	);
 }
 
 export function SelectionAttributes(props: SelectionAttributesProps) {
-	const symbol = props.shapes.length === 1 ? props.shapes[0] : undefined;
-	if (props.readOnly && symbol)
-		return (
-			<FixedChildAttributes
-				shape={symbol}
-				onClear={props.onClear}
-				onEditSymbol={props.onEditSymbol}
-				onCopySymbol={props.onCopySymbol}
-				onEdit={props.onEdit}
-				unit={props.unit}
-			/>
-		);
-	if (symbol?.kind === "symbol")
-		return (
-			<SymbolInstanceAttributeForm
-				key={`${symbol.id}:${props.unit}`}
-				symbol={symbol}
-				millimetres={props.unit === "mm"}
-			>
-				<SelectionAttributesPanel {...props} />
-			</SymbolInstanceAttributeForm>
-		);
-	return <SelectionAttributesPanel {...props} />;
+	const only = createMemo(() =>
+		props.shapes.length === 1 ? props.shapes[0] : undefined,
+	);
+	const fixed = () => (props.readOnly ? only() : undefined);
+	const symbol = () => {
+		const shape = only();
+		return shape?.kind === "symbol" ? shape : undefined;
+	};
+	return (
+		<Switch fallback={<SelectionAttributesPanel {...props} />}>
+			<Match when={fixed()}>
+				{(shape) => (
+					<FixedChildAttributes
+						shape={shape()}
+						onClear={props.onClear}
+						onEditSymbol={props.onEditSymbol}
+						onCopySymbol={props.onCopySymbol}
+						onEdit={props.onEdit}
+						unit={props.unit}
+					/>
+				)}
+			</Match>
+			<Match when={symbol()}>
+				{(shape) => (
+					<Keyed key={`${shape().id}:${props.unit}`}>
+						<SymbolInstanceAttributeForm
+							symbol={shape()}
+							millimetres={props.unit === "mm"}
+						>
+							<SelectionAttributesPanel {...props} />
+						</SymbolInstanceAttributeForm>
+					</Keyed>
+				)}
+			</Match>
+		</Switch>
+	);
 }
 
-function SelectionAttributesPanel({
-	isSymbolChild = false,
-	symbolTextMoved,
-	shapes,
-	snapStep = 0,
-	onClear,
-	allowNetEdits = false,
-	footprint = false,
-	footprintChoices,
-	hiddenLayers,
-	layers = footprintLayers,
-	boardNets,
-	unit = "mil",
-	onEdit,
-	onCreateSymbol,
-	onEditSymbol,
-	onCopySymbol,
-	textFocusId,
-	onTextFocus,
-}: SelectionAttributesProps) {
-	const basicShapes = shapes.flatMap((shape) => {
-		const border =
-			shape.kind === "symbol" ? boxBorder(shape)?.shape : undefined;
-		if (isDrilled(shape)) return [];
-		return isBasicShape(shape)
-			? [shape]
-			: border && isBasicShape(border)
-				? [border]
-				: [];
-	});
-	const textShapes = shapes.filter((shape) => shape.kind === "text");
-	const lineStyle =
-		basicShapes.length &&
-		basicShapes.every(
-			(shape) =>
-				(shape.lineStyle ?? "solid") === (basicShapes[0].lineStyle ?? "solid"),
-		)
-			? (basicShapes[0].lineStyle ?? "solid")
-			: "";
-	const outlinedShapes = shapes.flatMap((shape) =>
-		shape.kind === "symbol"
-			? symbolShapes(shape).filter((child) => child.kind !== "text")
-			: shape.kind === "text" || isDrilled(shape)
-				? []
-				: [shape],
-	);
-	const fillable = footprint
-		? shapes.filter(isFillableShape).filter((shape) => !isDrilled(shape))
-		: [];
-	const lineWidth =
-		outlinedShapes.length &&
-		outlinedShapes.every(
-			(shape) => shape.lineWidth === outlinedShapes[0].lineWidth,
-		)
-			? outlinedShapes[0].lineWidth
-			: "";
-	if (!shapes.length) return null;
-	const onAttributeChange = (attribute: ShapeAttribute, value: number) =>
-		onEdit({ kind: "attribute", attribute, value });
-	const single = shapes.length === 1 ? shapes[0] : undefined;
-	const canCreateSymbol = shapes.every(
-		(shape) =>
-			shape.kind !== "symbol" && !(shape.kind === "text" && shape.electrical),
-	);
-	const symbol = single?.kind === "symbol" ? single : undefined;
-	const locked = shapes.every((shape) => shape.locked === true);
-	const lockAttribute: [string, ReactNode] = [
-		"Locked",
+function LockedCheckbox(props: {
+	locked: boolean;
+	mixed: boolean;
+	onEdit: (edit: SelectionEdit) => void;
+}) {
+	let input!: HTMLInputElement;
+	const view = (
 		<input
-			key="locked"
+			ref={input}
 			type="checkbox"
 			aria-label="Locked"
-			checked={locked}
-			ref={(input) => {
-				if (input)
-					input.indeterminate = !locked && shapes.some((shape) => shape.locked);
+			checked={props.locked}
+			onChange={(event) => {
+				const next = event.currentTarget.checked;
+				event.currentTarget.checked = !next;
+				props.onEdit({ kind: "lock", locked: next });
 			}}
-			onChange={(event) =>
-				onEdit({ kind: "lock", locked: event.currentTarget.checked })
-			}
-			className="ui-checkbox"
-		/>,
-	];
-	const bounds = shapes.map(shapeBounds);
-	const left = Math.min(...bounds.map((box) => box.minX));
-	const right = Math.max(...bounds.map((box) => box.maxX));
-	const bottom = Math.min(...bounds.map((box) => box.minY));
-	const top = Math.max(...bounds.map((box) => box.maxY));
-	const distance = (value: number) => formatLength(value, unit);
-	const pad = single && isPad(single) ? single : undefined;
-	const via = single && isVia(single) ? single : undefined;
-	const hole = single && isHole(single) ? single : undefined;
-	const layer =
-		footprint && shapes.every((shape) => shape.kind !== "symbol")
+			class="ui-checkbox"
+		/>
+	);
+	createRenderEffect(
+		() => props.mixed,
+		(mixed) => {
+			input.indeterminate = mixed;
+		},
+	);
+	return view;
+}
+
+function TextContentInput(props: {
+	shape: Extract<EditorShape, { kind: "text" }>;
+	textFocusId: number | null;
+	onTextFocus: () => void;
+	onEdit: (edit: SelectionEdit) => void;
+	children?: JSX.Element;
+}) {
+	const identity = createMemo(() => props.shape.id);
+	const text = createMemo(() => props.shape.text);
+	const focus = createMemo(() => props.textFocusId === props.shape.id);
+	const onFocused = createMemo(() => (focus() ? props.onTextFocus : undefined));
+	let textarea!: HTMLTextAreaElement;
+	const view = (
+		<label class="flex flex-col gap-1.5 text-xs text-fg-muted">
+			{props.shape.electrical ? "Net name" : "Text"}
+			<textarea
+				ref={textarea}
+				aria-label={props.shape.electrical ? "Net name" : "Text content"}
+				rows={3}
+				maxlength={2000}
+				class="ui-input block w-full resize-y"
+				onBlur={(event) =>
+					props.onEdit({ kind: "text", text: event.currentTarget.value })
+				}
+				onKeyDown={(event) => {
+					if (event.key === "Escape") event.currentTarget.blur();
+				}}
+			/>
+			{props.children}
+		</label>
+	);
+	createRenderEffect(
+		() => [identity(), text()] as const,
+		([, value]) => {
+			textarea.value = value;
+		},
+	);
+	createEffect(onFocused, (focused) => {
+		if (!focused) return;
+		textarea.focus({ preventScroll: true });
+		textarea.select();
+		focused();
+	});
+	return view;
+}
+
+function SelectionAttributesPanel(props: SelectionAttributesProps) {
+	const unit = (): LengthUnit => props.unit ?? "mil";
+	const footprint = () => props.footprint ?? false;
+	const allowNetEdits = () => props.allowNetEdits ?? false;
+	const isSymbolChild = () => props.isSymbolChild ?? false;
+	const layers = () => props.layers ?? footprintLayers;
+	const basicShapes = createMemo(() =>
+		props.shapes.flatMap((shape) => {
+			const border =
+				shape.kind === "symbol" ? boxBorder(shape)?.shape : undefined;
+			if (isDrilled(shape)) return [];
+			return isBasicShape(shape)
+				? [shape]
+				: border && isBasicShape(border)
+					? [border]
+					: [];
+		}),
+	);
+	const textShapes = createMemo(() =>
+		props.shapes.filter((shape) => shape.kind === "text"),
+	);
+	const lineStyle = createMemo(() => {
+		const shapes = basicShapes();
+		return shapes.length &&
+			shapes.every(
+				(shape) =>
+					(shape.lineStyle ?? "solid") === (shapes[0].lineStyle ?? "solid"),
+			)
+			? (shapes[0].lineStyle ?? "solid")
+			: "";
+	});
+	const outlinedShapes = createMemo(() =>
+		props.shapes.flatMap((shape) =>
+			shape.kind === "symbol"
+				? symbolShapes(shape).filter((child) => child.kind !== "text")
+				: shape.kind === "text" || isDrilled(shape)
+					? []
+					: [shape],
+		),
+	);
+	const fillable = createMemo(() =>
+		footprint()
+			? props.shapes
+					.filter(isFillableShape)
+					.filter((shape) => !isDrilled(shape))
+			: [],
+	);
+	const lineWidth = createMemo(() => {
+		const shapes = outlinedShapes();
+		return shapes.length &&
+			shapes.every((shape) => shape.lineWidth === shapes[0].lineWidth)
+			? shapes[0].lineWidth
+			: "";
+	});
+	const onAttributeChange = (attribute: ShapeAttribute, value: number) =>
+		props.onEdit({ kind: "attribute", attribute, value });
+	const single = createMemo(() =>
+		props.shapes.length === 1 ? props.shapes[0] : undefined,
+	);
+	const canCreateSymbol = createMemo(() =>
+		props.shapes.every(
+			(shape) =>
+				shape.kind !== "symbol" && !(shape.kind === "text" && shape.electrical),
+		),
+	);
+	const symbol = createMemo(() => {
+		const shape = single();
+		return shape?.kind === "symbol" ? shape : undefined;
+	});
+	const pin = createMemo(() => {
+		const shape = single();
+		return shape?.kind === "pin" ? shape : undefined;
+	});
+	const text = createMemo(() => {
+		const shape = single();
+		return shape?.kind === "text" ? shape : undefined;
+	});
+	const locked = createMemo(() =>
+		props.shapes.every((shape) => shape.locked === true),
+	);
+	const partlyLocked = createMemo(
+		() => !locked() && props.shapes.some((shape) => shape.locked),
+	);
+	const bounds = createMemo(() => {
+		const boxes = props.shapes.map(shapeBounds);
+		return {
+			left: Math.min(...boxes.map((box) => box.minX)),
+			right: Math.max(...boxes.map((box) => box.maxX)),
+			bottom: Math.min(...boxes.map((box) => box.minY)),
+			top: Math.max(...boxes.map((box) => box.maxY)),
+		};
+	});
+	const distance = (value: number) => formatLength(value, unit());
+	const pad = createMemo(() => {
+		const shape = single();
+		return shape && isPad(shape) ? shape : undefined;
+	});
+	const via = createMemo(() => {
+		const shape = single();
+		return shape && isVia(shape) ? shape : undefined;
+	});
+	const hole = createMemo(() => {
+		const shape = single();
+		return shape && isHole(shape) ? shape : undefined;
+	});
+	const layer = createMemo(() => {
+		const { shapes } = props;
+		return footprint() && shapes.every((shape) => shape.kind !== "symbol")
 			? shapes.every((shape) => shapeLayer(shape) === shapeLayer(shapes[0]))
 				? shapeLayer(shapes[0])
 				: ""
 			: undefined;
-	const editable = (
-		label: string,
-		attribute: ShapeAttribute,
-		value: number,
-	): [string, ReactNode] => [
-		label,
-		symbol &&
-		(attribute === "x" || attribute === "y" || attribute === "angle") ? (
-			<SymbolInstanceAttributeInput
-				key={attribute}
-				name={attribute}
-				label={label}
-				value={value}
-				unit={attribute === "angle" ? "°" : unit}
-				step={attribute === "angle" ? "90" : "any"}
-				onCommit={(next) =>
-					onAttributeChange(
-						attribute,
-						attribute === "angle" || unit === "mm" ? next : fromMils(next),
-					)
-				}
-			/>
-		) : (
-			<AttributeInput
-				key={`${single?.id}:${attribute}`}
-				label={label}
-				value={value}
-				nonNegative={attribute === "length"}
-				positive={
-					attribute !== "x" &&
-					attribute !== "y" &&
-					attribute !== "angle" &&
-					attribute !== "length"
-				}
-				unit={attribute === "angle" ? "°" : unit}
-				step={
-					attribute === "angle" &&
-					(single?.kind === "wire" ||
-						single?.kind === "symbol" ||
-						single?.kind === "pin")
-						? "90"
-						: single?.kind === "text" &&
-								(attribute === "x" || attribute === "y")
-							? "0.1"
-							: "any"
-				}
-				onChange={(next) => onAttributeChange(attribute, next)}
-			/>
-		),
-	];
-	const type = single ? selectionType(single, footprint) : "";
-	const properties: [string, ReactNode][] = [
-		lockAttribute,
-		...(layer === undefined
-			? []
-			: single &&
-					copperLayers.every((copper) => shapeLayers(single).includes(copper))
-				? [
-						[
-							"Layer",
-							layers.filter(isCopperLayer).length > 2
-								? "Every copper layer"
-								: "Both copper layers",
-						] as [string, ReactNode],
-					]
-				: shapes.every(isHole)
-					? [["Layer", "Through the board"] as [string, ReactNode]]
-					: [
-							[
-								"Layer",
-								<select
-									key="layer"
-									aria-label="Layer"
-									className="ui-select w-36"
-									value={layer}
-									onChange={(event) =>
-										onEdit({
-											kind: "layer",
-											layer: event.currentTarget.value as FootprintLayer,
-										})
-									}
-								>
-									{layer === "" && (
-										<option value="" disabled>
-											Mixed
-										</option>
-									)}
-									{layers
-										.filter((item) => !pad || isOuterCopperLayer(item))
-										.map((item) => (
-											<option
-												key={item}
-												value={item}
-												disabled={hiddenLayers?.has(item)}
-											>
-												{footprintLayerLabels[item]}
-												{hiddenLayers?.has(item) ? " (hidden)" : ""}
-											</option>
-										))}
-								</select>,
-							] as [string, ReactNode],
-						]),
-		...(pad ? padRows(pad, unit, onEdit, hiddenLayers) : []),
-		...(via ? viaRows(via, unit, onEdit) : []),
-		...(hole ? holeRows(hole, unit, onEdit) : []),
-		...(boardNets ? boardRows(shapes, boardNets, unit, onEdit) : []),
-		...(single?.kind === "pin"
-			? (["name", "number"] as const).map((attribute): [string, ReactNode] => [
-					attribute === "name" ? "Name" : "Number",
-					<input
-						key={`${single.id}:${attribute}:${single[attribute]}`}
-						aria-label={attribute === "name" ? "Name" : "Number"}
-						defaultValue={single[attribute]}
-						className={textInputClassName}
-						onBlur={(event) =>
-							onEdit({
-								kind: "pin",
-								attribute,
-								value: event.currentTarget.value,
-							})
-						}
-					/>,
-				])
-			: []),
-		...(single?.kind === "pin" ? pinSignalRows(single, onEdit) : []),
-		...(symbol
-			? [
-					...(allowNetEdits
-						? [
-								[
-									"Net symbol",
-									<input
-										key="netSymbol"
-										type="checkbox"
-										aria-label="Net symbol"
-										className="ui-checkbox"
-										checked={symbol.netSymbol ?? false}
-										onChange={(event) =>
-											onEdit({
-												kind: "net-symbol",
-												netSymbol: event.currentTarget.checked,
-											})
-										}
-									/>,
-								] as [string, ReactNode],
-							]
-						: []),
-					...(symbol.netSymbol ? ["name"] : ["name", "reference", "value"]).map(
-						(attribute) => {
-							const key = attribute as SymbolAttribute;
-							const label = attribute[0].toUpperCase() + attribute.slice(1);
-							return [
-								label,
-								<SymbolInstanceAttributeInput
-									key={key}
-									name={`attributes.${key}`}
-									label={label}
-									value={symbol.attributes[key]}
-									onCommit={(next) =>
-										onEdit({
-											kind: "symbol-attribute",
-											attribute: key,
-											value: next,
-										})
-									}
-								/>,
-							] as [string, ReactNode];
-						},
-					),
-					...(symbol.netSymbol ? [] : extraAttributes(symbol.attributes)).map(
-						([attribute, value], index) =>
-							[
-								attribute,
-								<SymbolInstanceAttributeInput
-									key={`extra:${attribute}`}
-									name={`extraAttributes.${index}`}
-									label={attribute}
-									value={value}
-									onCommit={(next) =>
-										onEdit({
-											kind: "symbol-attribute",
-											attribute,
-											value: next,
-										})
-									}
-								/>,
-							] as [string, ReactNode],
-					),
-				]
-			: []),
-	];
-	const geometry: [string, ReactNode][] = single
-		? [
-				editable(
-					single.kind === "text" ? "Anchor X" : "Center X",
-					"x",
-					single.x,
-				),
-				editable(
-					single.kind === "text" ? "Anchor Y" : "Center Y",
-					"y",
-					single.y,
-				),
-				...(single.kind === "pin"
-					? [
-							editable("Lead length", "length", single.length ?? 0),
-							editable("Angle", "angle", (single.rotation * 180) / Math.PI),
-						]
-					: symbol
-						? [
-								...(boxText(symbol)
-									? [
-											editable(
-												"Font size",
-												"fontSize",
-												boxText(symbol)?.shape.fontSize ?? 0,
-											),
-										]
-									: []),
-								editable("Angle", "angle", (symbol.rotation * 180) / Math.PI),
-							]
-						: single.kind === "wire" || single.kind === "line"
-							? [
-									editable("Length", "width", single.width),
-									editable("Angle", "angle", (single.rotation * 180) / Math.PI),
-								]
-							: isNetLabel(single) || single.kind === "text"
-								? []
-								: [
-										editable("Width", "width", single.width),
-										editable("Height", "height", single.height),
-									]),
-				...(single.kind === "circle"
-					? [editable("Radius", "radius", single.width / 2)]
-					: []),
-				...(single.kind === "text"
-					? [
-							editable("Font size", "fontSize", single.fontSize),
-							editable("Angle", "angle", (single.rotation * 180) / Math.PI),
-						]
-					: []),
-			]
-		: [
-				["Left X", distance(left)],
-				["Bottom Y", distance(bottom)],
-				["Width", distance(right - left)],
-				["Height", distance(top - bottom)],
-			];
-	const pinLabels = single?.kind === "pin" ? pinLabelRows(single, onEdit) : [];
-	const labelPosition = symbol?.netSymbol &&
-		symbol.children.length > 0 &&
-		allowNetEdits && (
-			<label className={rowClassName}>
-				Label position
-				<select
-					aria-label="Label position"
-					value={symbolLabelPosition(symbol, "name")}
-					className="ui-select w-28"
-					onChange={(event) =>
-						onEdit({
-							kind: "symbol-label-position",
-							position: event.currentTarget.value as SymbolLabelPosition,
-						})
+	});
+	const throughEveryCopper = createMemo(() => {
+		const shape = single();
+		return (
+			!!shape &&
+			copperLayers.every((copper) => shapeLayers(shape).includes(copper))
+		);
+	});
+	const type = createMemo(() => {
+		const shape = single();
+		return shape ? selectionType(shape, footprint()) : "";
+	});
+	const geometry = createMemo(() => {
+		const shape = single();
+		if (!shape) return undefined;
+		if (shape.kind === "pin") return "pin";
+		if (shape.kind === "symbol") return "symbol";
+		if (shape.kind === "wire" || shape.kind === "line") return "linear";
+		if (isNetLabel(shape) || shape.kind === "text") return "none";
+		return "box";
+	});
+	const labelPositionSymbol = createMemo(() => {
+		const current = symbol();
+		return current?.netSymbol && current.children.length > 0 && allowNetEdits()
+			? current
+			: undefined;
+	});
+	const hasAppearance = createMemo(
+		() =>
+			!!pin() ||
+			!!labelPositionSymbol() ||
+			textShapes().length > 0 ||
+			basicShapes().length > 0 ||
+			fillable().length > 0 ||
+			outlinedShapes().length > 0,
+	);
+	const title = createMemo(() => {
+		const shape = single();
+		const current = symbol();
+		const currentPad = pad();
+		if (!shape) return "Selected shapes";
+		if (current)
+			return current.netSymbol
+				? current.attributes.name || "Net symbol"
+				: [current.attributes.name, current.attributes.reference]
+						.filter(Boolean)
+						.join(" · ") || "Symbol";
+		if (currentPad) return `Pad ${currentPad.pad.number}`.trim();
+		return kindLabels[type()] ?? type();
+	});
+	const tip = createMemo(() => {
+		const shape = single();
+		if (symbol())
+			return "Position edits move the whole symbol. Child positions are relative to the symbol center.";
+		if (isSymbolChild())
+			return "Drag to move this item. Size and appearance edits apply to this instance.";
+		if (pin()) return "Drag the pin or lead to move it.";
+		if (shape && isNetLabel(shape)) return "Drag to move the label.";
+		return "Drag to move; drag handles to resize.";
+	});
+	const horizontalAlign = createMemo(() => {
+		const shapes = textShapes();
+		return shapes.every(
+			(shape) =>
+				(shape.horizontalAlign ?? "center") ===
+				(shapes[0].horizontalAlign ?? "center"),
+		)
+			? (shapes[0].horizontalAlign ?? "center")
+			: "";
+	});
+	const verticalAlign = createMemo(() => {
+		const shapes = textShapes();
+		return shapes.every(
+			(shape) =>
+				(shape.verticalAlign ?? "middle") ===
+				(shapes[0].verticalAlign ?? "middle"),
+		)
+			? (shapes[0].verticalAlign ?? "middle")
+			: "";
+	});
+	const symbolAttributeKeys = createMemo(() =>
+		symbol()?.netSymbol
+			? (["name"] as const)
+			: (["name", "reference", "value"] as const),
+	);
+	const symbolExtraAttributes = createMemo(() => {
+		const current = symbol();
+		return current && !current.netSymbol
+			? extraAttributes(current.attributes)
+			: [];
+	});
+	const footprintField = createMemo(() => {
+		const current = symbol();
+		const choices = props.footprintChoices;
+		return current &&
+			choices &&
+			!current.netSymbol &&
+			current.children.some((child) => child.kind === "pin")
+			? { symbol: current, choices }
+			: undefined;
+	});
+	const selectionIds = createMemo(() =>
+		props.shapes.map((shape) => shape.id).join(","),
+	);
+	const blurOnKey = (event: KeyboardEvent) => {
+		const target = event.target;
+		if (
+			(target instanceof HTMLInputElement && event.key === "Enter") ||
+			((target instanceof HTMLInputElement ||
+				target instanceof HTMLTextAreaElement) &&
+				event.key === "Escape")
+		) {
+			event.preventDefault();
+			target.blur();
+		}
+	};
+
+	const Editable = (row: {
+		label: string;
+		attribute: ShapeAttribute;
+		value: number;
+	}) => {
+		const position = () =>
+			row.attribute === "x" ||
+			row.attribute === "y" ||
+			row.attribute === "angle";
+		const step = () => {
+			const kind = single()?.kind;
+			if (
+				row.attribute === "angle" &&
+				(kind === "wire" || kind === "symbol" || kind === "pin")
+			)
+				return "90";
+			return kind === "text" && (row.attribute === "x" || row.attribute === "y")
+				? "0.1"
+				: "any";
+		};
+		return (
+			<Row label={row.label}>
+				<Show
+					when={symbol() && position()}
+					fallback={
+						<AttributeInput
+							identity={single()?.id}
+							label={row.label}
+							value={row.value}
+							nonNegative={row.attribute === "length"}
+							positive={
+								row.attribute !== "x" &&
+								row.attribute !== "y" &&
+								row.attribute !== "angle" &&
+								row.attribute !== "length"
+							}
+							unit={row.attribute === "angle" ? "°" : unit()}
+							step={step()}
+							onChange={(next) => onAttributeChange(row.attribute, next)}
+						/>
 					}
 				>
-					<option value="default">Default</option>
-					<option value="above">Above</option>
-					<option value="below">Below</option>
-					<option value="left">Left</option>
-					<option value="right">Right</option>
-					<option value="custom" disabled>
-						Custom
-					</option>
-				</select>
-			</label>
+					<SymbolInstanceAttributeInput
+						name={row.attribute as "x" | "y" | "angle"}
+						label={row.label}
+						value={row.value}
+						unit={row.attribute === "angle" ? "°" : unit()}
+						step={row.attribute === "angle" ? "90" : "any"}
+						onCommit={(next) =>
+							onAttributeChange(
+								row.attribute,
+								row.attribute === "angle" || unit() === "mm"
+									? next
+									: fromMils(next),
+							)
+						}
+					/>
+				</Show>
+			</Row>
 		);
-	const hasAppearance =
-		pinLabels.length > 0 ||
-		!!labelPosition ||
-		textShapes.length > 0 ||
-		basicShapes.length > 0 ||
-		fillable.length > 0 ||
-		outlinedShapes.length > 0;
+	};
+	const angle = (shape: EditorShape) => (shape.rotation * 180) / Math.PI;
+
 	return (
-		<FloatingPanel label="Selection attributes" position="top-right">
-			<PanelHeader
-				onClear={onClear}
-				title={
-					<p className={titleClassName}>
-						{single
-							? symbol
-								? symbol.netSymbol
-									? symbol.attributes.name || "Net symbol"
-									: [symbol.attributes.name, symbol.attributes.reference]
-											.filter(Boolean)
-											.join(" · ") || "Symbol"
-								: pad
-									? `Pad ${pad.pad.number}`.trim()
-									: (kindLabels[type] ?? type)
-							: "Selected shapes"}
-					</p>
-				}
-				subtitle={
-					single ? (
-						// Reads "type · ID 3", with the ID as a labelled value.
-						<dl className="m-0 flex gap-1">
-							<div>
-								<dt className="sr-only">Type</dt>
-								<dd className="m-0">{type}</dd>
-							</div>
-							<div className="flex gap-1 before:content-['·']">
-								<dt>ID</dt>
-								<dd className="m-0">{single.id}</dd>
-							</div>
-						</dl>
-					) : (
-						<span>{shapes.length} items</span>
-					)
-				}
-			/>
-			<div
-				className="m-0 min-h-0 overflow-y-auto overscroll-contain max-[760px]:pb-4 max-[760px]:[mask-image:linear-gradient(to_bottom,black_calc(100%-1.5rem),transparent)]"
-				onKeyDownCapture={(event) => {
-					const target = event.target;
-					if (
-						(target instanceof HTMLInputElement && event.key === "Enter") ||
-						((target instanceof HTMLInputElement ||
-							target instanceof HTMLTextAreaElement) &&
-							event.key === "Escape")
-					) {
-						event.preventDefault();
-						target.blur();
+		<Show when={props.shapes.length}>
+			<FloatingPanel label="Selection attributes" position="top-right">
+				<PanelHeader
+					onClear={props.onClear}
+					title={<p class={titleClassName}>{title()}</p>}
+					subtitle={
+						<Show
+							when={single()}
+							fallback={<span>{props.shapes.length} items</span>}
+						>
+							{(shape) => (
+								// Reads "type · ID 3", with the ID as a labelled value.
+								<dl class="m-0 flex gap-1">
+									<div>
+										<dt class="sr-only">Type</dt>
+										<dd class="m-0">{type()}</dd>
+									</div>
+									<div class="flex gap-1 before:content-['·']">
+										<dt>ID</dt>
+										<dd class="m-0">{shape().id}</dd>
+									</div>
+								</dl>
+							)}
+						</Show>
 					}
-				}}
-			>
-				{(symbol || (!single && onCreateSymbol) || single?.kind === "text") && (
-					<div className="flex flex-col gap-2.5 px-3 pt-3 pb-2.5">
-						{symbol && (
-							<SymbolDefinitionAction
-								onEditSymbol={onEditSymbol}
-								onCopySymbol={onCopySymbol}
-							/>
-						)}
-						{!single && onCreateSymbol && (
-							<>
-								<button
-									type="button"
-									onClick={onCreateSymbol}
-									disabled={!canCreateSymbol}
-									className={actionClassName}
-									data-variant="secondary"
-								>
-									Create symbol
-								</button>
-								{!canCreateSymbol && (
-									<p className="m-0 text-xs text-fg-faint">
-										Select shapes without existing symbols or electrical labels
-										to create a symbol.
-									</p>
+				/>
+				<div
+					class="m-0 min-h-0 overflow-y-auto overscroll-contain max-[760px]:pb-4 max-[760px]:[mask-image:linear-gradient(to_bottom,black_calc(100%-1.5rem),transparent)]"
+					ref={(element) =>
+						element.addEventListener("keydown", blurOnKey, { capture: true })
+					}
+				>
+					<Show
+						when={symbol() || (!single() && props.onCreateSymbol) || text()}
+					>
+						<div class="flex flex-col gap-2.5 px-3 pt-3 pb-2.5">
+							<Show when={symbol()}>
+								<SymbolDefinitionAction
+									onEditSymbol={props.onEditSymbol}
+									onCopySymbol={props.onCopySymbol}
+								/>
+							</Show>
+							<Show when={!single() && props.onCreateSymbol}>
+								{(onCreateSymbol) => (
+									<>
+										<button
+											type="button"
+											onClick={() => onCreateSymbol()()}
+											disabled={!canCreateSymbol()}
+											class={actionClassName}
+											data-variant="secondary"
+										>
+											Create symbol
+										</button>
+										<Show when={!canCreateSymbol()}>
+											<p class="m-0 text-xs text-fg-faint">
+												Select shapes without existing symbols or electrical
+												labels to create a symbol.
+											</p>
+										</Show>
+									</>
 								)}
-							</>
-						)}
-						{single?.kind === "text" && allowNetEdits && !isSymbolChild && (
-							<label className="flex flex-col gap-1.5 text-xs text-fg-muted">
-								Label role
-								<select
-									aria-label="Label role"
-									className="ui-select w-full"
-									value={single.electrical ?? "text"}
-									onChange={(event) =>
-										onEdit({
-											kind: "label-role",
-											role:
-												event.target.value === "text"
-													? undefined
-													: (event.target.value as LabelRole),
-										})
-									}
-								>
-									<option value="text">Ordinary text</option>
-									<option value="net">Net label</option>
-									<option value="supply">Supply label</option>
-								</select>
-							</label>
-						)}
-						{single?.kind === "text" && (
-							<label className="flex flex-col gap-1.5 text-xs text-fg-muted">
-								{single.electrical ? "Net name" : "Text"}
-								<textarea
-									key={`${single.id}:${single.text}`}
-									ref={(input) => {
-										if (input && textFocusId === single.id) {
-											input.focus({ preventScroll: true });
-											input.select();
-											onTextFocus();
+							</Show>
+							<Show when={text()}>
+								{(shape) => (
+									<>
+										<Show when={allowNetEdits() && !isSymbolChild()}>
+											<label class="flex flex-col gap-1.5 text-xs text-fg-muted">
+												Label role
+												<select
+													aria-label="Label role"
+													class="ui-select w-full"
+													value={shape().electrical ?? "text"}
+													onChange={(event) =>
+														props.onEdit({
+															kind: "label-role",
+															role:
+																event.currentTarget.value === "text"
+																	? undefined
+																	: (event.currentTarget.value as LabelRole),
+														})
+													}
+												>
+													<option value="text">Ordinary text</option>
+													<option value="net">Net label</option>
+													<option value="supply">Supply label</option>
+												</select>
+											</label>
+										</Show>
+										<TextContentInput
+											shape={shape()}
+											textFocusId={props.textFocusId}
+											onTextFocus={props.onTextFocus}
+											onEdit={props.onEdit}
+										>
+											<Show when={footprint() && !props.boardNets}>
+												<span class="text-fg-faint">
+													On a board, <code>{`\${REFERENCE}`}</code>,{" "}
+													<code>{`\${VALUE}`}</code> and{" "}
+													<code>{`\${FOOTPRINT_NAME}`}</code> show the
+													component's reference, value and footprint name.
+												</span>
+											</Show>
+										</TextContentInput>
+										<Show when={isSymbolChild()}>
+											<button
+												type="button"
+												onClick={() =>
+													props.onEdit({ kind: "symbol-text-reset" })
+												}
+												disabled={!props.symbolTextMoved}
+												title={
+													props.symbolTextMoved
+														? "Move this text back to where the symbol defines it"
+														: "This text is already at its original position"
+												}
+												class={actionClassName}
+												data-variant="secondary"
+											>
+												Reset position
+											</button>
+										</Show>
+									</>
+								)}
+							</Show>
+						</div>
+					</Show>
+					<Section title="Properties">
+						<Rows>
+							<Row label="Locked">
+								<LockedCheckbox
+									locked={locked()}
+									mixed={partlyLocked()}
+									onEdit={props.onEdit}
+								/>
+							</Row>
+							<Show when={layer() !== undefined}>
+								<Row label="Layer">
+									<Switch
+										fallback={
+											<select
+												aria-label="Layer"
+												class="ui-select w-36"
+												value={layer()}
+												onChange={(event) =>
+													props.onEdit({
+														kind: "layer",
+														layer: event.currentTarget.value as FootprintLayer,
+													})
+												}
+											>
+												<Show when={layer() === ""}>
+													<option value="" disabled>
+														Mixed
+													</option>
+												</Show>
+												<For
+													each={layers().filter(
+														(item) => !pad() || isOuterCopperLayer(item),
+													)}
+												>
+													{(item) => (
+														<option
+															value={item}
+															disabled={props.hiddenLayers?.has(item)}
+														>
+															{footprintLayerLabels[item]}
+															{props.hiddenLayers?.has(item) ? " (hidden)" : ""}
+														</option>
+													)}
+												</For>
+											</select>
 										}
-									}}
-									aria-label={single.electrical ? "Net name" : "Text content"}
-									defaultValue={single.text}
-									rows={3}
-									maxLength={2000}
-									className="ui-input block w-full resize-y"
-									onBlur={(event) =>
-										onEdit({ kind: "text", text: event.currentTarget.value })
-									}
-									onKeyDown={(event) => {
-										if (event.key === "Escape") event.currentTarget.blur();
-									}}
-								/>
-								{footprint && !boardNets && (
-									<span className="text-fg-faint">
-										On a board, <code>{`\${REFERENCE}`}</code>,{" "}
-										<code>{`\${VALUE}`}</code> and{" "}
-										<code>{`\${FOOTPRINT_NAME}`}</code> show the component's
-										reference, value and footprint name.
-									</span>
+									>
+										<Match when={throughEveryCopper()}>
+											{layers().filter(isCopperLayer).length > 2
+												? "Every copper layer"
+												: "Both copper layers"}
+										</Match>
+										<Match when={props.shapes.every(isHole)}>
+											Through the board
+										</Match>
+									</Switch>
+								</Row>
+							</Show>
+							<Show when={pad()}>
+								{(shape) => (
+									<PadRows
+										pad={shape()}
+										unit={unit()}
+										onEdit={props.onEdit}
+										hiddenLayers={props.hiddenLayers}
+									/>
 								)}
-							</label>
-						)}
-						{isSymbolChild && single?.kind === "text" && (
-							<button
-								type="button"
-								onClick={() => onEdit({ kind: "symbol-text-reset" })}
-								disabled={!symbolTextMoved}
-								title={
-									symbolTextMoved
-										? "Move this text back to where the symbol defines it"
-										: "This text is already at its original position"
-								}
-								className={actionClassName}
-								data-variant="secondary"
-							>
-								Reset position
-							</button>
-						)}
-					</div>
-				)}
-				<Section title="Properties">
-					<Rows rows={properties} />
-				</Section>
-				{symbol &&
-					footprintChoices &&
-					!symbol.netSymbol &&
-					symbol.children.some((child) => child.kind === "pin") && (
-						<Section title="Footprint">
-							<SymbolFootprintField
-								symbol={symbol}
-								choices={footprintChoices}
-								onChange={(next) =>
-									onEdit({ kind: "symbol-footprint", footprint: next })
-								}
-							/>
-						</Section>
-					)}
-				<Section title={single ? "Position and size" : "Selection bounds"}>
-					<Rows rows={geometry} />
-				</Section>
-				{hasAppearance && (
-					<Section title="Appearance">
-						{pinLabels.length > 0 && <Rows rows={pinLabels} />}
-						{labelPosition}
-						{textShapes.length > 0 && (
-							<TextAlignmentInputs
-								horizontalAlign={
-									textShapes.every(
-										(shape) =>
-											(shape.horizontalAlign ?? "center") ===
-											(textShapes[0].horizontalAlign ?? "center"),
-									)
-										? (textShapes[0].horizontalAlign ?? "center")
-										: ""
-								}
-								verticalAlign={
-									textShapes.every(
-										(shape) =>
-											(shape.verticalAlign ?? "middle") ===
-											(textShapes[0].verticalAlign ?? "middle"),
-									)
-										? (textShapes[0].verticalAlign ?? "middle")
-										: ""
-								}
-								onChange={(alignment) =>
-									onEdit({ kind: "text-alignment", alignment })
-								}
-							/>
-						)}
-						{fillable.length > 0 && (
-							<label className={rowClassName}>
-								Filled
-								<input
-									type="checkbox"
-									aria-label="Filled"
-									className="ui-checkbox"
-									checked={fillable.every((shape) => shape.filled)}
-									onChange={(event) =>
-										onEdit({
-											kind: "fill",
-											filled: event.currentTarget.checked,
-										})
+							</Show>
+							<Show when={via()}>
+								{(shape) => (
+									<DrillRow
+										id={shape().id}
+										drill={shape().via.drill}
+										below={shape().width}
+										unit={unit()}
+										onChange={(drill) =>
+											props.onEdit({ kind: "via-drill", drill })
+										}
+									/>
+								)}
+							</Show>
+							<Show when={hole()}>
+								{(shape) => (
+									<DrillRow
+										id={shape().id}
+										drill={shape().hole.drill}
+										unit={unit()}
+										onChange={(drill) =>
+											props.onEdit({ kind: "hole-drill", drill })
+										}
+									/>
+								)}
+							</Show>
+							<Show when={props.boardNets}>
+								{(nets) => (
+									<BoardRows
+										shapes={props.shapes}
+										nets={nets()}
+										unit={unit()}
+										onEdit={props.onEdit}
+									/>
+								)}
+							</Show>
+							<Show when={pin()}>
+								{(shape) => (
+									<>
+										<For each={["name", "number"] as const}>
+											{(attribute) => {
+												const label = attribute === "name" ? "Name" : "Number";
+												return (
+													<Row label={label}>
+														<CommitInput
+															label={label}
+															identity={shape().id}
+															value={shape()[attribute]}
+															onCommit={(value) =>
+																props.onEdit({ kind: "pin", attribute, value })
+															}
+														/>
+													</Row>
+												);
+											}}
+										</For>
+										<PinSignalRows pin={shape()} onEdit={props.onEdit} />
+									</>
+								)}
+							</Show>
+							<Show when={symbol()}>
+								{(shape) => (
+									<>
+										<Show when={allowNetEdits()}>
+											<Row label="Net symbol">
+												<input
+													type="checkbox"
+													aria-label="Net symbol"
+													class="ui-checkbox"
+													checked={shape().netSymbol ?? false}
+													onChange={(event) => {
+														const next = event.currentTarget.checked;
+														event.currentTarget.checked = !next;
+														props.onEdit({
+															kind: "net-symbol",
+															netSymbol: next,
+														});
+													}}
+												/>
+											</Row>
+										</Show>
+										<For each={symbolAttributeKeys()}>
+											{(key) => {
+												const label = key[0].toUpperCase() + key.slice(1);
+												return (
+													<Row label={label}>
+														<SymbolInstanceAttributeInput
+															name={`attributes.${key}`}
+															label={label}
+															value={shape().attributes[key]}
+															onCommit={(next) =>
+																props.onEdit({
+																	kind: "symbol-attribute",
+																	attribute: key,
+																	value: next,
+																})
+															}
+														/>
+													</Row>
+												);
+											}}
+										</For>
+										<For
+											each={symbolExtraAttributes()}
+											keyed={([attribute]) => attribute}
+										>
+											{(entry, index) => (
+												<Row label={entry()[0]}>
+													<SymbolInstanceAttributeInput
+														name={`extraAttributes.${index()}`}
+														label={entry()[0]}
+														value={entry()[1]}
+														onCommit={(next) =>
+															props.onEdit({
+																kind: "symbol-attribute",
+																attribute: entry()[0],
+																value: next,
+															})
+														}
+													/>
+												</Row>
+											)}
+										</For>
+									</>
+								)}
+							</Show>
+						</Rows>
+					</Section>
+					<Show when={footprintField()}>
+						{(field) => (
+							<Section title="Footprint">
+								<SymbolFootprintField
+									symbol={field().symbol}
+									choices={field().choices}
+									onChange={(next) =>
+										props.onEdit({ kind: "symbol-footprint", footprint: next })
 									}
 								/>
-							</label>
+							</Section>
 						)}
-						{basicShapes.length > 0 && (
-							<label className={rowClassName}>
-								Line style
-								<select
-									aria-label="Line style"
-									value={lineStyle}
-									className="ui-select w-28"
-									onChange={(event) =>
-										onEdit({
-											kind: "line-style",
-											lineStyle: event.currentTarget.value as LineStyle,
-										})
+					</Show>
+					<Section title={single() ? "Position and size" : "Selection bounds"}>
+						<Rows>
+							<Show
+								when={single()}
+								fallback={
+									<>
+										<Row label="Left X">{distance(bounds().left)}</Row>
+										<Row label="Bottom Y">{distance(bounds().bottom)}</Row>
+										<Row label="Width">
+											{distance(bounds().right - bounds().left)}
+										</Row>
+										<Row label="Height">
+											{distance(bounds().top - bounds().bottom)}
+										</Row>
+									</>
+								}
+							>
+								{(shape) => (
+									<>
+										<Editable
+											label={shape().kind === "text" ? "Anchor X" : "Center X"}
+											attribute="x"
+											value={shape().x}
+										/>
+										<Editable
+											label={shape().kind === "text" ? "Anchor Y" : "Center Y"}
+											attribute="y"
+											value={shape().y}
+										/>
+										<Switch>
+											<Match when={pin()}>
+												{(current) => (
+													<>
+														<Editable
+															label="Lead length"
+															attribute="length"
+															value={current().length ?? 0}
+														/>
+														<Editable
+															label="Angle"
+															attribute="angle"
+															value={angle(current())}
+														/>
+													</>
+												)}
+											</Match>
+											<Match when={symbol()}>
+												{(current) => (
+													<>
+														<Show when={boxText(current())}>
+															{(box) => (
+																<Editable
+																	label="Font size"
+																	attribute="fontSize"
+																	value={box().shape.fontSize ?? 0}
+																/>
+															)}
+														</Show>
+														<Editable
+															label="Angle"
+															attribute="angle"
+															value={angle(current())}
+														/>
+													</>
+												)}
+											</Match>
+											<Match when={geometry() === "linear"}>
+												<Editable
+													label="Length"
+													attribute="width"
+													value={shape().width}
+												/>
+												<Editable
+													label="Angle"
+													attribute="angle"
+													value={angle(shape())}
+												/>
+											</Match>
+											<Match when={geometry() === "box"}>
+												<Editable
+													label="Width"
+													attribute="width"
+													value={shape().width}
+												/>
+												<Editable
+													label="Height"
+													attribute="height"
+													value={shape().height}
+												/>
+											</Match>
+										</Switch>
+										<Show when={shape().kind === "circle"}>
+											<Editable
+												label="Radius"
+												attribute="radius"
+												value={shape().width / 2}
+											/>
+										</Show>
+										<Show when={text()}>
+											{(current) => (
+												<>
+													<Editable
+														label="Font size"
+														attribute="fontSize"
+														value={current().fontSize}
+													/>
+													<Editable
+														label="Angle"
+														attribute="angle"
+														value={angle(current())}
+													/>
+												</>
+											)}
+										</Show>
+									</>
+								)}
+							</Show>
+						</Rows>
+					</Section>
+					<Show when={hasAppearance()}>
+						<Section title="Appearance">
+							<Show when={pin()}>
+								{(shape) => (
+									<Rows>
+										<PinLabelRows pin={shape()} onEdit={props.onEdit} />
+									</Rows>
+								)}
+							</Show>
+							<Show when={labelPositionSymbol()}>
+								{(current) => (
+									<label class={rowClassName}>
+										Label position
+										<select
+											aria-label="Label position"
+											value={symbolLabelPosition(current(), "name")}
+											class="ui-select w-28"
+											onChange={(event) =>
+												props.onEdit({
+													kind: "symbol-label-position",
+													position: event.currentTarget
+														.value as SymbolLabelPosition,
+												})
+											}
+										>
+											<option value="default">Default</option>
+											<option value="above">Above</option>
+											<option value="below">Below</option>
+											<option value="left">Left</option>
+											<option value="right">Right</option>
+											<option value="custom" disabled>
+												Custom
+											</option>
+										</select>
+									</label>
+								)}
+							</Show>
+							<Show when={textShapes().length > 0}>
+								<TextAlignmentInputs
+									horizontalAlign={horizontalAlign()}
+									verticalAlign={verticalAlign()}
+									onChange={(value) =>
+										props.onEdit({ kind: "text-alignment", alignment: value })
 									}
-								>
-									{lineStyle === "" && (
-										<option value="" disabled>
-											Mixed
-										</option>
-									)}
-									{lineStyles.map((style) => (
-										<option key={style} value={style}>
-											{lineStyleLabels[style]}
-										</option>
-									))}
-								</select>
-							</label>
-						)}
-						{outlinedShapes.length > 0 && (
-							<div className={rowClassName}>
-								<span>Line width</span>
-								{symbol ? (
-									<SymbolInstanceAttributeInput
-										name="lineWidth"
-										label="Line width"
-										value={lineWidth}
-										unit={unit}
-										positive
-										onCommit={(value) => {
-											if (value !== null)
-												onAttributeChange(
-													"lineWidth",
-													unit === "mm" ? value : fromMils(value),
-												);
+								/>
+							</Show>
+							<Show when={fillable().length > 0}>
+								<label class={rowClassName}>
+									Filled
+									<input
+										type="checkbox"
+										aria-label="Filled"
+										class="ui-checkbox"
+										checked={fillable().every((shape) => shape.filled)}
+										onChange={(event) => {
+											const next = event.currentTarget.checked;
+											event.currentTarget.checked = !next;
+											props.onEdit({
+												kind: "fill",
+												filled: next,
+											});
 										}}
 									/>
-								) : (
-									<AttributeInput
-										key={shapes.map((shape) => shape.id).join(",")}
-										label="Line width"
-										value={lineWidth}
-										unit={unit}
-										positive
-										onChange={(value) => onAttributeChange("lineWidth", value)}
-									/>
-								)}
-							</div>
-						)}
-					</Section>
-				)}
-				<Tips>
-					{symbol
-						? "Position edits move the whole symbol. Child positions are relative to the symbol center."
-						: isSymbolChild
-							? "Drag to move this item. Size and appearance edits apply to this instance."
-							: single?.kind === "pin"
-								? "Drag the pin or lead to move it."
-								: single && isNetLabel(single)
-									? "Drag to move the label."
-									: "Drag to move; drag handles to resize."}{" "}
-					Arrow keys move {distance(snapStep || SCHEMATIC_STEP)}; Shift + arrows
-					move {distance((snapStep || SCHEMATIC_STEP) * 10)} when the drawing is
-					focused.
-				</Tips>
-			</div>
-		</FloatingPanel>
+								</label>
+							</Show>
+							<Show when={basicShapes().length > 0}>
+								<label class={rowClassName}>
+									Line style
+									<select
+										aria-label="Line style"
+										value={lineStyle()}
+										class="ui-select w-28"
+										onChange={(event) =>
+											props.onEdit({
+												kind: "line-style",
+												lineStyle: event.currentTarget.value as LineStyle,
+											})
+										}
+									>
+										<Show when={lineStyle() === ""}>
+											<option value="" disabled>
+												Mixed
+											</option>
+										</Show>
+										<For each={lineStyles}>
+											{(style) => (
+												<option value={style}>{lineStyleLabels[style]}</option>
+											)}
+										</For>
+									</select>
+								</label>
+							</Show>
+							<Show when={outlinedShapes().length > 0}>
+								<div class={rowClassName}>
+									<span>Line width</span>
+									<Show
+										when={symbol()}
+										fallback={
+											<AttributeInput
+												identity={selectionIds()}
+												label="Line width"
+												value={lineWidth()}
+												unit={unit()}
+												positive
+												onChange={(value) =>
+													onAttributeChange("lineWidth", value)
+												}
+											/>
+										}
+									>
+										<SymbolInstanceAttributeInput
+											name="lineWidth"
+											label="Line width"
+											value={lineWidth()}
+											unit={unit()}
+											positive
+											onCommit={(value) => {
+												if (value !== null)
+													onAttributeChange(
+														"lineWidth",
+														unit() === "mm" ? value : fromMils(value),
+													);
+											}}
+										/>
+									</Show>
+								</div>
+							</Show>
+						</Section>
+					</Show>
+					<Tips>
+						{tip()} Arrow keys move {distance(props.snapStep || SCHEMATIC_STEP)}
+						; Shift + arrows move{" "}
+						{distance((props.snapStep || SCHEMATIC_STEP) * 10)} when the drawing
+						is focused.
+					</Tips>
+				</div>
+			</FloatingPanel>
+		</Show>
 	);
 }
 
 /** The attributes of a symbol child that only the symbol definition changes. */
-function FixedChildAttributes({
-	shape,
-	onClear,
-	onEditSymbol,
-	onCopySymbol,
-	onEdit,
-	unit = "mil",
-}: {
+function FixedChildAttributes(props: {
 	shape: EditorShape;
 	onClear: () => void;
 	onEditSymbol?: () => void;
@@ -1546,60 +1883,72 @@ function FixedChildAttributes({
 	onEdit: (edit: SelectionEdit) => void;
 	unit?: LengthUnit;
 }) {
-	const length = (value: number) => formatLength(value, unit);
-	const degrees = (((shape.rotation * 180) / Math.PI) % 360) + 360;
-	const angle = `${Number((degrees % 360).toFixed(2))}°`;
-	const attributes: [string, ReactNode][] =
-		shape.kind === "pin"
-			? [
-					["Type", "pin"],
-					["Number", shape.number || "—"],
-					["Name", shape.name || "—"],
-					...pinSignalRows(shape, onEdit),
-					["Center X", length(shape.x)],
-					["Center Y", length(shape.y)],
-					["Lead length", length(shape.length ?? 0)],
-					["Angle", angle],
-				]
-			: [
-					["Type", shape.kind],
-					["Center X", length(shape.x)],
-					["Center Y", length(shape.y)],
-					["Angle", angle],
-				];
+	const length = (value: number) => formatLength(value, props.unit ?? "mil");
+	const angle = () => {
+		const degrees = (((props.shape.rotation * 180) / Math.PI) % 360) + 360;
+		return `${Number((degrees % 360).toFixed(2))}°`;
+	};
+	const pin = createMemo(() =>
+		props.shape.kind === "pin" ? props.shape : undefined,
+	);
 	return (
 		<FloatingPanel label="Selection attributes" position="top-right">
 			<PanelHeader
-				onClear={onClear}
+				onClear={props.onClear}
 				title={
-					<p className={titleClassName}>
-						{shape.kind === "pin"
-							? `Pin ${[shape.number, shape.name].filter(Boolean).join(" · ")}`
-							: `${shape.kind} ${shape.id}`}
-						<Lock
-							size={13}
-							aria-label="Fixed"
-							className="shrink-0 text-fg-faint"
-						/>
+					<p class={titleClassName}>
+						{pin()
+							? `Pin ${[pin()?.number, pin()?.name].filter(Boolean).join(" · ")}`
+							: `${props.shape.kind} ${props.shape.id}`}
+						<Lock size={13} aria-label="Fixed" class="shrink-0 text-fg-faint" />
 					</p>
 				}
 				subtitle={<span>Fixed by the symbol definition</span>}
 			/>
-			<div className="m-0 min-h-0 overflow-y-auto overscroll-contain">
-				<div className="flex flex-col gap-2.5 px-3 pt-3 pb-2.5">
+			<div class="m-0 min-h-0 overflow-y-auto overscroll-contain">
+				<div class="flex flex-col gap-2.5 px-3 pt-3 pb-2.5">
 					<SymbolDefinitionAction
-						onEditSymbol={onEditSymbol}
-						onCopySymbol={onCopySymbol}
+						onEditSymbol={props.onEditSymbol}
+						onCopySymbol={props.onCopySymbol}
 					/>
 				</div>
 				<Section title="Properties">
-					<Rows rows={attributes} />
+					<Rows>
+						<Show
+							when={pin()}
+							fallback={
+								<>
+									<Row label="Type">{props.shape.kind}</Row>
+									<Row label="Center X">{length(props.shape.x)}</Row>
+									<Row label="Center Y">{length(props.shape.y)}</Row>
+									<Row label="Angle">{angle()}</Row>
+								</>
+							}
+						>
+							{(shape) => (
+								<>
+									<Row label="Type">pin</Row>
+									<Row label="Number">{shape().number || "—"}</Row>
+									<Row label="Name">{shape().name || "—"}</Row>
+									<PinSignalRows pin={shape()} onEdit={props.onEdit} />
+									<Row label="Center X">{length(shape().x)}</Row>
+									<Row label="Center Y">{length(shape().y)}</Row>
+									<Row label="Lead length">{length(shape().length ?? 0)}</Row>
+									<Row label="Angle">{angle()}</Row>
+								</>
+							)}
+						</Show>
+					</Rows>
 				</Section>
-				{shape.kind === "pin" && (
-					<Section title="Appearance">
-						<Rows rows={pinLabelRows(shape, onEdit)} />
-					</Section>
-				)}
+				<Show when={pin()}>
+					{(shape) => (
+						<Section title="Appearance">
+							<Rows>
+								<PinLabelRows pin={shape()} onEdit={props.onEdit} />
+							</Rows>
+						</Section>
+					)}
+				</Show>
 				<Tips>
 					Pins are fixed by the symbol definition. Edit the symbol to change
 					them. Electrical type, active level and label visibility changes apply
@@ -1611,50 +1960,47 @@ function FixedChildAttributes({
 	);
 }
 
-function TextAlignmentInputs({
-	label = "Text",
-	horizontalAlign,
-	verticalAlign,
-	onChange,
-}: {
+function TextAlignmentInputs(props: {
 	label?: string;
 	horizontalAlign: NonNullable<TextAlignment["horizontalAlign"]> | "";
 	verticalAlign: NonNullable<TextAlignment["verticalAlign"]> | "";
 	onChange: (alignment: TextAlignment) => void;
 }) {
 	return (
-		<>
-			{(["horizontalAlign", "verticalAlign"] as const).map((axis) => {
+		<For each={["horizontalAlign", "verticalAlign"] as const}>
+			{(axis) => {
 				const horizontal = axis === "horizontalAlign";
-				const title = `${label} ${horizontal ? "horizontal" : "vertical"} alignment`;
-				const value = horizontal ? horizontalAlign : verticalAlign;
+				const value = () =>
+					horizontal ? props.horizontalAlign : props.verticalAlign;
 				return (
-					<label key={axis} className={rowClassName}>
+					<label class={rowClassName}>
 						<span>{horizontal ? "Horizontal align" : "Vertical align"}</span>
 						<select
-							aria-label={title}
-							value={value}
-							className="ui-select w-28"
+							aria-label={`${props.label ?? "Text"} ${horizontal ? "horizontal" : "vertical"} alignment`}
+							value={value()}
+							class="ui-select w-28"
 							onChange={(event) =>
-								onChange({ [axis]: event.currentTarget.value })
+								props.onChange({ [axis]: event.currentTarget.value })
 							}
 						>
-							{value === "" && (
+							<Show when={value() === ""}>
 								<option value="" disabled>
 									Mixed
 								</option>
-							)}
-							{(horizontal ? horizontalAlignments : verticalAlignments).map(
-								(value) => (
-									<option key={value} value={value}>
-										{value[0].toUpperCase() + value.slice(1)}
+							</Show>
+							<For
+								each={horizontal ? horizontalAlignments : verticalAlignments}
+							>
+								{(option) => (
+									<option value={option}>
+										{option[0].toUpperCase() + option.slice(1)}
 									</option>
-								),
-							)}
+								)}
+							</For>
 						</select>
 					</label>
 				);
-			})}
-		</>
+			}}
+		</For>
 	);
 }

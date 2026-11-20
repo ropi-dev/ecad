@@ -110,11 +110,17 @@ function project(
 
 export type CanvasView = ReturnType<typeof createCanvasView>;
 
-export function createCanvasView(initialUnit: GridUnit = "schematic") {
+export function createCanvasView(
+	initialUnit: GridUnit = "schematic",
+	surfaces: () => SurfaceHeights | null = () => null,
+) {
 	let unit = initialUnit;
 	let snapshot: Viewer2DSnapshot | null = null;
-	let surfaces: SurfaceHeights | null = null;
 	let projection: CanvasProjection | null = null;
+	let projected: {
+		snapshot: Viewer2DSnapshot;
+		surfaces: SurfaceHeights | null;
+	} | null = null;
 	const listeners = new Set<() => void>();
 	const changed = () => {
 		projection = null;
@@ -123,7 +129,16 @@ export function createCanvasView(initialUnit: GridUnit = "schematic") {
 	return {
 		getSnapshot: () => snapshot,
 		getProjection: () => {
-			if (snapshot) projection ??= project(snapshot, surfaces);
+			if (!snapshot) return null;
+			const heights = surfaces();
+			if (
+				!projection ||
+				projected?.snapshot !== snapshot ||
+				projected.surfaces !== heights
+			) {
+				projection = project(snapshot, heights);
+				projected = { snapshot, surfaces: heights };
+			}
 			return projection;
 		},
 		getGridStep: () =>
@@ -158,14 +173,7 @@ export function createCanvasView(initialUnit: GridUnit = "schematic") {
 			changed();
 		},
 		setUnit(value: GridUnit) {
-			if (value === unit) return;
 			unit = value;
-			changed();
-		},
-		setSurfaces(value: SurfaceHeights | null) {
-			if (value === surfaces) return;
-			surfaces = value;
-			changed();
 		},
 	};
 }

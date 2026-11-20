@@ -1,18 +1,20 @@
-import { useEffect, useState } from "react";
+import { type Accessor, createEffect, createSignal } from "solid-js";
 import { cssPixelsPerMm } from "#/components/viewer/displayScale.ts";
 import { measurePerformanceAsync } from "#/performance/runtime.ts";
 
-export function useDisplayScale(enabled: boolean) {
-	const [scale, setScale] = useState<number | null>(null);
-	useEffect(() => {
-		const bridge = enabled ? window.ecadDisplay : undefined;
+export function useDisplayScale(
+	enabled: Accessor<boolean>,
+): Accessor<number | null> {
+	const [scale, setScale] = createSignal<number | null>(null);
+	createEffect(enabled, (on) => {
+		const bridge = on ? window.ecadDisplay : undefined;
 		if (!bridge) {
 			setScale(null);
 			return;
 		}
 		let disposed = false;
 		let request = 0;
-		let resolution: MediaQueryList;
+		let resolution: MediaQueryList | undefined;
 		let pixelRatio = window.devicePixelRatio;
 		const update = async () => {
 			const current = ++request;
@@ -46,8 +48,8 @@ export function useDisplayScale(enabled: boolean) {
 			disposed = true;
 			window.removeEventListener("resize", onResize);
 			unsubscribe();
-			resolution.removeEventListener("change", watchResolution);
+			resolution?.removeEventListener("change", watchResolution);
 		};
-	}, [enabled]);
+	});
 	return scale;
 }

@@ -63,15 +63,18 @@ test("dragging a generated label adds wires and persists through autosave, undo 
 		x: (bounds.minX + bounds.maxX) / 2,
 		y: (bounds.minY + bounds.maxY) / 2,
 	};
-	let from = await drawingPoint(page, center);
+	const dragPoints = async () => ({
+		from: await drawingPoint(page, center),
+		to: await drawingPoint(page, { x: center.x + 12, y: center.y - 10 }),
+	});
+	let { from, to } = await dragPoints();
 	await expect
 		.poll(async () => {
-			const previous = from;
-			from = await drawingPoint(page, center);
-			return previous.x === from.x && previous.y === from.y;
+			const previous = JSON.stringify({ from, to });
+			({ from, to } = await dragPoints());
+			return previous === JSON.stringify({ from, to });
 		})
 		.toBe(true);
-	const to = await drawingPoint(page, { x: center.x + 12, y: center.y - 10 });
 	const document = async () =>
 		JSON.parse(required(await page.locator("#project-document").textContent()));
 	const step = await drawingGridStep(page);

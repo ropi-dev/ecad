@@ -1,6 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import { openProjectFiles } from "../browser/project-files.ts";
 import { toolbarButton } from "../browser/toolbar.ts";
+import { createCircuit } from "./circuit.ts";
 
 // Runs against `vite build` output served by `vite preview`.
 
@@ -31,6 +32,7 @@ test("the built web app opens a drawing and keeps it across a reload", async ({
 	await expect(
 		page.getByLabel("Workspace instructions", { exact: true }),
 	).toBeVisible();
+	await createCircuit(page);
 	await (await openProjectFiles(page))
 		.getByRole("link", { name: /^Open .+\.ecaddraw$/ })
 		.first()

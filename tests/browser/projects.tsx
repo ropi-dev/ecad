@@ -1,9 +1,10 @@
-import { StrictMode, useEffect, useState, useSyncExternalStore } from "react";
-import { createRoot } from "react-dom/client";
+import { render } from "@solidjs/web";
+import { createSignal, Match, onSettled, Show, Switch } from "solid-js";
 import { Scene } from "three";
 import { Editor2D } from "#/components/editor/Editor2D.tsx";
 import { GerberWorkspace } from "#/components/gerber/GerberWorkspace.tsx";
 import { StepWorkspace } from "#/components/step/StepWorkspace.tsx";
+import { useExternalStore } from "#/lib/external-store.ts";
 import { ProjectProvider, useProject } from "#/projects/ProjectProvider.tsx";
 import { ProjectShell } from "#/projects/ProjectShell.tsx";
 import { WorkspaceStart } from "#/projects/WorkspaceStart.tsx";
@@ -22,54 +23,65 @@ Scene.prototype.onAfterRender = (renderer, _scene, camera) => {
 
 function CircuitDocumentState() {
 	const project = useProject();
-	const store = project?.editorCircuit?.store;
-	if (!store) return null;
-	return <CircuitSnapshot store={store} />;
-}
-function CircuitSnapshot({
-	store,
-}: {
-	store: import("@ecad/drawing-core/circuit/store.ts").CircuitStore;
-}) {
-	const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
 	return (
-		<output id="circuit-document" hidden>
-			{JSON.stringify({ circuit: snapshot.circuit, graph: snapshot.graph })}
-		</output>
+		<Show when={project()?.editorCircuit?.store} keyed>
+			{(store) => {
+				const snapshot = useExternalStore(store);
+				return (
+					<output id="circuit-document" hidden>
+						{JSON.stringify({
+							circuit: snapshot().circuit,
+							graph: snapshot().graph,
+						})}
+					</output>
+				);
+			}}
+		</Show>
 	);
 }
 function ProjectDocument() {
 	const project = useProject();
-	if (!project) throw new Error("Project provider is missing.");
-	const drawing = useSyncExternalStore(
-		project.store.subscribe,
-		project.store.getSnapshot,
-	);
-	const editorStore =
-		project.editorSymbol?.store ??
-		project.editorFootprint?.store ??
-		project.editorBoard?.store ??
-		project.editorDrawing?.store ??
-		project.store;
-	const editor = useSyncExternalStore(
-		editorStore.subscribe,
-		editorStore.getSnapshot,
-	);
+	const editorStore = () => {
+		const current = project();
+		return (
+			current?.editorSymbol?.store ??
+			current?.editorFootprint?.store ??
+			current?.editorBoard?.store ??
+			current?.editorDrawing?.store ??
+			current?.store
+		);
+	};
 	return (
-		<output id="project-document" hidden>
-			{JSON.stringify({
-				shapes: drawing.shapes,
-				name: project.project?.manifest.name,
-				assets: project.project?.manifest.assets,
-				dirty: project.dirty,
-				symbols: project.project?.symbols,
-				drawings: project.project?.drawings,
-				footprints: project.project?.footprints,
-				boards: project.project?.boards?.map((board) => board.circuitId),
-				editorDrawing: project.editorDrawing?.file.id,
-				editorShapes: editor.shapes,
-			})}
-		</output>
+		<Show when={project()?.store} keyed>
+			{(store) => {
+				const drawing = useExternalStore(store);
+				return (
+					<Show when={editorStore()} keyed>
+						{(editorStore) => {
+							const editor = useExternalStore(editorStore);
+							return (
+								<output id="project-document" hidden>
+									{JSON.stringify({
+										shapes: drawing().shapes,
+										name: project()?.project?.manifest.name,
+										assets: project()?.project?.manifest.assets,
+										dirty: project()?.dirty,
+										symbols: project()?.project?.symbols,
+										drawings: project()?.project?.drawings,
+										footprints: project()?.project?.footprints,
+										boards: project()?.project?.boards?.map(
+											(board) => board.circuitId,
+										),
+										editorDrawing: project()?.editorDrawing?.file.id,
+										editorShapes: editor().shapes,
+									})}
+								</output>
+							);
+						}}
+					</Show>
+				);
+			}}
+		</Show>
 	);
 }
 
@@ -77,8 +89,8 @@ const storage = createWebProjectStorage();
 const symbolStorage = createWebSymbolLibraryStorage();
 
 function App() {
-	const [workspace, setWorkspace] = useState("/");
-	useEffect(() => {
+	const [workspace, setWorkspace] = createSignal("/");
+	onSettled(() => {
 		const navigate = (event: MouseEvent) => {
 			const target = event.target;
 			if (!(target instanceof Element)) return;
@@ -95,21 +107,23 @@ function App() {
 		};
 		document.addEventListener("click", navigate);
 		return () => document.removeEventListener("click", navigate);
-	}, []);
+	});
 	return (
 		<ProjectProvider storage={storage} symbolStorage={symbolStorage}>
 			<ProjectDocument />
 			<CircuitDocumentState />
 			<ProjectShell>
-				{workspace === "/" ? (
-					<WorkspaceStart />
-				) : workspace === "/editor" ? (
-					<Editor2D />
-				) : workspace === "/gerber" ? (
-					<GerberWorkspace />
-				) : (
-					<StepWorkspace />
-				)}
+				<Switch fallback={<StepWorkspace />}>
+					<Match when={workspace() === "/"}>
+						<WorkspaceStart />
+					</Match>
+					<Match when={workspace() === "/editor"}>
+						<Editor2D />
+					</Match>
+					<Match when={workspace() === "/gerber"}>
+						<GerberWorkspace />
+					</Match>
+				</Switch>
 			</ProjectShell>
 		</ProjectProvider>
 	);
@@ -117,8 +131,4 @@ function App() {
 
 startTelemetry();
 
-createRoot(document.getElementById("root") as HTMLElement).render(
-	<StrictMode>
-		<App />
-	</StrictMode>,
-);
+render(() => <App />, document.getElementById("root") as HTMLElement);

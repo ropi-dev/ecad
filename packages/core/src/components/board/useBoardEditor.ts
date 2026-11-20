@@ -20,15 +20,15 @@ import {
 } from "@ecad/drawing-core/footprint/layers.ts";
 import { shapeLayers } from "@ecad/drawing-core/footprint/shapes.ts";
 import {
-	useCallback,
-	useEffect,
-	useMemo,
-	useState,
-	useSyncExternalStore,
-} from "react";
+	type Accessor,
+	createEffect,
+	createMemo,
+	createSignal,
+	onCleanup,
+	onSettled,
+} from "solid-js";
 import type { Object3D } from "three";
 import {
-	type BoardAnalysisClient,
 	type BoardAnalysisState,
 	createBoardAnalysisClient,
 	startBoardAnalysisWorker,
@@ -52,6 +52,7 @@ import {
 	buildBoardStaticDisplay,
 } from "#/drawing/display.ts";
 import { unfocusedLayerColor } from "#/drawing/schematic-theme.ts";
+import { fromExternalStore } from "#/lib/external-store.ts";
 import type { ProjectSnapshot } from "#/projects/format.ts";
 import type { BoardDocument } from "#/projects/ProjectSession.ts";
 import { useSchematicTheme } from "#/settings/theme.ts";
@@ -60,99 +61,99 @@ type Store = ReturnType<typeof createDrawingStore>;
 
 const noShapes: EditorShape[] = [];
 
-export function useBoardEditor({
-	board,
-	store,
-	session,
-	snapshot,
-	committed,
-	draft,
-	hidden,
-	active,
-	focused,
-	setActive,
-	selection,
-	ratsnestShown,
-}: {
-	board: BoardDocument | undefined;
-	store: Store;
-	session: EditorSession;
-	snapshot: ProjectSnapshot | null | undefined;
-	committed: EditorShape[];
-	draft: EditorShape[] | null;
-	hidden: ReadonlySet<FootprintLayer>;
-	active: FootprintLayer;
-	focused: FootprintLayer | undefined;
-	setActive: (layer: FootprintLayer) => void;
-	selection: ReadonlySet<number>;
-	ratsnestShown: boolean;
-}) {
-	const enabled = board !== undefined;
-	const rulesStore = board?.rules;
-	const rules = useSyncExternalStore(
-		rulesStore?.subscribe ?? noSubscribe,
-		() => rulesStore?.get(),
-		() => rulesStore?.get(),
+export function useBoardEditor(
+	options: Accessor<{
+		board: BoardDocument | undefined;
+		store: Store;
+		session: EditorSession;
+		snapshot: ProjectSnapshot | null | undefined;
+		committed: EditorShape[];
+		draft: EditorShape[] | null;
+		hidden: ReadonlySet<FootprintLayer>;
+		active: FootprintLayer;
+		focused: FootprintLayer | undefined;
+		setActive: (layer: FootprintLayer) => void;
+		selection: ReadonlySet<number>;
+		ratsnestShown: boolean;
+	}>,
+) {
+	const board = createMemo(() => options().board);
+	const store = createMemo(() => options().store);
+	const session = createMemo(() => options().session);
+	const snapshot = createMemo(() => options().snapshot);
+	const committed = createMemo(() => options().committed);
+	const draft = createMemo(() => options().draft);
+	const hidden = createMemo(() => options().hidden);
+	const active = createMemo(() => options().active);
+	const focused = createMemo(() => options().focused);
+	const selection = createMemo(() => options().selection);
+	const ratsnestShown = createMemo(() => options().ratsnestShown);
+	const enabled = createMemo(() => board() !== undefined);
+	const rulesSource = createMemo(() => {
+		const rulesStore = board()?.rules;
+		return rulesStore
+			? fromExternalStore(
+					(listener) => rulesStore.subscribe(listener),
+					() => rulesStore.get(),
+				)
+			: () => undefined;
+	});
+	const rules = () => rulesSource()();
+	const circuitId = createMemo(() => board()?.file.circuitId);
+	const context = createMemo(() => boardContext(snapshot(), circuitId()));
+	const circuit = createMemo(() => context().circuit);
+	const netlist = createMemo(() => boardNetlist(circuit()));
+	const live = createMemo(() =>
+		enabled() ? (draft() ?? committed()) : noShapes,
 	);
-	const context = useMemo(
-		() => boardContext(snapshot, board?.file.circuitId),
-		[snapshot, board?.file.circuitId],
-	);
-	const netlist = useMemo(
-		() => boardNetlist(context.circuit),
-		[context.circuit],
-	);
-	const live = enabled ? (draft ?? committed) : noShapes;
-	const [analysis, setAnalysis] = useState<BoardAnalysisClient>();
-	useEffect(() => {
-		if (!enabled) return;
+	const analysis = createMemo(() => {
+		if (!enabled()) return undefined;
 		const client = createBoardAnalysisClient(startBoardAnalysisWorker);
-		setAnalysis(client);
-		return () => {
-			setAnalysis(undefined);
-			client.dispose();
-		};
-	}, [enabled]);
-	useEffect(() => {
-		if (rules) analysis?.configure(context.circuit, rules);
-	}, [analysis, context.circuit, rules]);
-	useEffect(() => {
-		analysis?.show(committed, live);
-	}, [analysis, committed, live]);
-	const subscribe = analysis?.subscribe ?? noSubscribe;
-	const state = analysis?.getState ?? idleAnalysis;
-	const fills = useSyncExternalStore(
-		subscribe,
-		() => state().fills,
-		() => state().fills,
+		onCleanup(() => client.dispose());
+		return client;
+	});
+	createEffect(
+		() => ({ client: analysis(), circuit: circuit(), rules: rules() }),
+		({ client, circuit, rules }) => {
+			if (rules) client?.configure(circuit, rules);
+		},
 	);
-	const unrouted = useSyncExternalStore(
-		subscribe,
-		() => state().ratsnest?.length,
-		() => state().ratsnest?.length,
+	createEffect(
+		() => ({ client: analysis(), committed: committed(), live: live() }),
+		({ client, committed, live }) => {
+			client?.show(committed, live);
+		},
 	);
-	const lines = useSyncExternalStore(
-		subscribe,
-		() => (ratsnestShown ? state().ratsnest : undefined),
-		() => undefined,
+	const stateSource = createMemo(() => {
+		const client = analysis();
+		return client
+			? fromExternalStore(
+					(listener) => client.subscribe(listener),
+					() => client.getState(),
+				)
+			: () => idleState;
+	});
+	const state = () => stateSource()();
+	const fills = createMemo(() => state().fills);
+	const unrouted = createMemo(() => state().ratsnest?.length);
+	const lines = createMemo(() =>
+		ratsnestShown() ? state().ratsnest : undefined,
 	);
-	const analysisError = useSyncExternalStore(
-		subscribe,
-		() => state().error,
-		() => state().error,
-	);
-	const ratsnest = useMemo(() => ratsnestShapes(lines ?? []), [lines]);
-	const highlight = useMemo(() => {
-		if (!enabled || selection.size !== 1) return undefined;
-		const [id] = selection;
-		const shape = committed.find((item) => item.id === id);
+	const analysisError = createMemo(() => state().error);
+	const ratsnest = createMemo(() => ratsnestShapes(lines() ?? []));
+	const highlight = createMemo(() => {
+		const selected = selection();
+		if (!enabled() || selected.size !== 1) return undefined;
+		const [id] = selected;
+		const shape = committed().find((item) => item.id === id);
 		return shape && "net" in shape ? shape.net : undefined;
-	}, [enabled, selection, committed]);
-	const highlighted = useMemo(() => {
+	});
+	const highlighted = createMemo(() => {
 		const ids = new Set<number>();
-		if (!highlight) return ids;
-		for (const item of copperItems(committed, netlist)) {
-			if (item.net !== highlight) continue;
+		const net = highlight();
+		if (!net) return ids;
+		for (const item of copperItems(committed(), netlist())) {
+			if (item.net !== net) continue;
 			if (item.kind === "pad" && item.pad) {
 				const footprint = item.pad.footprint;
 				const local = footprint.children.findIndex(
@@ -162,48 +163,52 @@ export function useBoardEditor({
 			} else ids.add(item.shapeId);
 		}
 		return ids;
-	}, [highlight, committed, netlist]);
-	const buildDisplay = useCallback(
-		(
+	});
+	const buildDisplay = createMemo(() => {
+		const hiddenLayers = hidden();
+		const activeLayer = active();
+		const focusedLayer = focused();
+		const lines = ratsnest();
+		const highlightedIds = highlighted();
+		return (
 			shapes: EditorShape[],
 			selected: ReadonlySet<number>,
 			measure: Parameters<typeof buildBoardStaticDisplay>[4],
 		) => {
-			const flat = boardDisplay(shapes, selected, hidden, active);
+			const flat = boardDisplay(shapes, selected, hiddenLayers, activeLayer);
 			return buildBoardStaticDisplay(
 				flat.shapes,
 				flat.selected,
-				highlighted,
-				ratsnest,
+				highlightedIds,
+				lines,
 				measure,
-				focused,
+				focusedLayer,
 			);
-		},
-		[hidden, active, focused, ratsnest, highlighted],
-	);
-	const [zoneScene] = useState(() => createZoneScene());
+		};
+	});
+	const zoneScene = createZoneScene();
+	onSettled(() => () => zoneScene.dispose());
 	const theme = useSchematicTheme();
-	const layerColors = useMemo(
-		() =>
-			focused
-				? (Object.fromEntries(
-						allLayers.map((layer) => [
-							layer,
-							layer === focused
-								? theme.appearance[layer]
-								: unfocusedLayerColor(theme.appearance[layer], theme),
-						]),
-					) as Record<FootprintLayer, string>)
-				: theme.appearance,
-		[theme, focused],
-	);
-	useEffect(() => () => zoneScene.dispose(), [zoneScene]);
-	const { layerOrder, displayCount } = useMemo(() => {
+	const layerColors = createMemo(() => {
+		const current = theme();
+		const layer = focused();
+		return layer
+			? (Object.fromEntries(
+					allLayers.map((item) => [
+						item,
+						item === layer
+							? current.appearance[item]
+							: unfocusedLayerColor(current.appearance[item], current),
+					]),
+				) as Record<FootprintLayer, string>)
+			: current.appearance;
+	});
+	const layout = createMemo(() => {
 		const flat = boardDisplay(
-			boardLayerView(committed, hidden, active),
+			boardLayerView(committed(), hidden(), active()),
 			new Set(),
-			hidden,
-			active,
+			hidden(),
+			active(),
 		).shapes;
 		const first = new Map<FootprintLayer, number>();
 		flat.forEach((shape, index) => {
@@ -212,12 +217,14 @@ export function useBoardEditor({
 		});
 		return {
 			layerOrder: (layer: FootprintLayer) => (first.get(layer) ?? 1) - 0.5,
-			displayCount: flat.length + ratsnest.length,
+			displayCount: flat.length + ratsnest().length,
 		};
-	}, [committed, hidden, active, ratsnest]);
-	const clearance = rules?.clearance ?? 0;
-	const buildPreview = useCallback(
-		(
+	});
+	const clearance = createMemo(() => rules()?.clearance ?? 0);
+	const buildPreview = createMemo(() => {
+		const { displayCount } = layout();
+		const margin = clearance();
+		return (
 			previews: EditorShape[],
 			shapeCount: number,
 			measure: Parameters<typeof buildBoardPreviewDisplay>[2],
@@ -226,118 +233,141 @@ export function useBoardEditor({
 				previews,
 				Math.max(shapeCount, displayCount),
 				measure,
-				clearance,
-			),
-		[displayCount, clearance],
-	);
-	const updateZones = useCallback(
-		(root: Object3D) => {
-			if (!enabled) return;
+				margin,
+			);
+	});
+	const updateZones = createMemo(() => {
+		const on = enabled();
+		const zoneFills = fills();
+		const colors = layerColors();
+		const { layerOrder } = layout();
+		const hiddenLayers = hidden();
+		const dimmed = focused() !== undefined;
+		return (root: Object3D) => {
+			if (!on) return;
 			zoneScene.update(
 				root,
-				fills,
-				layerColors,
+				zoneFills,
+				colors,
 				layerOrder,
-				hidden,
-				focused !== undefined,
+				hiddenLayers,
+				dimmed,
 			);
-		},
-		[enabled, zoneScene, fills, layerColors, layerOrder, hidden, focused],
+		};
+	});
+	const copperLayers = createMemo(() =>
+		boardCopperLayers(rules()?.copperLayers ?? 2),
 	);
-	const [lastCopper, setLastCopper] = useState<CopperLayer>("F.Cu");
-	const copperLayers = boardCopperLayers(rules?.copperLayers ?? 2);
-	if (isCopperLayer(active) && active !== lastCopper) setLastCopper(active);
-	else if (!copperLayers.includes(lastCopper)) setLastCopper("F.Cu");
-	const copperLayer = copperLayers.includes(lastCopper) ? lastCopper : "F.Cu";
-	const visibleItems = useCallback(
-		() =>
-			copperItems(session.shapes(), netlist).filter((item) =>
-				item.layers.some((layer) => !hidden.has(layer)),
-			),
-		[session, netlist, hidden],
+	const lastCopper = createMemo<CopperLayer>((previous) => {
+		const layer = active();
+		if (isCopperLayer(layer)) return layer;
+		return previous && copperLayers().includes(previous) ? previous : "F.Cu";
+	});
+	const copperLayer = createMemo(() =>
+		copperLayers().includes(lastCopper()) ? lastCopper() : "F.Cu",
 	);
-	const gestures = useMemo((): BoardGestures | undefined => {
-		if (!enabled || !rules) return undefined;
+	const gestures = createMemo((): BoardGestures | undefined => {
+		const currentRules = rules();
+		if (!enabled() || !currentRules) return undefined;
+		const currentSession = session();
+		const currentNetlist = netlist();
+		const hiddenLayers = hidden();
+		const layer = copperLayer();
+		const visibleItems = () =>
+			copperItems(currentSession.shapes(), currentNetlist).filter((item) =>
+				item.layers.some((itemLayer) => !hiddenLayers.has(itemLayer)),
+			);
 		return {
 			items: visibleItems,
-			rules,
-			copperLayer,
-			copperLayers,
-			setCopperLayer: setActive,
+			rules: currentRules,
+			copperLayer: layer,
+			copperLayers: copperLayers(),
+			setCopperLayer: (next) => options().setActive(next),
 			netAt: (point: Point) =>
-				copperAt(visibleItems(), point, copperLayer, 0.05)?.net ??
-				[...netlist.nets.values()].find((net) => /^(gnd|vss)$/i.test(net.name))
-					?.id,
+				copperAt(visibleItems(), point, layer, 0.05)?.net ??
+				[...currentNetlist.nets.values()].find((net) =>
+					/^(gnd|vss)$/i.test(net.name),
+				)?.id,
 		};
-	}, [
-		enabled,
-		rules,
-		visibleItems,
-		copperLayer,
-		copperLayers,
-		setActive,
-		netlist,
-	]);
+	});
 
-	const [syncReport, setSyncReport] = useState<BoardSyncReport | null>(null);
-	const synchronize = useCallback(async () => {
-		if (!board) return null;
-		session.select(new Set());
-		const report = await synchronizeBoardStore(store, context);
+	const [syncReport, setSyncReport] = createSignal<BoardSyncReport | null>(
+		null,
+	);
+	async function synchronize() {
+		if (!board()) return null;
+		session().select(new Set());
+		const report = await synchronizeBoardStore(store(), context());
 		setSyncReport(report);
 		return report;
-	}, [board, context, store, session]);
+	}
 
-	const flipSelection = useCallback(() => {
-		const selection = session.getState().selection;
-		const flipped = session
+	function flipSelection() {
+		const current = session();
+		const selected = current.getState().selection;
+		const flipped = current
 			.shapes()
 			.filter(isBoardFootprint)
-			.filter((shape) => selection.has(shape.id) && !shape.locked)
+			.filter((shape) => selected.has(shape.id) && !shape.locked)
 			.map(flipBoardFootprint);
-		if (flipped.length) session.replace(flipped, "Flip footprint");
+		if (flipped.length) current.replace(flipped, "Flip footprint");
 		return flipped.length > 0;
-	}, [session]);
+	}
 
-	const runChecks = useCallback(
-		async (
-			unit: LengthUnit,
-			shapes: readonly EditorShape[] = store.getSnapshot().shapes,
-		) => (await analysis?.check(shapes, unit)) ?? [],
-		[analysis, store],
-	);
-	const fabricate = useCallback(
-		async (name: string, shapes: readonly EditorShape[]) => {
-			if (!analysis) throw new Error("The board is not open.");
-			return analysis.fabricate(name, shapes);
-		},
-		[analysis],
-	);
-	const drawingFills = useCallback(
-		async (shapes: readonly EditorShape[]) => {
-			if (!analysis) throw new Error("The board is not open.");
-			return analysis.drawingFills(shapes);
-		},
-		[analysis],
-	);
+	async function runChecks(
+		unit: LengthUnit,
+		shapes: readonly EditorShape[] = store().getSnapshot().shapes,
+	) {
+		return (await analysis()?.check(shapes, unit)) ?? [];
+	}
+	async function fabricate(name: string, shapes: readonly EditorShape[]) {
+		const client = analysis();
+		if (!client) throw new Error("The board is not open.");
+		return client.fabricate(name, shapes);
+	}
+	async function drawingFills(shapes: readonly EditorShape[]) {
+		const client = analysis();
+		if (!client) throw new Error("The board is not open.");
+		return client.drawingFills(shapes);
+	}
 
 	return {
-		rules,
-		netlist,
-		fills,
+		get rules() {
+			return rules();
+		},
+		get netlist() {
+			return netlist();
+		},
+		get fills() {
+			return fills();
+		},
 		fabricate,
 		drawingFills,
-		buildDisplay,
-		buildPreview,
-		updateZones,
-		gestures,
+		get buildDisplay() {
+			return buildDisplay();
+		},
+		get buildPreview() {
+			return buildPreview();
+		},
+		get updateZones() {
+			return updateZones();
+		},
+		get gestures() {
+			return gestures();
+		},
 		synchronize,
-		syncReport,
+		get syncReport() {
+			return syncReport();
+		},
 		clearSyncReport: () => setSyncReport(null),
 		flipSelection,
 		runChecks,
-		unrouted,
-		analysisError,
+		get unrouted() {
+			return unrouted();
+		},
+		get analysisError() {
+			return analysisError();
+		},
 	};
 }
 
@@ -346,5 +376,3 @@ const idleState: BoardAnalysisState = {
 	ratsnest: undefined,
 	error: "",
 };
-const idleAnalysis = () => idleState;
-const noSubscribe = () => () => {};

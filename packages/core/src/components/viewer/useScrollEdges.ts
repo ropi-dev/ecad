@@ -1,40 +1,42 @@
-import { useEffect, useRef } from "react";
+import { type Accessor, createEffect } from "solid-js";
 
 /**
  * Marks which sides of a horizontally scrolling row have more content, as
  * `data-fade` ("start", "end", "both" or "") on the row and on its parent.
  * The row fades the clipped side; the parent can show an arrow there.
- * Pass the row element itself, from a state ref, so a row that mounts later
- * is still watched.
  */
-export function useScrollEdges(element: HTMLElement | null) {
-	const refresh = useRef<() => void>(undefined);
-	// Content can widen without resizing the capped row, such as a longer
-	// zoom label, so recheck after every render.
-	useEffect(() => refresh.current?.());
-	useEffect(() => {
-		if (!element) return;
+export function useScrollEdges(
+	element: Accessor<HTMLElement | null | undefined>,
+) {
+	createEffect(element, (row) => {
+		if (!row) return;
 		const update = () => {
-			const start = element.scrollLeft > 1;
-			const end =
-				element.scrollLeft + element.clientWidth < element.scrollWidth - 1;
+			const start = row.scrollLeft > 1;
+			const end = row.scrollLeft + row.clientWidth < row.scrollWidth - 1;
 			const fade = start && end ? "both" : start ? "start" : end ? "end" : "";
-			if (element.dataset.fade !== fade) {
-				element.dataset.fade = fade;
-				if (element.parentElement) element.parentElement.dataset.fade = fade;
+			if (row.dataset.fade !== fade) {
+				row.dataset.fade = fade;
+				if (row.parentElement) row.parentElement.dataset.fade = fade;
 			}
 		};
 		update();
-		refresh.current = update;
-		const observer = new ResizeObserver(update);
-		observer.observe(element);
-		element.addEventListener("scroll", update, { passive: true });
+		const resized = new ResizeObserver(update);
+		resized.observe(row);
+		// Content can widen without resizing the capped row, such as a longer
+		// zoom label.
+		const changed = new MutationObserver(update);
+		changed.observe(row, {
+			childList: true,
+			subtree: true,
+			characterData: true,
+		});
+		row.addEventListener("scroll", update, { passive: true });
 		return () => {
-			refresh.current = undefined;
-			observer.disconnect();
-			element.removeEventListener("scroll", update);
+			resized.disconnect();
+			changed.disconnect();
+			row.removeEventListener("scroll", update);
 		};
-	}, [element]);
+	});
 }
 
 /**

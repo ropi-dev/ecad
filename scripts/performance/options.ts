@@ -5,7 +5,7 @@
  * - `budgets` (`pnpm run perf:budgets`): every scenario once, 4× throttled,
  *   against the absolute budgets.
  * - `smoke` (`ECAD_PERF_SMOKE=1`): every scenario once, functional checks only.
- * - `development` (`pnpm run perf:dev`): React profiling against a stored
+ * - `development` (`pnpm run perf:dev`): development builds against a stored
  *   development baseline.
  * - `deprecated-baseline` (`pnpm run perf:baseline`): prints that it is no
  *   longer needed.

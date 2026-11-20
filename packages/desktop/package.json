@@ -19,24 +19,21 @@
 	},
 	"dependencies": {
 		"@ecad/core": "workspace:*",
-		"react": "^19.2.0",
-		"react-dom": "^19.2.0",
 		"@ecad/drawing-core": "workspace:*",
 		"@modelcontextprotocol/sdk": "^1.32.2",
 		"effect": "^3.22.2",
-		"lucide-react": "^0.577.0",
-		"zod": "^4.6.7"
+		"zod": "^4.6.7",
+		"solid-js": "2.0.3",
+		"@solidjs/web": "2.0.3"
 	},
 	"devDependencies": {
 		"@tailwindcss/vite": "^4.1.18",
 		"@types/node": "^24.19.2",
-		"@types/react": "^19.2.0",
-		"@types/react-dom": "^19.2.0",
-		"@vitejs/plugin-react": "^6.0.1",
 		"electron": "^44.10.0",
 		"esbuild": "^0.28.2",
 		"tsx": "^4.21.0",
 		"typescript": "^6.0.2",
-		"vite": "^8.3.5"
+		"vite": "^8.3.5",
+		"@solidjs/vite-plugin": "3.0.1"
 	}
 }

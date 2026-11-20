@@ -7,7 +7,7 @@ import { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { ModelReference } from "@ecad/drawing-core/footprint/model.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
-import type { ComponentType } from "react";
+import type { Component } from "solid-js";
 import type { BoardFile } from "#/board/format.ts";
 import type { BoardRulesStore } from "#/board/rules-store.ts";
 import type { ViewSelection } from "#/circuit/selection-sync.ts";
@@ -33,7 +33,7 @@ import { createProjectFileActions } from "#/projects/project-file-actions.ts";
 import { createProjectSessionState } from "#/projects/project-session-state.ts";
 import type { ProjectStorage } from "#/projects/storage.ts";
 import type { ProjectSettings } from "#/settings/schema.ts";
-import type { SymbolLibraryStorage } from "#/symbol-library/storage.tsx";
+import type { SymbolLibraryStorage } from "#/symbol-library/storage.ts";
 
 export interface RestoredAssets {
 	files: File[];
@@ -43,7 +43,7 @@ export interface RestoredAssets {
 export interface ProjectContextValue {
 	session: number;
 	project: ProjectSnapshot | null;
-	LinkComponent?: ComponentType<ProjectLinkProps>;
+	LinkComponent?: Component<ProjectLinkProps>;
 	selectedAsset: ProjectAsset | null;
 	/** `reload` reads the assets again even when the selection is unchanged. */
 	selectAsset(asset: ProjectAsset | null, options?: { reload?: boolean }): void;
@@ -163,7 +163,7 @@ export interface DrawingDocument {
 export function createProjectSession(
 	rawStorage: ProjectStorage,
 	symbolStorage: SymbolLibraryStorage,
-	LinkComponent?: ComponentType<ProjectLinkProps>,
+	LinkComponent?: Component<ProjectLinkProps>,
 ) {
 	const state = createProjectSessionState(rawStorage);
 	const {

@@ -8,7 +8,7 @@ The checker runs on the circuit model. In the schematic editor, `schematicCircui
 
 ## Add a rule
 
-Rules are plain objects. They need no React, store, graph layout, service, or registration class. The engine imports the circuit model as types and uses the shared optional performance recorder. It adds no dependencies.
+Rules are plain objects. They need no UI framework, store, graph layout, service, or registration class. The engine imports the circuit model as types and uses the shared optional performance recorder. It adds no dependencies.
 
 ```ts
 import { runErc, type ErcRule } from "@ecad/drawing-core/erc/engine.ts";

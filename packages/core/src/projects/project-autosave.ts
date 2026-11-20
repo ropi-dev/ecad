@@ -11,7 +11,7 @@ import { primaryPcbId } from "#/projects/pcb.ts";
 import type { createProjectAssets } from "#/projects/project-assets.ts";
 import type { ProjectSessionState } from "#/projects/project-session-state.ts";
 import type { ConfiguredSymbolLibrary } from "#/symbol-library/config.ts";
-import type { SymbolLibraryStorage } from "#/symbol-library/storage.tsx";
+import type { SymbolLibraryStorage } from "#/symbol-library/storage.ts";
 
 type ProjectAssets = ReturnType<typeof createProjectAssets>;
 

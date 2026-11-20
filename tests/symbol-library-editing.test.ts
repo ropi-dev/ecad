@@ -7,7 +7,7 @@ import {
 	resolveSymbolLibraries,
 } from "#/symbol-library/config.ts";
 import { prepareSymbolEdit } from "#/symbol-library/editing.ts";
-import { createMemorySymbolLibraryStorage } from "#/symbol-library/storage.tsx";
+import { createMemorySymbolLibraryStorage } from "#/symbol-library/storage.ts";
 import { required } from "./helpers/required.ts";
 
 const file = parseSymbolFile(

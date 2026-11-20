@@ -1,12 +1,12 @@
 # Effect integration
 
-The project uses Effect 3 for drawing commands, file imports, browser requests, subscriptions, server operations, and resource cleanup. React owns transient UI state. Drawing commands own committed drawing data and history. TanStack owns routing. Geometry algorithms and frame rendering remain synchronous TypeScript.
+The project uses Effect 3 for drawing commands, file imports, browser requests, subscriptions, server operations, and resource cleanup. Solid owns transient UI state. Drawing commands own committed drawing data and history. TanStack owns routing. Geometry algorithms and frame rendering remain synchronous TypeScript.
 
-See [drawing architecture](architecture.md) for complete command inputs, the document store, gesture previews, and rendering boundaries. Synchronous drawing commands run at event boundaries after input is resolved, using `Effect.runSync`. React effects bind rendering resources and subscriptions; they do not trigger document edits.
+See [drawing architecture](architecture.md) for complete command inputs, the document store, gesture previews, and rendering boundaries. Synchronous drawing commands run at event boundaries after input is resolved, using `Effect.runSync`. Solid effects bind rendering resources and subscriptions; they do not trigger document edits.
 
 ## Running operations
 
-Compose operations with `Effect.gen`, and run them at a React hook, server function, or HTTP handler using `runEffect` from `packages/drawing-core/src/lib/effect.ts`. Pass the framework's `AbortSignal` when one is available.
+Compose operations with `Effect.gen`, and run them at an event handler, Solid effect, server function, or HTTP handler using `runEffect` from `packages/drawing-core/src/lib/effect.ts`. Pass the framework's `AbortSignal` when one is available.
 
 ```ts
 const value = await runEffect(program, signal);
@@ -21,7 +21,7 @@ Domain functions return Effects and declare expected errors with `Data.TaggedErr
 - `packages/core/src/formats/import-effects.ts` contains file read errors, scoped worker requests, timeouts, and import ownership registration.
 - `parseGerberFileEffect`, `parseStepFileEffect`, `parseKiCadFileEffect`, and `expandGerberFileEffect` compose the import operations. The existing Promise functions remain available for callers outside Effect.
 - `importFilesEffect` processes files in order and collects per-file failures as messages. Valid files survive a neighboring invalid file. Gerber archives retain their physical layer ordering.
-- `useFileImport` runs a batch once, aborts a superseded batch, and updates React state. Its synchronous acceptance callback stages ownership before another request or unmount can intervene. `ImportOwnership` keeps pending and displayed resources alive through React commits, and releases uncommitted results on unmount.
+- `useFileImport` runs a batch once, aborts a superseded batch, and updates Solid signals. Its synchronous acceptance callback stages ownership before another request or unmount can intervene. `ImportOwnership` keeps pending and displayed resources alive until the UI shows them, and releases uncommitted results on unmount.
 
 Each file parser compares `file.size` with its byte limit before reading the file and fails with `InvalidFile` when the file is too large. The limits live in `packages/core/src/formats/import-limits.ts`: `MAX_STEP_FILE_BYTES` (256 MiB), `MAX_GERBER_FILE_BYTES` (64 MiB), `MAX_GERBER_ARCHIVE_BYTES` (256 MiB, checked before a ZIP archive is read) and `MAX_KICAD_FILE_BYTES` (32 MiB). Checks on the decoded content, such as the Gerber parser's character limit and the per-entry and total ZIP extraction limits, still apply.
 
@@ -33,7 +33,7 @@ Imported scene objects have a different lifetime. `acquireImported` registers ro
 
 ## Viewer and editor resources
 
-`createLifecycle` bridges Effect scopes to synchronous React setup and cleanup. Register each resource immediately after acquisition with `acquire`, `addFinalizer`, or `listen`. Call `dispose` on initialization failure and on unmount. Finalizers run in reverse order, including when another finalizer fails.
+`createLifecycle` bridges Effect scopes to synchronous Solid setup and cleanup. Register each resource immediately after acquisition with `acquire`, `addFinalizer`, or `listen`. Call `dispose` on initialization failure and on unmount. Finalizers run in reverse order, including when another finalizer fails.
 
 Viewport renderers, scene displays, hover overlays, controls, listeners, and editor materials use this lifetime. Calculations inside render and pointer handlers do not execute an Effect for every frame.
 

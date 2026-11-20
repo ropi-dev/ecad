@@ -1,14 +1,16 @@
+import type { JSX } from "@solidjs/web";
 import {
-	type ComponentType,
+	type Accessor,
+	type Component,
 	createContext,
-	type ReactNode,
-	useCallback,
+	createMemo,
+	onSettled,
+	Show,
+	untrack,
 	useContext,
-	useEffect,
-	useMemo,
-	useRef,
-	useSyncExternalStore,
-} from "react";
+} from "solid-js";
+import { Keyed } from "#/components/ui/Keyed.tsx";
+import { fromExternalStore, shallowEqual } from "#/lib/external-store.ts";
 import type { ProjectLinkProps } from "#/projects/ProjectLink.tsx";
 import {
 	createProjectSession,
@@ -17,10 +19,8 @@ import {
 } from "#/projects/ProjectSession.ts";
 import type { ProjectStorage } from "#/projects/storage.ts";
 import { WorkspaceControlsProvider } from "#/projects/WorkspaceControls.tsx";
-import {
-	SymbolLibraryProvider,
-	type SymbolLibraryStorage,
-} from "#/symbol-library/storage.tsx";
+import { SymbolLibraryProvider } from "#/symbol-library/SymbolLibraryProvider.tsx";
+import type { SymbolLibraryStorage } from "#/symbol-library/storage.ts";
 
 export type {
 	BoardDocument,
@@ -30,45 +30,27 @@ export type {
 	SymbolDocument,
 } from "#/projects/ProjectSession.ts";
 
-const ProjectContext = createContext<ProjectSession | null>(null);
+interface ProjectContextState {
+	session: ProjectSession;
+	snapshot: Accessor<ProjectContextValue>;
+}
+
+const ProjectContext = createContext<ProjectContextState | null>(null);
 
 export function useProjectSelection<T>(
 	select: (value: ProjectContextValue) => T,
-): T | null {
-	const session = useContext(ProjectContext);
-	const previous = useRef<{ value: T } | null>(null);
-	const getSnapshot = () => {
-		if (!session) return null;
-		const value = select(session.getSnapshot());
-		const old = previous.current;
-		if (
-			old &&
-			(Object.is(old.value, value) ||
-				(typeof value === "object" &&
-					value !== null &&
-					typeof old.value === "object" &&
-					old.value !== null &&
-					Object.keys(value).length === Object.keys(old.value).length &&
-					Object.entries(value).every(([key, entry]) =>
-						Object.is(entry, (old.value as Record<string, unknown>)[key]),
-					)))
-		)
-			return old.value;
-		previous.current = { value };
-		return value;
-	};
-	return useSyncExternalStore(
-		session?.subscribe ?? emptySubscribe,
-		getSnapshot,
-		getSnapshot,
-	);
+): Accessor<T | null> {
+	const context = useContext(ProjectContext);
+	if (!context) return () => null;
+	return createMemo(() => select(context.snapshot()), {
+		equals: shallowEqual,
+	});
 }
-const emptySubscribe = () => () => {};
 
 /** Reads the project as it is now, for code that runs after an await. */
 export function useLatestProjectSnapshot() {
-	const session = useContext(ProjectContext);
-	return useCallback(() => session?.getSnapshot().project ?? null, [session]);
+	const context = useContext(ProjectContext);
+	return () => context?.session.getSnapshot().project ?? null;
 }
 export const useProject = () => useProjectSelection((value) => value);
 export const useProjectSnapshot = () =>
@@ -136,75 +118,72 @@ export const useProjectActions = () =>
 		}) => actions,
 	);
 
-export function ProjectProvider({
-	storage,
-	symbolStorage,
-	LinkComponent,
-	wrapChildren = true,
-	children,
-}: {
+export function ProjectProvider(props: {
 	storage: ProjectStorage;
 	symbolStorage: SymbolLibraryStorage;
-	LinkComponent?: ComponentType<ProjectLinkProps>;
+	LinkComponent?: Component<ProjectLinkProps>;
 	wrapChildren?: boolean;
-	children: ReactNode;
+	children: JSX.Element;
 }) {
-	const session = useMemo(
-		() => createProjectSession(storage, symbolStorage, LinkComponent),
-		[storage, symbolStorage, LinkComponent],
+	const session = untrack(() =>
+		createProjectSession(
+			props.storage,
+			props.symbolStorage,
+			props.LinkComponent,
+		),
 	);
-	useEffect(() => session.connect(), [session]);
+	const snapshot = fromExternalStore(
+		(listener) => session.subscribe(listener),
+		() => session.getSnapshot(),
+	);
+	onSettled(() => session.connect());
 	return (
-		<ProjectContext.Provider value={session}>
+		<ProjectContext value={{ session, snapshot }}>
 			<ProjectContents
 				session={session}
-				symbolStorage={symbolStorage}
-				wrapChildren={wrapChildren}
+				symbolStorage={props.symbolStorage}
+				wrapChildren={props.wrapChildren ?? true}
 			>
-				{children}
+				{props.children}
 			</ProjectContents>
-		</ProjectContext.Provider>
+		</ProjectContext>
 	);
 }
-function ProjectContents({
-	session,
-	symbolStorage,
-	wrapChildren,
-	children,
-}: {
+
+function ProjectContents(props: {
 	session: ProjectSession;
 	symbolStorage: SymbolLibraryStorage;
 	wrapChildren: boolean;
-	children: ReactNode;
+	children: JSX.Element;
 }) {
 	const state = useProjectSelection(({ session, busy, project }) => ({
 		session,
 		busy,
 		hasProject: project !== null,
 	}));
-	const projectSymbols = useMemo(
-		() =>
-			state?.hasProject ? session.getProjectSymbols(state.session) : undefined,
-		[session, state?.session, state?.hasProject],
-	);
+	const projectSymbols = createMemo(() => {
+		const current = state();
+		return current?.hasProject
+			? props.session.getProjectSymbols(current.session)
+			: undefined;
+	});
 	return (
 		<SymbolLibraryProvider
-			storage={symbolStorage}
-			projectStorage={projectSymbols}
+			storage={props.symbolStorage}
+			projectStorage={projectSymbols()}
 		>
 			<WorkspaceControlsProvider>
-				{wrapChildren ? (
-					<div
-						key={state?.session}
-						aria-busy={state?.busy}
-						inert={state?.busy}
-						className={state?.busy ? "pointer-events-none" : undefined}
-					>
-						{children}
-					</div>
-				) : (
-					children
-				)}
+				<Show when={props.wrapChildren} fallback={props.children}>
+					<Keyed key={state()?.session}>
+						<div
+							aria-busy={state()?.busy ? "true" : "false"}
+							inert={state()?.busy}
+							class={{ "pointer-events-none": state()?.busy }}
+						>
+							{props.children}
+						</div>
+					</Keyed>
+				</Show>
 			</WorkspaceControlsProvider>
 		</SymbolLibraryProvider>
 	);

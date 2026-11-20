@@ -70,7 +70,7 @@
 	stroke: var(--circuit-body-line);
 	stroke-width: 1.5;
 }
-.circuit-component.is-selected .circuit-component-body {
+.circuit-component-body.is-selected {
 	stroke: var(--color-accent);
 	stroke-width: 2;
 }

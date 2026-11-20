@@ -1,4 +1,4 @@
-import type { ComponentProps } from "react";
+import type { ComponentProps } from "solid-js";
 import { CreateFileDialog } from "#/components/editor/CreateFileDialog.tsx";
 
 export function CreateSymbolDialog(

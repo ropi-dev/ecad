@@ -5,7 +5,7 @@ import type { SymbolDefinition } from "#/drawing/symbols.ts";
 import type { ProjectDocument, ProjectSnapshot } from "#/projects/format.ts";
 import { projectIndex } from "#/projects/project-index.ts";
 import type { ConfiguredSymbolLibrary } from "#/symbol-library/config.ts";
-import type { SymbolLibraryStorage } from "#/symbol-library/storage.tsx";
+import type { SymbolLibraryStorage } from "#/symbol-library/storage.ts";
 
 type Resolution = Awaited<
 	ReturnType<

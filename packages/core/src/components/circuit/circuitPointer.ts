@@ -1,39 +1,31 @@
 import type { CircuitNet } from "@ecad/drawing-core/circuit/model.ts";
 import type { CircuitCommand } from "@ecad/drawing-core/circuit/store.ts";
-import {
-	type Dispatch,
-	type PointerEvent as ReactPointerEvent,
-	type RefObject,
-	type SetStateAction,
-	type SVGProps,
-	useRef,
-	useState,
-} from "react";
+import { type Accessor, createSignal, type Setter } from "solid-js";
 import type { CircuitTool } from "#/components/circuit/CircuitToolbar.tsx";
 import type {
 	CircuitDrag,
 	CircuitPosition,
 	CircuitSelection,
 	ConnectionDrag,
+	GraphButtonEvent,
 } from "#/components/circuit/circuitEditorState.ts";
 import type { CircuitView } from "#/components/circuit/useCircuitNavigation.ts";
 import type { SymbolDefinition } from "#/drawing/symbols.ts";
 
 type Point = { x: number; y: number };
+type SvgEvent<E extends Event> = E & { currentTarget: SVGSVGElement };
 
 /** Pointer gestures in progress on the circuit graph. */
 export function useCircuitPointerState() {
-	const [pan, setPan] = useState<{
+	const [pan, setPan] = createSignal<{
 		x: number;
 		y: number;
 		view: CircuitView;
 		pointerId: number;
 	} | null>(null);
-	const [drag, setDrag] = useState<CircuitDrag | null>(null);
-	const [connectionDrag, setConnectionDrag] = useState<ConnectionDrag | null>(
-		null,
-	);
-	const suppressPinClick = useRef(false);
+	const [drag, setDrag] = createSignal<CircuitDrag | null>(null);
+	const [connectionDrag, setConnectionDrag] =
+		createSignal<ConnectionDrag | null>(null);
 	return {
 		pan,
 		setPan,
@@ -41,15 +33,15 @@ export function useCircuitPointerState() {
 		setDrag,
 		connectionDrag,
 		setConnectionDrag,
-		suppressPinClick,
+		suppressPinClick: { current: false },
 	};
 }
 
 /**
  * Pointer handling for the circuit graph: panning, dragging components and
  * nets, dragging a connection from a pin onto another pin or net, and placing
- * a component or net with the placement tools. Built on every render, so the
- * handlers see the current state.
+ * a component or net with the placement tools. The handlers read the current
+ * state when they run.
  */
 export function circuitPointerHandlers({
 	state: {
@@ -80,26 +72,26 @@ export function circuitPointerHandlers({
 	run,
 }: {
 	state: ReturnType<typeof useCircuitPointerState>;
-	svg: RefObject<SVGSVGElement | null>;
-	tool: CircuitTool;
-	placement: SymbolDefinition | null;
-	placementPinCount: number;
-	view: CircuitView;
-	setView: Dispatch<SetStateAction<CircuitView>>;
-	pinNets: ReadonlyMap<string, CircuitNet>;
+	svg: Accessor<SVGSVGElement | undefined>;
+	tool: Accessor<CircuitTool>;
+	placement: Accessor<SymbolDefinition | null>;
+	placementPinCount: Accessor<number>;
+	view: Accessor<CircuitView>;
+	setView(view: CircuitView): void;
+	pinNets: Accessor<ReadonlyMap<string, CircuitNet>>;
 	snap<T extends Point>(position: T): T;
 	componentPosition(position: Point, pinCount: number): Point;
 	select(next: CircuitSelection): void;
 	selectPin(id: string): void;
-	setCheckedPins: Dispatch<SetStateAction<string[]>>;
-	setPendingPin: Dispatch<SetStateAction<string | null>>;
-	setPlacementPoint: Dispatch<SetStateAction<Point | null>>;
+	setCheckedPins: Setter<string[]>;
+	setPendingPin: Setter<string | null>;
+	setPlacementPoint: Setter<Point | null>;
 	setConnecting(value: boolean): void;
 	placeAt(position: Point): void;
 	run(command: CircuitCommand): boolean;
 }) {
 	function point(event: { clientX: number; clientY: number }) {
-		const matrix = svg.current?.getScreenCTM()?.inverse();
+		const matrix = svg()?.getScreenCTM()?.inverse();
 		if (!matrix) return { x: 0, y: 0 };
 		return new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix);
 	}
@@ -107,12 +99,13 @@ export function circuitPointerHandlers({
 		event: { clientX: number; clientY: number },
 		sourceId: string,
 	): ConnectionDrag["target"] {
-		const button = svg.current?.ownerDocument
+		const element = svg();
+		const button = element?.ownerDocument
 			.elementFromPoint(event.clientX, event.clientY)
 			?.closest("button[data-circuit-pin-id], button[data-circuit-net-id]");
 		const id = button?.getAttribute("data-circuit-pin-id");
 		const netId = button?.getAttribute("data-circuit-net-id");
-		if (!svg.current?.contains(button ?? null)) return null;
+		if (!element?.contains(button ?? null)) return null;
 		return netId
 			? { kind: "net", id: netId }
 			: id && id !== sourceId
@@ -120,22 +113,26 @@ export function circuitPointerHandlers({
 				: null;
 	}
 	function cancelConnectionDrag() {
-		if (!connectionDrag) return;
+		const current = connectionDrag();
+		if (!current) return;
 		suppressPinClick.current = true;
 		setConnectionDrag(null);
-		if (svg.current?.hasPointerCapture(connectionDrag.pointerId)) {
-			svg.current.releasePointerCapture(connectionDrag.pointerId);
+		const element = svg();
+		if (element?.hasPointerCapture(current.pointerId)) {
+			element.releasePointerCapture(current.pointerId);
 		}
 	}
 	function startConnectionDrag(
-		event: ReactPointerEvent<HTMLButtonElement>,
+		event: GraphButtonEvent<PointerEvent>,
 		pinId: string,
 	) {
-		if (event.button !== 0 || (tool !== "select" && tool !== "connect")) return;
+		const current = tool();
+		if (event.button !== 0 || (current !== "select" && current !== "connect"))
+			return;
 		event.preventDefault();
 		event.stopPropagation();
-		svg.current?.focus({ preventScroll: true });
-		svg.current?.setPointerCapture(event.pointerId);
+		svg()?.focus({ preventScroll: true });
+		svg()?.setPointerCapture(event.pointerId);
 		setConnectionDrag({
 			pinId,
 			pointerId: event.pointerId,
@@ -146,10 +143,10 @@ export function circuitPointerHandlers({
 		});
 	}
 	function startDrag(
-		event: ReactPointerEvent<HTMLButtonElement>,
+		event: GraphButtonEvent<PointerEvent>,
 		position: CircuitPosition,
 	) {
-		if (event.button !== 0 || tool !== "select") return;
+		if (event.button !== 0 || tool() !== "select") return;
 		event.stopPropagation();
 		select({ kind: position.kind, id: position.id });
 		setCheckedPins([]);
@@ -164,133 +161,140 @@ export function circuitPointerHandlers({
 			pointerId: event.pointerId,
 		});
 	}
-	const svgHandlers: SVGProps<SVGSVGElement> = {
+	const svgHandlers = {
 		onPointerDownCapture: () => {
 			suppressPinClick.current = false;
 		},
 		onPointerLeave: () => setPlacementPoint(null),
-		onClickCapture: (event) => {
+		onClickCapture: (event: MouseEvent) => {
 			if (suppressPinClick.current && event.detail > 0) {
 				suppressPinClick.current = false;
 				event.preventDefault();
 				event.stopPropagation();
 				return;
 			}
+			const current = tool();
 			if (
-				(tool === "net" || (tool === "component" && placement)) &&
+				(current === "net" || (current === "component" && placement())) &&
 				event.button === 0
 			) {
 				event.preventDefault();
 				event.stopPropagation();
 				placeAt(
-					tool === "component"
-						? componentPosition(point(event), placementPinCount)
+					current === "component"
+						? componentPosition(point(event), placementPinCount())
 						: point(event),
 				);
 			}
 		},
-		onPointerDown: (event) => {
+		onPointerDown: (event: SvgEvent<PointerEvent>) => {
 			if (
 				!(event.target instanceof Element) ||
 				!event.target.closest("button")
 			) {
 				event.currentTarget.focus({ preventScroll: true });
-				if (event.button === 0 && tool === "select") select(null);
+				if (event.button === 0 && tool() === "select") select(null);
 			}
-			if (event.button !== 1 && (tool !== "pan" || event.button !== 0)) return;
+			if (event.button !== 1 && (tool() !== "pan" || event.button !== 0))
+				return;
 			event.preventDefault();
 			event.currentTarget.setPointerCapture(event.pointerId);
 			setPan({
 				x: event.clientX,
 				y: event.clientY,
-				view,
+				view: view(),
 				pointerId: event.pointerId,
 			});
 		},
-		onPointerMove: (event) => {
+		onPointerMove: (event: PointerEvent) => {
 			// An active pan owns its pointer, even while a placement tool is
 			// active. Leaving placementPoint untouched keeps the preview under
 			// the cursor, since panning keeps the cursor's graph point fixed.
-			if (pan?.pointerId === event.pointerId) {
-				const matrix = svg.current?.getScreenCTM();
+			const panning = pan();
+			if (panning?.pointerId === event.pointerId) {
+				const matrix = svg()?.getScreenCTM();
 				if (matrix)
 					setView({
-						...pan.view,
-						x: pan.view.x - (event.clientX - pan.x) / matrix.a,
-						y: pan.view.y - (event.clientY - pan.y) / matrix.d,
+						...panning.view,
+						x: panning.view.x - (event.clientX - panning.x) / matrix.a,
+						y: panning.view.y - (event.clientY - panning.y) / matrix.d,
 					});
 				return;
 			}
-			if (connectionDrag?.pointerId === event.pointerId) {
+			const connecting = connectionDrag();
+			if (connecting?.pointerId === event.pointerId) {
 				setConnectionDrag({
-					...connectionDrag,
+					...connecting,
 					point: point(event),
 					active:
-						connectionDrag.active ||
+						connecting.active ||
 						Math.hypot(
-							event.clientX - connectionDrag.start.x,
-							event.clientY - connectionDrag.start.y,
+							event.clientX - connecting.start.x,
+							event.clientY - connecting.start.y,
 						) > 4,
-					target: connectionDropTarget(event, connectionDrag.pinId),
+					target: connectionDropTarget(event, connecting.pinId),
 				});
 				return;
 			}
-			if ((tool === "component" && placement) || tool === "net") {
+			const current = tool();
+			if ((current === "component" && placement()) || current === "net") {
 				setPlacementPoint(
-					tool === "component"
-						? componentPosition(point(event), placementPinCount)
+					current === "component"
+						? componentPosition(point(event), placementPinCount())
 						: snap(point(event)),
 				);
 				return;
 			}
-			if (!drag || drag.pointerId !== event.pointerId) return;
-			const current = point(event);
+			const dragging = drag();
+			if (!dragging || dragging.pointerId !== event.pointerId) return;
+			const position = point(event);
 			const active =
-				drag.active ||
+				dragging.active ||
 				Math.hypot(
-					event.clientX - drag.startClient.x,
-					event.clientY - drag.startClient.y,
+					event.clientX - dragging.startClient.x,
+					event.clientY - dragging.startClient.y,
 				) > 3;
-			const position = active
+			const next = active
 				? snap({
-						x: drag.position.x + current.x - drag.start.x,
-						y: drag.position.y + current.y - drag.start.y,
+						x: dragging.position.x + position.x - dragging.start.x,
+						y: dragging.position.y + position.y - dragging.start.y,
 					})
-				: drag.position;
+				: dragging.position;
 			setDrag({
-				...drag,
+				...dragging,
 				active,
-				x: position.x,
-				y: position.y,
+				x: next.x,
+				y: next.y,
 			});
 		},
-		onPointerUp: (event) => {
-			if (pan?.pointerId === event.pointerId) {
+		onPointerUp: (event: PointerEvent) => {
+			if (pan()?.pointerId === event.pointerId) {
 				setPan(null);
 				return;
 			}
-			if (connectionDrag?.pointerId === event.pointerId) {
+			const connecting = connectionDrag();
+			if (connecting?.pointerId === event.pointerId) {
 				suppressPinClick.current = true;
 				setConnectionDrag(null);
-				if (!connectionDrag.active) selectPin(connectionDrag.pinId);
+				if (!connecting.active) selectPin(connecting.pinId);
 				else {
-					const target = connectionDropTarget(event, connectionDrag.pinId);
+					const target = connectionDropTarget(event, connecting.pinId);
 					if (target) {
+						const nets = pinNets();
 						const targetNetId =
-							target.kind === "net" ? target.id : pinNets.get(target.id)?.id;
+							target.kind === "net" ? target.id : nets.get(target.id)?.id;
 						const sameNet =
-							targetNetId &&
-							pinNets.get(connectionDrag.pinId)?.id === targetNetId;
+							targetNetId && nets.get(connecting.pinId)?.id === targetNetId;
 						const command: CircuitCommand =
 							target.kind === "net"
 								? {
 										type: "connect",
-										pinIds: [connectionDrag.pinId],
+										pinIds: [connecting.pinId],
 										netId: target.id,
 									}
 								: {
 										type: "connect",
-										pinIds: [connectionDrag.pinId, target.id],
+										pinIds: [connecting.pinId, target.id],
 									};
 						if (sameNet || run(command)) {
 							setPendingPin(null);
@@ -301,20 +305,21 @@ export function circuitPointerHandlers({
 				}
 				return;
 			}
-			if (!drag || drag.pointerId !== event.pointerId) return;
-			const current = point(event);
+			const dragging = drag();
+			if (!dragging || dragging.pointerId !== event.pointerId) return;
+			const position = point(event);
 			const { x, y } = snap({
-				x: drag.position.x + current.x - drag.start.x,
-				y: drag.position.y + current.y - drag.start.y,
+				x: dragging.position.x + position.x - dragging.start.x,
+				y: dragging.position.y + position.y - dragging.start.y,
 			});
 			const active =
-				drag.active ||
+				dragging.active ||
 				Math.hypot(
-					event.clientX - drag.startClient.x,
-					event.clientY - drag.startClient.y,
+					event.clientX - dragging.startClient.x,
+					event.clientY - dragging.startClient.y,
 				) > 3;
-			if (active && (x !== drag.position.x || y !== drag.position.y))
-				run({ type: "move", positions: [{ ...drag.position, x, y }] });
+			if (active && (x !== dragging.position.x || y !== dragging.position.y))
+				run({ type: "move", positions: [{ ...dragging.position, x, y }] });
 			setDrag(null);
 		},
 		onPointerCancel: () => {

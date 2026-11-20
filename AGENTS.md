@@ -49,7 +49,7 @@ Use the `#/components/editor/Editor2D.tsx` import format, instead of `../../src/
 - Add a realistic scenario and explicit budgets in `tests/performance` when a feature adds a new user flow or materially larger workload. Keep startup scenarios free of editor and renderer dependencies.
 - Tag every new scenario with its area from `tests/performance/tags.ts`. If it covers a new area, add the tag and a mapping row in `scripts/performance/select.ts`.
 - Measure expensive operations with the shared helpers in `packages/core/src/performance/runtime.ts`. Keep metric names stable, metadata small, and reports free of project contents, file names, and directory paths. Keep buffers bounded and production collection opt-in.
-- Use `pnpm run perf:dev` with a separate baseline path to investigate React render costs. Production benchmarks determine shipped performance. See `docs/performance.md` for commands and metric limitations.
+- Use `pnpm run perf:dev` with a separate baseline path to investigate development-build costs. Production benchmarks determine shipped performance. See `docs/performance.md` for commands and metric limitations.
 - Investigate a failed budget or baseline comparison before changing thresholds. Explain any intentional budget change and its user impact.
 
 ## Parallel development
