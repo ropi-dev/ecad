@@ -84,6 +84,7 @@ export function isMouseWheel(
 	},
 ) {
 	if (event.deltaMode !== 0) return true;
+	if (event.deltaX !== 0 && event.deltaY !== 0) return false;
 	return (
 		[
 			[event.wheelDeltaX, event.deltaX],
@@ -93,6 +94,18 @@ export function isMouseWheel(
 		([ticks, delta]) =>
 			!!ticks && ticks % WHEEL_TICK === 0 && ticks !== -3 * delta,
 	);
+}
+
+export function mouseWheelSteps(
+	event: Pick<WheelEvent, "deltaMode" | "deltaY"> & {
+		wheelDeltaY?: number;
+	},
+) {
+	if (event.wheelDeltaY && event.wheelDeltaY % WHEEL_TICK === 0)
+		return -event.wheelDeltaY / WHEEL_TICK;
+	if (event.deltaMode === 1) return event.deltaY / 3;
+	if (event.deltaMode === 2) return Math.sign(event.deltaY) * 3;
+	return event.deltaY / 100;
 }
 
 export function viewerPixelRatio() {

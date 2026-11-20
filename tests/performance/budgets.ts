@@ -12,6 +12,14 @@ export const budgets = {
 		scriptBytes: 3_500_000,
 		frameP95Ms: 500,
 	},
+	"pcb-pan": {
+		interactionP95Ms: 8000,
+		panFrameP50Ms: 50,
+		panFrameP95Ms: 200,
+		domNodes: 1500,
+		scriptBytes: 3_500_000,
+		frameP95Ms: 10,
+	},
 	"pcb-board-realistic": {
 		interactionP95Ms: 3000,
 		realisticOnMs: 1000,

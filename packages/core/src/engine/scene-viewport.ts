@@ -199,18 +199,20 @@ export function createSceneViewport(
 		let group = content.object;
 		// Only a locked top view pans without changing scale or orientation.
 		const panCache =
-			cameraMode === "top" && !content.planar
+			cameraMode === "top"
 				? lifecycle.acquire(
 						() => createPanCache(output),
 						(cache) => cache.dispose(),
 					)
 				: null;
+		const hasVisiblePlanar = () =>
+			content.entries.some((entry) => entry.planar && entry.object.visible);
 		const batcher =
-			cameraMode === "top" && !content.planar && !selectionEnabled
+			cameraMode === "top" && !selectionEnabled
 				? lifecycle.acquire(createDrawBatcher, (batcher) => batcher.dispose())
 				: null;
 		if (batcher) {
-			group.matrixAutoUpdate = false;
+			if (!content.planar) group.matrixAutoUpdate = false;
 			output.setTransparentSort(
 				(a, b) =>
 					a.groupOrder - b.groupOrder ||
@@ -456,14 +458,25 @@ export function createSceneViewport(
 				camera.updateMatrixWorld();
 				const damage = changed || edited ? syncBatches() : null;
 				// Hover depends on the pointer, so only a scene without one pans.
+				const panCacheCamera =
+					panCache &&
+					!orbiting &&
+					camera instanceof OrthographicCamera &&
+					!hasVisiblePlanar()
+						? camera
+						: null;
 				const panned =
 					panCache &&
+					panCacheCamera &&
 					!changed &&
 					(!edited || (batched && damage)) &&
-					!pointer &&
-					!orbiting &&
-					camera instanceof OrthographicCamera
-						? panCache.pan(scene, camera, placeGrid, damage ?? undefined)
+					!pointer
+						? panCache.pan(
+								scene,
+								panCacheCamera,
+								placeGrid,
+								damage ?? undefined,
+							)
 						: null;
 				const { x, y } = camera.position;
 				panCacheHit = panned !== null;
@@ -493,8 +506,7 @@ export function createSceneViewport(
 							batcher?.prepare(visibleHeight() / Math.max(canvas.height, 1));
 						renderScene();
 						releaseRetired();
-						if (camera instanceof OrthographicCamera && !orbiting)
-							panCache?.capture(camera);
+						if (panCache && panCacheCamera) panCache.capture(panCacheCamera);
 						else panCache?.invalidate();
 					} finally {
 						if (shown) {
@@ -779,17 +791,34 @@ export function createSceneViewport(
 			schedule();
 		};
 		const reset = fit;
+		const isObjectVisible = (object: Object3D) => {
+			for (
+				let current: Object3D | null = object;
+				current;
+				current = current.parent
+			)
+				if (!current.visible) return false;
+			return true;
+		};
 		const focus = (clientX: number, clientY: number): Vector3 | null => {
-			if (!orbiting || board.isEmpty()) return null;
+			if (topView && (!orbiting || board.isEmpty())) return null;
+			if (!topView && bounds.isEmpty()) return null;
 			const rect = canvas.getBoundingClientRect();
+			const ndcX = ((clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1;
+			const ndcY = -((clientY - rect.top) / Math.max(rect.height, 1)) * 2 + 1;
+			if (!topView) {
+				camera.updateMatrixWorld();
+				raycaster.setFromCamera(new Vector2(ndcX, ndcY), camera);
+				const hit = raycaster
+					.intersectObject(group, true)
+					.find((entry) => isObjectVisible(entry.object));
+				return hit ? hit.point.clone() : bounds.getCenter(new Vector3());
+			}
 			const onPlane = (x: number, y: number) => {
 				raycaster.setFromCamera(new Vector2(x, y), camera);
 				return raycaster.ray.intersectPlane(midPlane, new Vector3());
 			};
-			const hit = onPlane(
-				((clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1,
-				-((clientY - rect.top) / Math.max(rect.height, 1)) * 2 + 1,
-			);
+			const hit = onPlane(ndcX, ndcY);
 			if (
 				hit &&
 				hit.x >= board.min.x &&
@@ -913,7 +942,7 @@ export function createSceneViewport(
 				onOrbit?.(false);
 			});
 		};
-		const pan = (x: number, y: number) => controls.pan(-x, -y);
+		const pan = (x: number, y: number) => navigation.pan(-x, -y);
 		const onKey = (event: KeyboardEvent) => {
 			if (event.key === "Escape") clearSelection();
 			handleViewerKeyDown(event, {
@@ -1109,12 +1138,13 @@ export function createSceneViewport(
 				else schedule();
 			},
 			setScene: (next, update) => {
-				if (panCache || batcher) return false;
+				if (batcher && !content.planar) return false;
 				const display = createSceneDisplay(next);
 				if (display.planar !== content.planar) {
 					display.dispose();
 					return false;
 				}
+				panCache?.invalidate();
 				scene.remove(group, hover.object, selection.object);
 				const replaced = [content, hover, selection];
 				retired.push(() => {

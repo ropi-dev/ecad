@@ -1,15 +1,19 @@
 import {
-	MOUSE,
-	type OrthographicCamera,
+	OrthographicCamera,
 	type PerspectiveCamera,
 	Quaternion,
 	TOUCH,
 	Vector3,
 } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { isMouseWheel, wheelDelta } from "#/engine/navigation.ts";
+import {
+	isMouseWheel,
+	mouseWheelSteps,
+	wheelDelta,
+} from "#/engine/navigation.ts";
 
 const UNLOCK_DISTANCE = 4;
+const MOUSE_WHEEL_ZOOM = 1.15;
 
 export type OrbitGesture = "shift" | "alt-shift";
 
@@ -31,8 +35,8 @@ export function create3DControls(
 		onFocus?: (point: Vector3 | null) => void;
 	} = {},
 ) {
-	const controls = new OrbitControls(camera, canvas);
-	controls.mouseButtons = { LEFT: null, MIDDLE: MOUSE.PAN, RIGHT: null };
+	const controls = new OrbitControls(camera, null);
+	controls.mouseButtons = { LEFT: null, MIDDLE: null, RIGHT: null };
 	controls.zoomToCursor = true;
 	controls.touches.ONE = null;
 	const panFirst = lockTop;
@@ -48,14 +52,14 @@ export function create3DControls(
 		controls.touches.ONE = locked ? TOUCH.PAN : null;
 	};
 	setRotationLocked(lockTop);
-	const unlocks = (event: MouseEvent) =>
-		!!unlock && event.shiftKey && (unlockGesture === "shift" || event.altKey);
-	controls.listenToKeyEvents(canvas);
 	const pointers = new Map<number, { x: number; y: number; touch: boolean }>();
 	let orbitPointer: number | null = null;
+	let orbitRequiresAlt = false;
+	let panPointer: number | null = null;
 	let pivot: Vector3 | null = null;
 	let gestureStart: { x: number; y: number } | null = null;
 	let lastWheel = Number.NEGATIVE_INFINITY;
+	let lastWheelMode: "zoom" | "pan" | "orbit" | null = null;
 	let wheelTravel = 0;
 	let wheelEnd: ReturnType<typeof setTimeout> | undefined;
 	let focusShown = false;
@@ -79,6 +83,90 @@ export function create3DControls(
 		const depth = pivot.clone().sub(camera.position).dot(forward);
 		if (depth < controls.minDistance || depth > controls.maxDistance) return;
 		controls.target.copy(camera.position).addScaledVector(forward, depth);
+	};
+	const panRight = new Vector3();
+	const panUp = new Vector3();
+	const panOffset = new Vector3();
+	const pan = (deltaX: number, deltaY: number) => {
+		if (!controls.enabled || !controls.enablePan) return;
+		if (deltaX === 0 && deltaY === 0) return;
+		const camera = controls.object;
+		camera.updateMatrixWorld();
+		panRight.setFromMatrixColumn(camera.matrix, 0);
+		panUp.setFromMatrixColumn(camera.matrix, 1);
+		panOffset.set(0, 0, 0);
+		const speed = controls.panSpeed;
+		if (camera instanceof OrthographicCamera) {
+			panOffset
+				.addScaledVector(
+					panRight,
+					(-deltaX * speed * (camera.right - camera.left)) /
+						camera.zoom /
+						Math.max(canvas.clientWidth, 1),
+				)
+				.addScaledVector(
+					panUp,
+					(deltaY * speed * (camera.top - camera.bottom)) /
+						camera.zoom /
+						Math.max(canvas.clientHeight, 1),
+				);
+		} else {
+			const targetDistance =
+				camera.position.distanceTo(controls.target) *
+				Math.tan(((camera.fov / 2) * Math.PI) / 180);
+			const scale =
+				(2 * targetDistance * speed) / Math.max(canvas.clientHeight, 1);
+			panOffset
+				.addScaledVector(panRight, -deltaX * scale)
+				.addScaledVector(panUp, deltaY * scale);
+		}
+		camera.position.add(panOffset);
+		controls.target.add(panOffset);
+		camera.updateMatrixWorld();
+		controls.dispatchEvent({ type: "change" });
+	};
+	const zoomAt = (clientX: number, clientY: number, factor: number) => {
+		if (!controls.enabled || !controls.enableZoom) return;
+		if (!Number.isFinite(factor) || factor <= 0 || factor === 1) return;
+		const camera = controls.object;
+		camera.updateMatrixWorld();
+		const rect = canvas.getBoundingClientRect();
+		const ndcX = ((clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1;
+		const ndcY = -((clientY - rect.top) / Math.max(rect.height, 1)) * 2 + 1;
+		if (camera instanceof OrthographicCamera) {
+			const before = new Vector3(ndcX, ndcY, 0).unproject(camera);
+			const prevZoom = camera.zoom;
+			camera.zoom = Math.max(
+				controls.minZoom,
+				Math.min(controls.maxZoom, camera.zoom * factor),
+			);
+			if (camera.zoom === prevZoom) return;
+			camera.updateProjectionMatrix();
+			const after = new Vector3(ndcX, ndcY, 0).unproject(camera);
+			const shift = before.sub(after);
+			camera.position.add(shift);
+			controls.target.add(shift);
+			camera.updateMatrixWorld();
+			controls.dispatchEvent({ type: "change" });
+			return;
+		}
+		const prevRadius = camera.position.distanceTo(controls.target);
+		const nextRadius = Math.max(
+			controls.minDistance,
+			Math.min(controls.maxDistance, prevRadius / factor),
+		);
+		const radiusDelta = prevRadius - nextRadius;
+		if (radiusDelta === 0) return;
+		const forward = new Vector3(0, 0, -1).transformDirection(camera.matrix);
+		const rayDirection = new Vector3(ndcX, ndcY, 1)
+			.unproject(camera)
+			.sub(camera.position)
+			.normalize();
+		const alignment = Math.max(rayDirection.dot(forward), 0.1);
+		camera.position.addScaledVector(rayDirection, radiusDelta / alignment);
+		camera.updateMatrixWorld();
+		controls.target.copy(camera.position).addScaledVector(forward, nextRadius);
+		controls.dispatchEvent({ type: "change" });
 	};
 	const orbit = (deltaX: number, deltaY: number) => {
 		if (!controls.enabled || (!panFirst && !controls.enableRotate)) return;
@@ -112,30 +200,62 @@ export function create3DControls(
 		controls.dispatchEvent({ type: "change" });
 	};
 	const onWheel = (event: WheelEvent) => {
-		if (event.ctrlKey || event.metaKey) return;
+		if (event.ctrlKey || event.metaKey) {
+			if (rotationLocked || !controls.enabled) return;
+			if (event.timeStamp - lastWheel > 200 || lastWheelMode !== "zoom") {
+				beginGesture(event.clientX, event.clientY);
+				wheelTravel = 0;
+			}
+			lastWheel = event.timeStamp;
+			lastWheelMode = "zoom";
+			return;
+		}
 		event.preventDefault();
 		event.stopImmediatePropagation();
 		if (!controls.enabled) return;
+		const mouseWheel = isMouseWheel(event);
+		if (!rotationLocked && mouseWheel) {
+			if (event.shiftKey) return;
+			if (event.timeStamp - lastWheel > 200 || lastWheelMode !== "zoom") {
+				beginGesture(event.clientX, event.clientY);
+				wheelTravel = 0;
+			}
+			lastWheel = event.timeStamp;
+			lastWheelMode = "zoom";
+			const steps = mouseWheelSteps(event);
+			if (steps !== 0)
+				zoomAt(event.clientX, event.clientY, MOUSE_WHEEL_ZOOM ** -steps);
+			return;
+		}
 		const delta = wheelDelta(event, canvas);
-		if (event.timeStamp - lastWheel > 200) {
+		const orbitIntent =
+			!mouseWheel && event.shiftKey && (!rotationLocked || !!unlock);
+		const mode = orbitIntent ? "orbit" : "pan";
+		if (
+			(!rotationLocked || orbitIntent) &&
+			(event.timeStamp - lastWheel > 200 || lastWheelMode !== mode)
+		) {
 			beginGesture(event.clientX, event.clientY);
 			wheelTravel = 0;
 		}
 		lastWheel = event.timeStamp;
+		lastWheelMode = mode;
 		const orbitX =
 			event.deltaMode === 2
 				? event.deltaX * Math.max(canvas.clientHeight, 1)
 				: delta.x;
-		if (event.shiftKey && !rotationLocked) {
+		if (orbitIntent && !rotationLocked) {
 			orbit(orbitX, delta.y);
-		} else if (unlocks(event) && !isMouseWheel(event)) {
+		} else if (orbitIntent) {
 			wheelTravel += Math.hypot(delta.x, delta.y);
 			if (wheelTravel >= UNLOCK_DISTANCE) orbit(orbitX, delta.y);
 		} else if (controls.enablePan) {
-			controls.pan(-delta.x, -delta.y);
+			pan(-delta.x, -delta.y);
 		}
-		clearTimeout(wheelEnd);
-		wheelEnd = setTimeout(hideFocus, 200);
+		if (!rotationLocked || orbitIntent) {
+			clearTimeout(wheelEnd);
+			wheelEnd = setTimeout(hideFocus, 200);
+		}
 	};
 	const onPointerDown = (event: PointerEvent) => {
 		if (!controls.enabled) return;
@@ -145,34 +265,26 @@ export function create3DControls(
 			touch: event.pointerType === "touch",
 		});
 		const touch = event.pointerType === "touch";
-		if (pointers.size > 1) hideFocus();
-		else if (touch || event.button === 0 || event.button === 1)
+		if (pointers.size > 1) {
+			orbitPointer = null;
+			panPointer = null;
+			hideFocus();
+		} else if (touch || event.button === 0 || event.button === 1)
 			beginGesture(event.clientX, event.clientY);
 		if (touch || (event.button !== 0 && event.button !== 1)) return;
-		const button = event.button === 0 ? "LEFT" : "MIDDLE";
-		if (panFirst) {
-			if (event.shiftKey && (!rotationLocked || unlocks(event))) {
-				orbitPointer = event.pointerId;
-				controls.mouseButtons[button] = null;
-				return;
-			}
-			controls.mouseButtons[button] =
-				event.ctrlKey || event.metaKey || event.shiftKey
-					? MOUSE.ROTATE
-					: MOUSE.PAN;
-			return;
-		}
-		if (event.shiftKey) {
+		const requiresAlt = event.button === 0 && unlockGesture === "alt-shift";
+		const canUnlock =
+			!!unlock && event.shiftKey && (!requiresAlt || event.altKey);
+		if (event.shiftKey && (!rotationLocked || canUnlock)) {
 			orbitPointer = event.pointerId;
-			controls.mouseButtons[button] = null;
+			orbitRequiresAlt = requiresAlt;
+			panPointer = null;
 			return;
 		}
-		controls.mouseButtons[button] =
-			event.ctrlKey || event.metaKey
-				? MOUSE.ROTATE
-				: event.button === 1
-					? MOUSE.PAN
-					: null;
+		if (panFirst || event.button === 1 || event.ctrlKey || event.metaKey) {
+			panPointer = event.pointerId;
+			orbitPointer = null;
+		}
 	};
 	const onPointerMove = (event: PointerEvent) => {
 		const previous = pointers.get(event.pointerId);
@@ -182,10 +294,14 @@ export function create3DControls(
 		if (orbitPointer === event.pointerId) {
 			if (
 				rotationLocked &&
-				(!unlocks(event) || Math.hypot(deltaX, deltaY) < UNLOCK_DISTANCE)
+				(!event.shiftKey ||
+					(orbitRequiresAlt && !event.altKey) ||
+					Math.hypot(deltaX, deltaY) < UNLOCK_DISTANCE)
 			)
 				return;
 			orbit(deltaX, deltaY);
+		} else if (panPointer === event.pointerId) {
+			pan(-deltaX, -deltaY);
 		} else if (previous.touch && pointers.size === 1 && !rotationLocked)
 			orbit(deltaX, deltaY);
 		previous.x = event.clientX;
@@ -194,6 +310,7 @@ export function create3DControls(
 	const onPointerEnd = (event: PointerEvent) => {
 		pointers.delete(event.pointerId);
 		if (orbitPointer === event.pointerId) orbitPointer = null;
+		if (panPointer === event.pointerId) panPointer = null;
 		if (pointers.size === 0) hideFocus();
 	};
 	const onMouseDown = (event: MouseEvent) => {
@@ -229,8 +346,11 @@ export function create3DControls(
 	canvas.addEventListener("wheel", onWheel, { capture: true, passive: false });
 	canvas.addEventListener("mousedown", onMouseDown);
 	canvas.addEventListener("auxclick", onAuxClick);
+	controls.connect(canvas);
+	controls.listenToKeyEvents(canvas);
 	return {
 		controls,
+		pan,
 		setRotationLocked,
 		dispose: () => {
 			canvas.removeEventListener("pointerdown", onPointerDown, true);
