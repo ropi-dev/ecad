@@ -1,4 +1,4 @@
-import { boardPads } from "#/board/footprints.ts";
+import type { CopperItem } from "#/board/connectivity.ts";
 import {
 	type Hull,
 	hullDistance,
@@ -8,13 +8,10 @@ import {
 	trackSegment,
 } from "#/board/geometry.ts";
 import {
-	copperClear,
 	type RouteBudget,
 	routeTrack,
-	type TrackRoute,
 	type TrackRouting,
 	touchingItems,
-	trackClear,
 } from "#/board/track-router.ts";
 import type { EditorShape, LineShape } from "#/drawing/schema.ts";
 import { snapPoint } from "#/drawing/shape-geometry.ts";
@@ -29,6 +26,7 @@ import { isVia, shapeLayers } from "#/footprint/shapes.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
 type Track = LineShape & { layer: CopperLayer };
+type Segment = readonly [Point, Point];
 
 export const isBoardTrack = (shape: EditorShape): shape is Track =>
 	shape.kind === "line" && isCopperLayer(shape.layer as FootprintLayer);
@@ -41,177 +39,29 @@ export const isCollapsedTrack = (shape: EditorShape) =>
 const near = (a: Point, b: Point) =>
 	Math.abs(a.x - b.x) <= join && Math.abs(a.y - b.y) <= join;
 
-interface TrackEnd {
-	readonly track: Track;
-	readonly index: 0 | 1;
-	readonly point: Point;
-}
+const sameNet = (a: string | undefined, b: string | undefined) =>
+	a === undefined || b === undefined || a === b;
 
-interface Anchor {
-	readonly owner: number;
-	readonly centre: Point;
-	readonly layers: readonly string[];
+interface Copper {
 	readonly hulls: readonly Hull[];
+	readonly layers: readonly string[];
 }
 
-interface BoardIndex {
-	readonly widest: number;
-	readonly byId: Map<number, EditorShape>;
-	readonly ends: Map<number, TrackEnd[]>;
-	readonly anchors: readonly Anchor[];
-	readonly bodies: Map<number, Track[]>;
-}
+const copperOf = (shape: EditorShape): Copper => ({
+	hulls: shapeHulls(shape),
+	layers: isVia(shape) ? shapeLayers(shape) : [shape.layer ?? ""],
+});
 
-const bodyKey = (x: number, y: number) =>
-	(Math.floor(x) + 32_768) * 65_536 + Math.floor(y) + 32_768;
-
-function forBodyBuckets(
-	a: Point,
-	b: Point,
-	visit: (key: number) => void,
-	pad = join,
-) {
-	for (
-		let x = Math.floor(Math.min(a.x, b.x) - pad);
-		x <= Math.floor(Math.max(a.x, b.x) + pad);
-		x++
-	)
-		for (
-			let y = Math.floor(Math.min(a.y, b.y) - pad);
-			y <= Math.floor(Math.max(a.y, b.y) + pad);
-			y++
-		)
-			visit(bodyKey(x, y));
-}
-
-function onBody(track: Track, point: Point, reach = join) {
-	const [a, b] = lineEnds(track);
-	const limit = Math.max(join, reach);
-	if (segmentDistance(point, a, b) > limit) return false;
-	return (
-		Math.hypot(point.x - a.x, point.y - a.y) > limit &&
-		Math.hypot(point.x - b.x, point.y - b.y) > limit
+const touches = (a: Copper, b: Copper) =>
+	a.layers.some((layer) => b.layers.includes(layer)) &&
+	a.hulls.some((hull) =>
+		b.hulls.some((other) => hullDistance(hull, other) <= join),
 	);
-}
 
-function forNearBuckets(
-	point: Point,
-	radius: number,
-	visit: (key: number) => void,
-) {
-	for (
-		let x = Math.floor(point.x - radius) - 1;
-		x <= Math.floor(point.x + radius) + 1;
-		x++
-	)
-		for (
-			let y = Math.floor(point.y - radius) - 1;
-			y <= Math.floor(point.y + radius) + 1;
-			y++
-		)
-			visit(bodyKey(x, y));
-}
+const covers = (copper: Copper, point: Point) =>
+	copper.hulls.some((hull) => pointHullDistance(hull, point) <= join);
 
-function bodiesAt(index: BoardIndex, point: Point, reach = 0): Track[] {
-	const found = new Set<Track>();
-	forNearBuckets(point, reach + index.widest / 2, (key) => {
-		for (const track of index.bodies.get(key) ?? [])
-			if (onBody(track, point, reach + track.lineWidth / 2)) found.add(track);
-	});
-	return [...found];
-}
-
-function branchesOn(index: BoardIndex, track: Track): TrackEnd[] {
-	const [a, b] = lineEnds(track);
-	const seen = new Set<number>();
-	const found: TrackEnd[] = [];
-	forBodyBuckets(
-		a,
-		b,
-		(key) => {
-			for (const other of index.bodies.get(key) ?? []) {
-				if (other.id === track.id || other.layer !== track.layer) continue;
-				if (seen.has(other.id)) continue;
-				seen.add(other.id);
-				if (track.net && other.net && track.net !== other.net) continue;
-				const reach = (track.lineWidth + other.lineWidth) / 2;
-				for (const [end, point] of lineEnds(other).entries())
-					if (onBody(track, point, reach))
-						found.push({ track: other, index: end as 0 | 1, point });
-			}
-		},
-		(track.lineWidth + index.widest) / 2,
-	);
-	return found;
-}
-
-const indexes = new WeakMap<readonly EditorShape[], BoardIndex>();
-
-function boardIndex(allShapes: readonly EditorShape[]): BoardIndex {
-	const cached = indexes.get(allShapes);
-	if (cached) return cached;
-	const byId = new Map<number, EditorShape>();
-	const ends = new Map<number, TrackEnd[]>();
-	const anchors: Anchor[] = [];
-	const bodies = new Map<number, Track[]>();
-	for (const shape of allShapes) {
-		byId.set(shape.id, shape);
-		if (isVia(shape))
-			anchors.push({
-				owner: shape.id,
-				centre: { x: shape.x, y: shape.y },
-				layers: shapeLayers(shape),
-				hulls: shapeHulls(shape),
-			});
-		if (!isBoardTrack(shape)) continue;
-		const [a, b] = lineEnds(shape);
-		forBodyBuckets(a, b, (key) => {
-			const list = bodies.get(key);
-			if (list) list.push(shape);
-			else bodies.set(key, [shape]);
-		});
-		for (const [index, point] of lineEnds(shape).entries()) {
-			const key = bodyKey(point.x, point.y);
-			const end = { track: shape, index: index as 0 | 1, point };
-			const list = ends.get(key);
-			if (list) list.push(end);
-			else ends.set(key, [end]);
-		}
-	}
-	for (const pad of boardPads(allShapes))
-		anchors.push({
-			owner: pad.footprint.id,
-			centre: { x: pad.shape.x, y: pad.shape.y },
-			layers: shapeLayers(pad.shape),
-			hulls: shapeHulls(pad.shape),
-		});
-	let widest = 0;
-	for (const shape of allShapes)
-		if (isBoardTrack(shape)) widest = Math.max(widest, shape.lineWidth);
-	const index = { widest, byId, ends, anchors, bodies };
-	indexes.set(allShapes, index);
-	return index;
-}
-
-function endsAt(
-	index: BoardIndex,
-	point: Point,
-	reach: (end: TrackEnd) => number = () => join,
-	radius = 0,
-): TrackEnd[] {
-	const found: TrackEnd[] = [];
-	forNearBuckets(point, radius, (key) => {
-		for (const end of index.ends.get(key) ?? [])
-			if (
-				Math.hypot(end.point.x - point.x, end.point.y - point.y) <=
-				Math.max(join, reach(end))
-			)
-				found.push(end);
-	});
-	return found;
-}
-
-function segmentDistance(point: Point, a: Point, b: Point) {
+function nearestOn([a, b]: Segment, point: Point): Point {
 	const dx = b.x - a.x;
 	const dy = b.y - a.y;
 	const length = dx * dx + dy * dy || 1;
@@ -219,12 +69,17 @@ function segmentDistance(point: Point, a: Point, b: Point) {
 		0,
 		Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / length),
 	);
-	return Math.hypot(a.x + t * dx - point.x, a.y + t * dy - point.y);
+	return { x: a.x + t * dx, y: a.y + t * dy };
 }
 
-const covers = (anchor: Anchor, point: Point, layer: string, reach = 0) =>
-	anchor.layers.includes(layer) &&
-	anchor.hulls.some((hull) => pointHullDistance(hull, point) <= reach + join);
+const gap = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
+
+function closestOn(line: Segment, other: Segment): Point {
+	return [nearestOn(line, other[0]), nearestOn(line, other[1]), ...line]
+		.map((point) => ({ point, gap: gap(point, nearestOn(other, point)) }))
+		.reduce((best, candidate) => (candidate.gap < best.gap ? candidate : best))
+		.point;
+}
 
 function withEnds(track: Track, from: Point, to: Point): Track {
 	const { x, y, width, rotation } = trackSegment(
@@ -238,13 +93,331 @@ function withEnds(track: Track, from: Point, to: Point): Track {
 	return { ...track, x, y, width, rotation };
 }
 
+function segments(path: readonly Point[]): Segment[] {
+	const result: Segment[] = [];
+	for (let index = 1; index < path.length; index++)
+		if (!near(path[index - 1], path[index]))
+			result.push([path[index - 1], path[index]]);
+	return result;
+}
+
+interface Piece {
+	readonly id?: number;
+	readonly line: Segment;
+	readonly before: Copper;
+	readonly after: Copper;
+	readonly net?: string;
+	readonly track?: Track;
+	readonly shift?: (point: Point) => Point;
+}
+
+interface Follower {
+	readonly item: CopperItem;
+	readonly track: Track;
+	readonly ends: [Point | undefined, Point | undefined];
+	readonly rides: Set<Piece>;
+	path: readonly Point[];
+	clear: boolean;
+	copper: Copper;
+}
+
+function rework(
+	pieces: readonly Piece[],
+	placed: readonly EditorShape[],
+	routing: TrackRouting,
+	nextShapeId: number,
+	stretched = new Map<CopperItem, Segment>(),
+	dragged?: number,
+): EditorShape[] | undefined {
+	const selected = new Set(placed.map((shape) => shape.id));
+	const attached = (copper: Copper, net: string | undefined) =>
+		touchingItems(copper, routing).filter(
+			(item) => !selected.has(item.shapeId) && sameNet(item.net, net),
+		);
+	const followers = new Map<number, Follower>();
+	const follow = (item: CopperItem) => {
+		const known = followers.get(item.shapeId);
+		if (known) return known;
+		const follower: Follower = {
+			item,
+			track: item.shape as Track,
+			ends: [undefined, undefined],
+			rides: new Set(),
+			path: [],
+			clear: true,
+			copper: item,
+		};
+		followers.set(item.shapeId, follower);
+		return follower;
+	};
+	for (const piece of pieces) {
+		const { shift } = piece;
+		if (!shift) continue;
+		for (const item of attached(piece.before, piece.net)) {
+			if (item.kind !== "track" || item.shape.locked) continue;
+			for (const [index, end] of lineEnds(item.shape).entries()) {
+				if (!covers(piece.before, end)) continue;
+				const follower = follow(item);
+				follower.ends[index] = shift(end);
+				follower.rides.add(piece);
+			}
+		}
+	}
+	for (const [item, ends] of stretched) follow(item).path = ends;
+
+	const budget: RouteBudget = { remaining: 30_000 };
+	const ignore = new Set([...selected, ...followers.keys()]);
+	const route = (track: Track, from: Point, to: Point, prefer?: Point) =>
+		routeTrack(
+			{
+				from,
+				to,
+				layer: track.layer,
+				width: track.lineWidth,
+				net: track.net,
+				prefer,
+				ignore,
+			},
+			routing,
+			budget,
+		);
+	for (const follower of followers.values()) {
+		const { track, ends } = follower;
+		const [a, b] = lineEnds(track);
+		if (follower.path.length === 0) {
+			const [toA, toB] = ends;
+			if (
+				toA &&
+				toB &&
+				near(toA, { x: a.x + toB.x - b.x, y: a.y + toB.y - b.y })
+			)
+				follower.path = [toA, toB];
+			else {
+				const found = toB
+					? route(track, toA ?? a, toB, { x: b.x - a.x, y: b.y - a.y })
+					: route(track, b, toA ?? a, { x: a.x - b.x, y: a.y - b.y });
+				follower.path = toB ? found.points : [...found.points].reverse();
+				follower.clear = found.clear;
+			}
+		}
+		const lines = segments(follower.path);
+		follower.copper = {
+			layers: [track.layer],
+			hulls: (lines.length ? lines : [[follower.path[0]]]).map((points) => ({
+				points,
+				radius: track.lineWidth / 2,
+			})),
+		};
+	}
+
+	const moved = new Map(
+		pieces.flatMap((piece) =>
+			piece.id === undefined ? [] : [[piece.id, piece.after] as const],
+		),
+	);
+	const reached = pieces.find((piece) => piece.id === undefined)?.before;
+	const keeps = (follower: Follower) =>
+		touchingItems(follower.item, routing).every((item) => {
+			if (item === follower.item || !sameNet(item.net, follower.track.net))
+				return true;
+			if (follower.track.id === dragged && reached && touches(item, reached))
+				return true;
+			const now =
+				followers.get(item.shapeId)?.copper ??
+				(selected.has(item.shapeId) ? moved.get(item.shapeId) : item);
+			return !now || touches(follower.copper, now);
+		});
+	for (let dropped = true; dropped; ) {
+		dropped = false;
+		for (const [id, follower] of followers) {
+			if (keeps(follower)) continue;
+			if (stretched.has(follower.item)) return undefined;
+			followers.delete(id);
+			dropped = true;
+		}
+	}
+
+	const result: EditorShape[] = [...placed];
+	const added: Track[] = [];
+	let unsafe = false;
+	const place = (track: Track, path: readonly Point[], keep: boolean) => {
+		const [first, ...rest] = segments(path);
+		if (keep)
+			result.push(
+				first
+					? withEnds(track, first[0], first[1])
+					: withEnds(track, path[0], path[0]),
+			);
+		else if (first) rest.unshift(first);
+		for (const [from, to] of rest)
+			added.push(
+				trackSegment(
+					nextShapeId + added.length,
+					from,
+					to,
+					track.layer,
+					track.lineWidth,
+					track.net,
+				) as Track,
+			);
+	};
+	for (const follower of followers.values()) {
+		place(follower.track, follower.path, true);
+		if (!follower.clear) unsafe = true;
+	}
+
+	const links: { from: Point; to: Point; track: Track }[] = [];
+	for (const piece of pieces) {
+		const { shift } = piece;
+		if (!shift) continue;
+		const holders = attached(piece.before, piece.net);
+		const riders = [...followers.values()].filter((follower) =>
+			follower.rides.has(piece),
+		);
+		const group = [piece.after, ...riders.map((follower) => follower.copper)];
+		for (const item of holders) {
+			if (followers.has(item.shapeId)) continue;
+			if (group.some((copper) => touches(item, copper))) continue;
+			const ends = item.kind === "track" ? lineEnds(item.shape) : undefined;
+			const centre = item.points[0] ?? piece.line[0];
+			const at = ends
+				? closestOn(piece.line, ends)
+				: nearestOn(piece.line, centre);
+			const from = ends ? nearestOn(ends, at) : covers(item, at) ? at : centre;
+			const layer =
+				piece.track?.layer ??
+				item.layers.find((candidate) =>
+					piece.before.layers.includes(candidate),
+				);
+			const template =
+				piece.track ??
+				[item, ...holders].find((holder) => holder.kind === "track")?.shape ??
+				riders[0]?.track;
+			const to = shift(at);
+			if (!layer || !template || !isBoardTrack(template)) continue;
+			if (
+				links.some(
+					(link) =>
+						link.track.layer === layer &&
+						near(link.from, from) &&
+						near(link.to, to),
+				)
+			)
+				continue;
+			links.push({ from, to, track: { ...template, layer } });
+		}
+	}
+	for (const { from, to, track } of links) {
+		const found = route(track, from, to);
+		place(track, found.points, false);
+		if (!found.clear) unsafe = true;
+	}
+
+	const merged = merge(result, added, selected, routing);
+	if (unsafe) markUnsafeMove(merged);
+	return merged;
+}
+
+function orient(track: Track, from: Point, to: Point): Track {
+	const [a, b] = lineEnds(track);
+	return (to.x - from.x) * (b.x - a.x) + (to.y - from.y) * (b.y - a.y) >= 0
+		? withEnds(track, from, to)
+		: withEnds(track, to, from);
+}
+
+function merge(
+	result: readonly EditorShape[],
+	added: readonly Track[],
+	selected: ReadonlySet<number>,
+	routing: TrackRouting,
+): EditorShape[] {
+	const tracks = new Map<number, Track>();
+	for (const shape of [...result, ...added])
+		if (isBoardTrack(shape)) tracks.set(shape.id, shape);
+	const vias = result.filter(isVia).map(copperOf);
+	const around = (point: Point, layer: string) =>
+		touchingItems(
+			{ hulls: [{ points: [point], radius: 0 }], layers: [layer] },
+			routing,
+		).filter((item) => !selected.has(item.shapeId));
+	const pinned = (point: Point, layer: string) =>
+		vias.some((via) => covers(via, point)) ||
+		around(point, layer).some(
+			(item) => item.kind !== "track" && covers(item, point),
+		);
+	const endingAt = (point: Point, layer: string) => {
+		const found: { track: Track; far: Point }[] = [];
+		const add = (track: Track) => {
+			if (track.layer !== layer || track.width <= join) return;
+			const [a, b] = lineEnds(track);
+			if (near(a, point)) found.push({ track, far: b });
+			else if (near(b, point)) found.push({ track, far: a });
+		};
+		for (const track of tracks.values()) add(track);
+		for (const { shape } of around(point, layer))
+			if (isBoardTrack(shape) && !tracks.has(shape.id)) add(shape);
+		return found;
+	};
+	const keeps = (a: Track, b: Track) =>
+		selected.has(a.id) !== selected.has(b.id)
+			? selected.has(a.id)
+			: a.id < b.id;
+	const queue = [...tracks.values()].flatMap((track) =>
+		lineEnds(track).map((point) => ({ point, layer: track.layer })),
+	);
+	for (let next = queue.pop(); next; next = queue.pop()) {
+		const { point, layer } = next;
+		const meeting = endingAt(point, layer);
+		if (meeting.length !== 2) continue;
+		const [first, second] = meeting;
+		if (
+			first.track.id === second.track.id ||
+			first.track.locked ||
+			second.track.locked ||
+			first.track.net !== second.track.net ||
+			Math.abs(first.track.lineWidth - second.track.lineWidth) > 1e-9
+		)
+			continue;
+		const u = { x: first.far.x - point.x, y: first.far.y - point.y };
+		const v = { x: second.far.x - point.x, y: second.far.y - point.y };
+		const cross = u.x * v.y - u.y * v.x;
+		if (Math.abs(cross) > 1e-6 * Math.hypot(u.x, u.y) * Math.hypot(v.x, v.y))
+			continue;
+		const [keep, drop] = keeps(first.track, second.track)
+			? [first, second]
+			: [second, first];
+		if (u.x * v.x + u.y * v.y > 0) {
+			const longer =
+				Math.hypot(u.x, u.y) >= Math.hypot(v.x, v.y) ? first : second;
+			const shorter = longer === first ? second : first;
+			tracks.set(keep.track.id, orient(keep.track, point, longer.far));
+			tracks.set(drop.track.id, withEnds(drop.track, shorter.far, shorter.far));
+			queue.push({ point: longer.far, layer }, { point: shorter.far, layer });
+			continue;
+		}
+		if (pinned(point, layer)) continue;
+		tracks.set(drop.track.id, withEnds(drop.track, drop.far, drop.far));
+		tracks.set(keep.track.id, orient(keep.track, keep.far, drop.far));
+		queue.push({ point: keep.far, layer }, { point: drop.far, layer });
+	}
+	const listed = new Set([...result, ...added].map((shape) => shape.id));
+	return [
+		...result.map((shape) => tracks.get(shape.id) ?? shape),
+		...[...tracks.values()].filter((track) => !listed.has(track.id)),
+		...added.flatMap((shape) => {
+			const track = tracks.get(shape.id) ?? shape;
+			return track.width <= join ? [] : [track];
+		}),
+	];
+}
+
 function slideAlong(
-	joined: TrackEnd,
+	far: Point,
+	joined: Point,
 	target: Point,
 	direction: Point,
 ): Point | undefined {
-	const far = lineEnds(joined.track)[joined.index === 0 ? 1 : 0];
-	const along = { x: joined.point.x - far.x, y: joined.point.y - far.y };
+	const along = { x: joined.x - far.x, y: joined.y - far.y };
 	const length = Math.hypot(along.x, along.y);
 	const cross = along.x * direction.y - along.y * direction.x;
 	if (length <= join || Math.abs(cross) <= 1e-6 * length) return undefined;
@@ -255,654 +428,84 @@ function slideAlong(
 	return { x: far.x + along.x * scale, y: far.y + along.y * scale };
 }
 
-type Ends = [Point | undefined, Point | undefined];
-
-interface Hold {
-	readonly holds: (to: Point) => boolean;
-	readonly start: Point;
-}
-
-const sameNet = (a: string | undefined, b: string | undefined) =>
-	a === undefined || b === undefined || a === b;
-
-class Rework {
-	result: EditorShape[] = [];
-	readonly ignore: Set<number>;
-	readonly rigid = new Set<number>();
-	unsafe = false;
-	private readonly selected: ReadonlySet<number>;
-	private readonly added: EditorShape[] = [];
-	private readonly owners = new Map<number, number>();
-	private readonly reroutes = new Map<number, { track: Track; ends: Ends }>();
-	private readonly stretches = new Map<number, { track: Track; ends: Ends }>();
-	private readonly links: {
-		from: Point;
-		to: Point;
-		track: Track;
-		owner?: number;
-	}[] = [];
-	private readonly failed = new Set<number>();
-	private readonly recordedBy = new Map<number, TrackEnd[]>();
-	private readonly budget: RouteBudget = { remaining: 30_000 };
-
-	constructor(
-		readonly index: BoardIndex,
-		selected: Iterable<number>,
-		private readonly nextShapeId: number,
-		readonly routing: TrackRouting | undefined,
-	) {
-		this.selected = new Set(selected);
-		this.ignore = new Set(this.selected);
-	}
-
-	anchorAt(point: Point, layer: string, reach = 0) {
-		return this.index.anchors.find(
-			(anchor) =>
-				!this.ignore.has(anchor.owner) && covers(anchor, point, layer, reach),
+function slide(
+	track: Track,
+	delta: Point,
+	routing: TrackRouting,
+	nextShapeId: number,
+): EditorShape[] | undefined {
+	const ends = lineEnds(track);
+	const length = gap(ends[0], ends[1]);
+	if (length <= join) return undefined;
+	const direction = {
+		x: (ends[1].x - ends[0].x) / length,
+		y: (ends[1].y - ends[0].y) / length,
+	};
+	if (Math.abs(delta.x * direction.y - delta.y * direction.x) <= join)
+		return undefined;
+	const shift = (point: Point) => ({
+		x: point.x + delta.x,
+		y: point.y + delta.y,
+	});
+	const before = copperOf(track);
+	const reach = track.lineWidth / 2 + join;
+	const targets = ends.map(shift);
+	const stretched = new Map<CopperItem, Segment>();
+	for (const [end, point] of ends.entries()) {
+		const joined = touchingItems(
+			{ hulls: [{ points: [point], radius: reach }], layers: before.layers },
+			routing,
+		).filter(
+			(item) => item.shapeId !== track.id && sameNet(item.net, track.net),
 		);
-	}
-
-	holdsAt(
-		point: Point,
-		layer: string,
-		reach = 0,
-		net?: string,
-		pinned: readonly TrackEnd[] = [],
-	): Hold[] {
-		const anchor = this.anchorAt(point, layer, reach);
-		const holds: Hold[] = [];
-		if (anchor)
-			holds.push({
-				holds: (to) => covers(anchor, to, layer, reach),
-				start: covers(anchor, point, layer) ? point : anchor.centre,
-			});
-		const bodies = new Set(
-			anchor
-				? []
-				: bodiesAt(this.index, point, reach).filter(
-						(track) =>
-							track.layer === layer &&
-							!this.ignore.has(track.id) &&
-							sameNet(track.net, net),
-					),
+		const [item] = joined;
+		if (joined.length !== 1 || item.kind !== "track" || item.shape.locked)
+			continue;
+		const other = lineEnds(item.shape);
+		const index = other.findIndex(
+			(candidate) => gap(point, candidate) <= reach,
 		);
-		for (const end of pinned)
-			if (!anchor || !covers(anchor, end.point, layer, end.track.lineWidth / 2))
-				bodies.add(end.track);
-		for (const body of bodies) {
-			const [a, b] = lineEnds(body);
-			holds.push({
-				holds: (to) => segmentDistance(to, a, b) <= reach + body.lineWidth / 2,
-				start: nearestOn([a, b], point),
-			});
-		}
-		return holds;
+		if (index < 0 || stretched.has(item)) continue;
+		const far = other[1 - index];
+		const slid = slideAlong(far, other[index], targets[end], direction);
+		if (!slid) continue;
+		targets[end] = slid;
+		stretched.set(item, index === 0 ? [slid, far] : [far, slid]);
 	}
-
-	pinned(end: TrackEnd, from: Point, moving: ReadonlySet<number> = new Set()) {
-		if (near(end.point, from)) return false;
-		const { track, point } = end;
-		const half = track.lineWidth / 2;
-		const stays = (other: Track) =>
-			other.id !== track.id &&
-			other.layer === track.layer &&
-			!this.ignore.has(other.id) &&
-			!moving.has(other.id);
-		return (
-			this.anchorAt(point, track.layer, half) !== undefined ||
-			endsAt(
-				this.index,
-				point,
-				(other) => half + other.track.lineWidth / 2,
-				half + this.index.widest / 2,
-			).some((other) => stays(other.track)) ||
-			bodiesAt(this.index, point, half).some(stays)
-		);
-	}
-
-	joinedAt(point: Point, layer?: string, net?: string, reach = 0) {
-		const nearest = new Map<number, TrackEnd>();
-		const distance = (end: TrackEnd) =>
-			Math.hypot(end.point.x - point.x, end.point.y - point.y);
-		for (const end of endsAt(
-			this.index,
-			point,
-			(end) => reach + end.track.lineWidth / 2,
-			reach + this.index.widest / 2,
-		)) {
-			const { track } = end;
-			if (this.ignore.has(track.id) || (layer && track.layer !== layer))
-				continue;
-			if (net !== undefined && track.net !== undefined && track.net !== net)
-				continue;
-			const known = nearest.get(track.id);
-			if (!known || distance(end) < distance(known)) nearest.set(track.id, end);
-		}
-		return [...nearest.values()];
-	}
-
-	private record(
-		into: Map<number, { track: Track; ends: Ends }>,
-		{ track, index }: TrackEnd,
-		to: Point,
-	) {
-		const entry = into.get(track.id) ?? {
-			track,
-			ends: [undefined, undefined] as Ends,
-		};
-		entry.ends[index] = to;
-		into.set(track.id, entry);
-	}
-
-	stretch(joined: TrackEnd, to: Point) {
-		this.record(this.stretches, joined, to);
-	}
-
-	follow(
-		track: Track,
-		from: Point,
-		to: Point,
-		joined = this.joinedAt(from, track.layer, track.net, track.lineWidth / 2),
-		reach = track.lineWidth / 2,
-		owner?: number,
-	) {
-		const unlocked = joined.filter((end) => !end.track.locked);
-		const moving = new Set(
-			unlocked
-				.filter((end) => near(end.point, from))
-				.map((end) => end.track.id),
-		);
-		const pinned = unlocked.filter((end) => this.pinned(end, from, moving));
-		for (const end of unlocked) {
-			if (pinned.includes(end)) continue;
-			this.record(this.reroutes, end, to);
-			if (owner !== undefined)
-				this.recordedBy.set(owner, [
-					...(this.recordedBy.get(owner) ?? []),
-					end,
-				]);
-		}
-		const holds = this.holdsAt(from, track.layer, reach, track.net, pinned);
-		if (!holds.length && unlocked.length !== joined.length)
-			this.link(from, to, track, owner);
-		for (const hold of holds)
-			if (!hold.holds(to)) this.link(hold.start, to, track, owner);
-	}
-
-	private link(from: Point, to: Point, track: Track, owner?: number) {
-		if (
-			this.links.some(
-				(link) =>
-					link.track.layer === track.layer &&
-					near(link.from, from) &&
-					near(link.to, to),
-			)
-		)
-			return;
-		this.links.push({ from, to, track, owner });
-	}
-
-	routeFor(track: Track, from: Point, to: Point, prefer?: Point): TrackRoute {
-		return {
-			from,
-			to,
-			layer: track.layer,
-			width: track.lineWidth,
-			net: track.net,
-			prefer,
-			ignore: this.ignore,
-		};
-	}
-
-	private place(track: Track, path: readonly Point[], keep: boolean) {
-		const [first, ...rest] = segments(path);
-		if (keep)
-			this.result.push(
-				first
-					? withEnds(track, first[0], first[1])
-					: withEnds(track, path[0], path[0]),
-			);
-		else if (first) rest.unshift(first);
-		for (const [from, to] of rest) {
-			if (keep) this.owners.set(this.nextShapeId + this.added.length, track.id);
-			this.added.push(
-				trackSegment(
-					this.nextShapeId + this.added.length,
-					from,
-					to,
-					track.layer,
-					track.lineWidth,
-					track.net,
-				),
-			);
-		}
-	}
-
-	private route(
-		track: Track,
-		from: Point,
-		to: Point,
-		prefer?: Point,
-		relax = true,
-	) {
-		const { points, clear } = routeTrack(
-			{ ...this.routeFor(track, from, to, prefer), relax },
-			this.routing,
-			this.budget,
-		);
-		if (!clear) this.failed.add(track.id);
-		return points;
-	}
-
-	reroute(track: Track, from: Point, to: Point, prefer?: Point, relax = true) {
-		this.place(track, this.route(track, from, to, prefer, relax), true);
-	}
-
-	private copperOf(id: number): [Point, Point][] {
-		const copper: [Point, Point][] = [];
-		for (const shape of [...this.result, ...this.added])
-			if (
-				isBoardTrack(shape) &&
-				shape.width > join &&
-				(shape.id === id || this.owners.get(shape.id) === id)
-			)
-				copper.push(lineEnds(shape));
-		if (copper.length) return copper;
-		const collapsed = this.result.find(
-			(shape) => shape.id === id && isBoardTrack(shape),
-		);
-		if (!collapsed) return copper;
-		const [point] = lineEnds(collapsed);
-		return [[point, point]];
-	}
-
-	private spanned(from: Point, to: Point, track: Track) {
-		return this.result.some((shape) => {
-			if (!isBoardTrack(shape) || shape.layer !== track.layer) return false;
-			if (!sameNet(shape.net, track.net)) return false;
-			const copper = this.copperOf(shape.id);
-			const on = (point: Point) =>
-				copper.some(
-					([a, b]) => segmentDistance(point, a, b) <= shape.lineWidth / 2,
-				);
-			return on(from) && on(to);
-		});
-	}
-
-	private unplace(id: number) {
-		this.failed.delete(id);
-		const recorded = this.recordedBy.get(id) ?? [];
-		for (const end of recorded) {
-			const entry = this.reroutes.get(end.track.id);
-			if (entry) entry.ends[end.index] = undefined;
-		}
-		this.recordedBy.delete(id);
-		for (let index = this.links.length - 1; index >= 0; index--)
-			if (this.links[index].owner === id) this.links.splice(index, 1);
-		this.result = this.result.filter((shape) => shape.id !== id);
-		for (const [index, shape] of this.added.entries())
-			if (this.owners.get(shape.id) === id && isBoardTrack(shape)) {
-				const [point] = lineEnds(shape);
-				this.added[index] = withEnds(shape, point, point);
-			}
-		return recorded.length > 0;
-	}
-
-	private carry(old: Track) {
-		const copper = this.copperOf(old.id);
-		if (!copper.length) return;
-		const half = old.lineWidth / 2;
-		const onCopper = (point: Point, reach: number) =>
-			copper.some(([a, b]) => segmentDistance(point, a, b) <= reach);
-		const nearest = (point: Point) =>
-			copper
-				.map(([a, b]) => nearestOn([a, b], point))
-				.reduce((best, candidate) =>
-					Math.hypot(candidate.x - point.x, candidate.y - point.y) <
-					Math.hypot(best.x - point.x, best.y - point.y)
-						? candidate
-						: best,
-				);
-		for (const branch of branchesOn(this.index, old)) {
-			const { track } = branch;
-			if (this.selected.has(track.id) || this.stretches.has(track.id)) continue;
-			if (this.reroutes.get(track.id)?.ends[branch.index]) continue;
-			const reach = (old.lineWidth + track.lineWidth) / 2 - 1e-6;
-			if (onCopper(branch.point, reach)) continue;
-			this.follow(
-				old,
-				branch.point,
-				nearest(branch.point),
-				[branch],
-				old.lineWidth / 2,
-				old.id,
-			);
-		}
-		const [a, b] = lineEnds(old);
-		const body = { points: [a, b], radius: half };
-		for (const anchor of this.index.anchors) {
-			if (this.selected.has(anchor.owner)) continue;
-			if (!anchor.layers.includes(old.layer)) continue;
-			const { centre, hulls } = anchor;
-			if (segmentDistance(centre, a, b) > 10) continue;
-			if (!hulls.some((hull) => hullDistance(body, hull) <= join)) continue;
-			if (
-				hulls.some(
-					(hull) =>
-						pointHullDistance(hull, a) <= half + join ||
-						pointHullDistance(hull, b) <= half + join,
-				)
-			)
-				continue;
-			const kept = copper.some((points) =>
-				hulls.some(
-					(hull) => hullDistance({ points, radius: half }, hull) <= join,
-				),
-			);
-			if (!kept) this.link(centre, nearest(centre), old, old.id);
-		}
-	}
-
-	finish(): EditorShape[] {
-		for (const id of [...this.reroutes.keys(), ...this.stretches.keys()])
-			this.ignore.add(id);
-		for (const { track, ends } of this.stretches.values()) {
-			const [a, b] = lineEnds(track);
-			this.result.push(withEnds(track, ends[0] ?? a, ends[1] ?? b));
-		}
-		const routed = new Map<number, string>();
-		const carried = new Set<number>();
-		const keyOf = (ends: Ends) =>
-			ends.map((end) => (end ? `${end.x},${end.y}` : "-")).join("|");
-		const carryAll = () => {
-			let any = false;
-			for (const shape of [...this.result]) {
-				if (!isBoardTrack(shape) || carried.has(shape.id)) continue;
-				carried.add(shape.id);
-				any = true;
-				const old = this.index.byId.get(shape.id);
-				if (old && isBoardTrack(old)) this.carry(old);
-			}
-			return any;
-		};
-		for (let pass = 0, progressed = true; progressed; pass++) {
-			if (pass > 64) {
-				this.unsafe = true;
-				break;
-			}
-			progressed = carryAll();
-			for (const { track, ends } of [...this.reroutes.values()]) {
-				if (this.stretches.has(track.id)) continue;
-				const key = keyOf(ends);
-				if (routed.get(track.id) === key) continue;
-				if (routed.has(track.id)) {
-					if (this.unplace(track.id)) carried.clear();
-					carried.delete(track.id);
-					this.rigid.delete(track.id);
-				}
-				progressed = true;
-				if (!ends[0] && !ends[1]) {
-					routed.delete(track.id);
-					this.reroutes.delete(track.id);
-					this.ignore.delete(track.id);
-					continue;
-				}
-				routed.set(track.id, key);
-				this.ignore.add(track.id);
-				const [a, b] = lineEnds(track);
-				if (ends[0] && ends[1]) {
-					const shiftA = { x: ends[0].x - a.x, y: ends[0].y - a.y };
-					const shiftB = { x: ends[1].x - b.x, y: ends[1].y - b.y };
-					if (near(shiftA, shiftB)) {
-						this.result.push(withEnds(track, ends[0], ends[1]));
-						this.rigid.add(track.id);
-					} else
-						this.reroute(
-							track,
-							ends[0],
-							ends[1],
-							{ x: b.x - a.x, y: b.y - a.y },
-							false,
-						);
-					continue;
-				}
-				const moving = ends[0] ? 0 : 1;
-				const fixed = moving === 0 ? b : a;
-				const old = moving === 0 ? a : b;
-				const path = this.route(track, fixed, ends[moving] as Point, {
-					x: old.x - fixed.x,
-					y: old.y - fixed.y,
-				});
-				this.place(track, moving === 0 ? [...path].reverse() : path, true);
-			}
-		}
-		for (const { from, to, track } of this.links)
-			if (!this.spanned(from, to, track))
-				this.place(track, this.route(track, from, to), false);
-		for (const shape of this.result) {
-			if (!this.rigid.has(shape.id) || isCollapsedTrack(shape)) continue;
-			const copper = {
-				hulls: shapeHulls(shape),
-				layers: isVia(shape) ? shapeLayers(shape) : [shape.layer ?? ""],
-				net: "net" in shape ? shape.net : undefined,
-			};
-			let ignore: ReadonlySet<number> = this.ignore;
-			const before = this.index.byId.get(shape.id);
-			if (copper.net === undefined && before && this.routing)
-				ignore = new Set([
-					...this.ignore,
-					...touchingItems(
-						{ hulls: shapeHulls(before), layers: copper.layers },
-						this.routing,
-					).map((item) => item.shapeId),
-				]);
-			if (!copperClear(copper, ignore, this.routing)) this.unsafe = true;
-		}
-		if (this.failed.size || this.bridges()) this.unsafe = true;
-		const result = this.merged();
-		if (this.unsafe) markUnsafeMove(result);
-		return result;
-	}
-
-	private bridges() {
-		const { routing } = this;
-		if (!routing) return false;
-		type Copper = {
-			readonly hulls: readonly Hull[];
-			readonly layers: readonly string[];
-			readonly net?: string;
-		};
-		const copperOf = (shape: EditorShape): Copper => ({
-			hulls: shapeHulls(shape),
-			layers: isVia(shape) ? shapeLayers(shape) : [shape.layer ?? ""],
-			net: "net" in shape ? shape.net : undefined,
-		});
-		const placed = new Map<Copper, number>();
-		for (const shape of [...this.result, ...this.added])
-			if (isVia(shape) || (isBoardTrack(shape) && shape.width > join))
-				placed.set(copperOf(shape), this.owners.get(shape.id) ?? shape.id);
-		if (![...placed.keys()].some((piece) => piece.net === undefined))
-			return false;
-		if (!routing.items.some((item) => item.net !== undefined)) return false;
-		const touches = (a: Copper, b: Copper) =>
-			a.layers.some((layer) => b.layers.includes(layer)) &&
-			a.hulls.some((hull) =>
-				b.hulls.some((other) => hullDistance(hull, other) <= 1e-6),
-			);
-		const reached = (seed: Copper, moved: boolean) => {
-			const nets = new Set<string>();
-			const seen = new Set<Copper>([seed]);
-			const queue = [seed];
-			const visit = (copper: Copper) => {
-				if (seen.has(copper)) return;
-				seen.add(copper);
-				if (copper.net === undefined) queue.push(copper);
-				else nets.add(copper.net);
-			};
-			for (let piece = queue.pop(); piece; piece = queue.pop()) {
-				for (const item of touchingItems(piece, routing))
-					if (!moved || !this.ignore.has(item.shapeId)) visit(item);
-				if (!moved) continue;
-				for (const other of placed.keys())
-					if (!seen.has(other) && touches(piece, other)) visit(other);
-			}
-			return { nets, seen };
-		};
-		const checked = new Set<Copper>();
-		for (const piece of placed.keys()) {
-			if (piece.net !== undefined || checked.has(piece)) continue;
-			const after = reached(piece, true);
-			const owners = new Set<number>();
-			for (const copper of after.seen) {
-				checked.add(copper);
-				const owner = placed.get(copper);
-				if (owner !== undefined) owners.add(owner);
-			}
-			if (after.nets.size < 2) continue;
-			const known = new Set<string>();
-			for (const owner of owners) {
-				const before = this.index.byId.get(owner);
-				if (!before) continue;
-				for (const net of reached(copperOf(before), false).nets) known.add(net);
-			}
-			if ([...after.nets].some((net) => !known.has(net))) return true;
-		}
-		return false;
-	}
-
-	private merged(): EditorShape[] {
-		const tracks = new Map<number, Track>();
-		for (const shape of [...this.result, ...this.added])
-			if (isBoardTrack(shape)) tracks.set(shape.id, shape);
-		const vias = this.result.filter(isVia);
-		const pinned = (point: Point, layer: string) =>
-			this.index.anchors.some(
-				(anchor) =>
-					!this.selected.has(anchor.owner) && covers(anchor, point, layer),
-			) ||
-			vias.some((via) =>
-				shapeHulls(via).some((hull) => pointHullDistance(hull, point) <= join),
-			);
-		const endingAt = (point: Point, layer: string) => {
-			const found: { track: Track; far: Point }[] = [];
-			const add = (track: Track) => {
-				if (track.layer !== layer || track.width <= join) return;
-				const [a, b] = lineEnds(track);
-				if (near(a, point)) found.push({ track, far: b });
-				else if (near(b, point)) found.push({ track, far: a });
-			};
-			for (const track of tracks.values()) add(track);
-			for (const { track } of endsAt(this.index, point))
-				if (!tracks.has(track.id)) add(track);
-			return found;
-		};
-		const keeps = (a: Track, b: Track) =>
-			this.selected.has(a.id) !== this.selected.has(b.id)
-				? this.selected.has(a.id)
-				: a.id < b.id;
-		const queue = [...tracks.values()].flatMap((track) =>
-			lineEnds(track).map((point) => ({ point, layer: track.layer })),
-		);
-		for (let next = queue.pop(); next; next = queue.pop()) {
-			const { point, layer } = next;
-			const meeting = endingAt(point, layer);
-			if (meeting.length !== 2) continue;
-			const [first, second] = meeting;
-			if (
-				first.track.id === second.track.id ||
-				first.track.locked ||
-				second.track.locked ||
-				first.track.net !== second.track.net ||
-				Math.abs(first.track.lineWidth - second.track.lineWidth) > 1e-9
-			)
-				continue;
-			const u = { x: first.far.x - point.x, y: first.far.y - point.y };
-			const v = { x: second.far.x - point.x, y: second.far.y - point.y };
-			const cross = u.x * v.y - u.y * v.x;
-			if (Math.abs(cross) > 1e-6 * Math.hypot(u.x, u.y) * Math.hypot(v.x, v.y))
-				continue;
-			const [keep, drop] = keeps(first.track, second.track)
-				? [first, second]
-				: [second, first];
-			if (u.x * v.x + u.y * v.y > 0) {
-				const longer =
-					Math.hypot(u.x, u.y) >= Math.hypot(v.x, v.y) ? first : second;
-				const shorter = longer === first ? second : first;
-				tracks.set(keep.track.id, orient(keep.track, point, longer.far));
-				tracks.set(
-					drop.track.id,
-					withEnds(drop.track, shorter.far, shorter.far),
-				);
-				queue.push({ point: longer.far, layer }, { point: shorter.far, layer });
-				continue;
-			}
-			if (pinned(point, layer)) continue;
-			tracks.set(drop.track.id, withEnds(drop.track, drop.far, drop.far));
-			tracks.set(keep.track.id, orient(keep.track, keep.far, drop.far));
-			queue.push({ point: keep.far, layer }, { point: drop.far, layer });
-		}
-		const existing = new Set(this.result.map((shape) => shape.id));
-		const fresh = new Set(this.added.map((shape) => shape.id));
-		return [
-			...this.result.map((shape) => tracks.get(shape.id) ?? shape),
-			...[...tracks.values()].filter(
-				(track) => !existing.has(track.id) && !fresh.has(track.id),
-			),
-			...this.added.flatMap((shape) => {
-				const track = tracks.get(shape.id) ?? shape;
-				return track.width <= join ? [] : [track];
-			}),
-		];
-	}
-}
-
-function nearestOn(path: readonly Point[], point: Point): Point {
-	let best = path[0];
-	let distance = Number.POSITIVE_INFINITY;
-	for (let index = 1; index < path.length; index++) {
-		const a = path[index - 1];
-		const b = path[index];
-		const dx = b.x - a.x;
-		const dy = b.y - a.y;
-		const length = dx * dx + dy * dy || 1;
-		const t = Math.max(
-			0,
-			Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / length),
-		);
-		const candidate = { x: a.x + t * dx, y: a.y + t * dy };
-		const gap = Math.hypot(candidate.x - point.x, candidate.y - point.y);
-		if (gap < distance) {
-			distance = gap;
-			best = candidate;
-		}
-	}
-	return best;
-}
-
-function orient(track: Track, from: Point, to: Point): Track {
-	const [a, b] = lineEnds(track);
-	return (to.x - from.x) * (b.x - a.x) + (to.y - from.y) * (b.y - a.y) >= 0
-		? withEnds(track, from, to)
-		: withEnds(track, to, from);
-}
-
-function segments(path: readonly Point[]): [Point, Point][] {
-	const result: [Point, Point][] = [];
-	for (let index = 1; index < path.length; index++)
-		if (!near(path[index - 1], path[index]))
-			result.push([path[index - 1], path[index]]);
-	return result;
+	if (!stretched.size) return undefined;
+	const forward =
+		(targets[1].x - targets[0].x) * direction.x +
+		(targets[1].y - targets[0].y) * direction.y;
+	if (forward <= join) return undefined;
+	const after = withEnds(track, targets[0], targets[1]);
+	return rework(
+		[
+			{
+				id: track.id,
+				line: ends,
+				before,
+				after: copperOf(after),
+				net: track.net,
+				track,
+				shift: (point) => nearestOn([targets[0], targets[1]], shift(point)),
+			},
+		],
+		[after],
+		routing,
+		nextShapeId,
+		stretched,
+	);
 }
 
 const recent = new WeakMap<
 	readonly EditorShape[],
-	{ key: string; routing?: TrackRouting; result: EditorShape[] }
+	{ key: string; routing: TrackRouting; result: EditorShape[] }
 >();
 
 function remembered(
 	allShapes: readonly EditorShape[],
 	key: string,
-	routing: TrackRouting | undefined,
+	routing: TrackRouting,
 	compute: () => EditorShape[],
 ) {
 	const last = recent.get(allShapes);
@@ -916,180 +519,45 @@ function remembered(
 
 export function dragTracks(
 	shapes: readonly EditorShape[],
-	moved: EditorShape[],
+	moved: readonly EditorShape[],
 	allShapes: readonly EditorShape[],
 	delta: Point,
 	nextShapeId: number,
-	routing?: TrackRouting,
+	routing: TrackRouting,
 ): EditorShape[] {
 	return remembered(
 		allShapes,
 		`move ${shapes.map((shape) => shape.id)} ${delta.x} ${delta.y} ${nextShapeId}`,
 		routing,
-		() => moveTracks(shapes, moved, allShapes, delta, nextShapeId, routing),
+		() => {
+			const [single] = shapes;
+			const slid =
+				shapes.length === 1 && isBoardTrack(single)
+					? slide(single, delta, routing, nextShapeId)
+					: undefined;
+			if (slid) return slid;
+			const shift = (point: Point) => ({
+				x: point.x + delta.x,
+				y: point.y + delta.y,
+			});
+			const pieces = shapes.flatMap((shape, index): Piece[] => {
+				if (!isBoardTrack(shape) && !isVia(shape)) return [];
+				const centre = { x: shape.x, y: shape.y };
+				return [
+					{
+						id: shape.id,
+						line: isBoardTrack(shape) ? lineEnds(shape) : [centre, centre],
+						before: copperOf(shape),
+						after: copperOf(moved[index]),
+						net: shape.net,
+						track: isBoardTrack(shape) ? shape : undefined,
+						shift,
+					},
+				];
+			});
+			return rework(pieces, moved, routing, nextShapeId) ?? [...moved];
+		},
 	);
-}
-
-function slideTrack(rework: Rework, single: Track, delta: Point): boolean {
-	const ends = lineEnds(single);
-	const [a, b] = ends;
-	const length = Math.hypot(b.x - a.x, b.y - a.y);
-	if (length <= join) return false;
-	const direction = { x: (b.x - a.x) / length, y: (b.y - a.y) / length };
-	if (Math.abs(delta.x * direction.y - delta.y * direction.x) <= join)
-		return false;
-	const slides = ends.map((point) => {
-		const target = { x: point.x + delta.x, y: point.y + delta.y };
-		const joined = rework.joinedAt(
-			point,
-			single.layer,
-			single.net,
-			single.lineWidth / 2,
-		);
-		if (
-			rework.holdsAt(point, single.layer, single.lineWidth / 2, single.net)
-				.length ||
-			joined.length !== 1 ||
-			joined[0].track.locked ||
-			rework.pinned(joined[0], point)
-		)
-			return { target, joined };
-		const slid = slideAlong(joined[0], target, direction);
-		if (!slid) return { target, joined };
-		const neighbour = joined[0].track;
-		const far = lineEnds(neighbour)[joined[0].index === 0 ? 1 : 0];
-		const clear = trackClear(
-			{
-				...rework.routeFor(neighbour, far, slid),
-				ignore: new Set([...rework.ignore, neighbour.id]),
-			},
-			[far, slid],
-			rework.routing,
-		);
-		return clear ? { target: slid, joined, slid: true } : { target, joined };
-	});
-	const forward =
-		(slides[1].target.x - slides[0].target.x) * direction.x +
-		(slides[1].target.y - slides[0].target.y) * direction.y;
-	if (forward <= join) return false;
-	const sliding = slides.flatMap(({ slid, joined }) =>
-		slid ? [joined[0].track.id] : [],
-	);
-	if (
-		!trackClear(
-			{
-				...rework.routeFor(single, slides[0].target, slides[1].target),
-				ignore: new Set([...rework.ignore, ...sliding]),
-			},
-			[slides[0].target, slides[1].target],
-			rework.routing,
-			false,
-		)
-	)
-		return false;
-	rework.result.push(withEnds(single, slides[0].target, slides[1].target));
-	rework.rigid.add(single.id);
-	for (const [end, point] of ends.entries()) {
-		const { target, joined, slid } = slides[end];
-		if (slid) rework.stretch(joined[0], target);
-		else rework.follow(single, point, target, joined);
-	}
-	return true;
-}
-
-function moveTracks(
-	shapes: readonly EditorShape[],
-	moved: EditorShape[],
-	allShapes: readonly EditorShape[],
-	delta: Point,
-	nextShapeId: number,
-	routing?: TrackRouting,
-): EditorShape[] {
-	const rework = new Rework(
-		boardIndex(allShapes),
-		shapes.map((shape) => shape.id),
-		nextShapeId,
-		routing,
-	);
-	const single = shapes.length === 1 ? shapes[0] : undefined;
-	if (single && isBoardTrack(single) && slideTrack(rework, single, delta))
-		return rework.finish();
-	rework.result.push(...moved);
-	for (const shape of moved)
-		if (isBoardTrack(shape) || isVia(shape)) rework.rigid.add(shape.id);
-	const shift = (point: Point) => ({
-		x: point.x + delta.x,
-		y: point.y + delta.y,
-	});
-	for (const shape of shapes) {
-		if (isBoardTrack(shape))
-			for (const point of lineEnds(shape))
-				rework.follow(shape, point, shift(point));
-		else if (isVia(shape)) {
-			const from = { x: shape.x, y: shape.y };
-			const to = { x: from.x + delta.x, y: from.y + delta.y };
-			const byLayer = new Map<string, TrackEnd[]>();
-			for (const joined of rework.joinedAt(
-				from,
-				undefined,
-				shape.net,
-				shape.width / 2,
-			)) {
-				const list = byLayer.get(joined.track.layer);
-				if (list) list.push(joined);
-				else byLayer.set(joined.track.layer, [joined]);
-			}
-			for (const joined of byLayer.values())
-				rework.follow(joined[0].track, from, to, joined, shape.width / 2);
-			const templates = [...byLayer.values()].flat().map((end) => end.track);
-			for (const body of bodiesAt(rework.index, from, shape.width / 2))
-				if (
-					!rework.ignore.has(body.id) &&
-					!byLayer.has(body.layer) &&
-					sameNet(body.net, shape.net)
-				) {
-					byLayer.set(body.layer, []);
-					templates.push(body);
-					rework.follow(body, from, to, [], shape.width / 2);
-				}
-			const template =
-				templates[0] ??
-				shapes.find(
-					(other): other is Track =>
-						isBoardTrack(other) &&
-						sameNet(other.net, shape.net) &&
-						lineEnds(other).some(
-							(end) =>
-								Math.hypot(end.x - from.x, end.y - from.y) <=
-								(shape.width + other.lineWidth) / 2,
-						),
-				);
-			if (template)
-				for (const anchor of rework.index.anchors) {
-					if (rework.ignore.has(anchor.owner)) continue;
-					if (
-						!anchor.hulls.some(
-							(hull) => pointHullDistance(hull, from) <= shape.width / 2 + join,
-						)
-					)
-						continue;
-					if (anchor.layers.some((layer) => byLayer.has(layer))) continue;
-					const layer = anchor.layers.find((candidate) =>
-						isCopperLayer(candidate as FootprintLayer),
-					);
-					if (!layer) continue;
-					byLayer.set(layer, []);
-					rework.follow(
-						{ ...template, layer: layer as CopperLayer },
-						from,
-						to,
-						[],
-						shape.width / 2,
-					);
-				}
-		}
-	}
-	return rework.finish();
 }
 
 export function dragTrackEnd(
@@ -1099,45 +567,39 @@ export function dragTrackEnd(
 	allShapes: readonly EditorShape[],
 	nextShapeId: number,
 	gridStep: number,
-	routing?: TrackRouting,
+	routing: TrackRouting,
 ): EditorShape[] {
 	if (!isBoardTrack(track)) return [track];
 	const ends = lineEnds(track);
 	const dragged = ends[end];
-	const fixed = ends[end === 0 ? 1 : 0];
 	const point = gridStep > 0 ? snapPoint(target, gridStep) : target;
-	if (near(point, dragged) || near(point, fixed)) return [track];
+	if (near(point, dragged) || near(point, ends[end === 0 ? 1 : 0]))
+		return [track];
+	const cap = (at: Point): Copper => ({
+		hulls: [{ points: [at], radius: track.lineWidth / 2 }],
+		layers: [track.layer],
+	});
 	return remembered(
 		allShapes,
 		`end ${track.id} ${end} ${point.x} ${point.y} ${nextShapeId}`,
 		routing,
-		() => {
-			const rework = new Rework(
-				boardIndex(allShapes),
-				[track.id],
-				nextShapeId,
+		() =>
+			rework(
+				[
+					{
+						line: [dragged, dragged],
+						before: cap(dragged),
+						after: cap(point),
+						net: track.net,
+						track,
+						shift: () => point,
+					},
+				],
+				[],
 				routing,
-			);
-			const joined = rework.joinedAt(
-				dragged,
-				track.layer,
-				track.net,
-				track.lineWidth / 2,
-			);
-			const moving = new Set(
-				joined
-					.filter((other) => near(other.point, dragged) && !other.track.locked)
-					.map((other) => other.track.id),
-			);
-			for (const other of joined)
-				if (!other.track.locked && !rework.pinned(other, dragged, moving))
-					rework.ignore.add(other.track.id);
-			rework.reroute(track, fixed, point, {
-				x: dragged.x - fixed.x,
-				y: dragged.y - fixed.y,
-			});
-			rework.follow(track, dragged, point, joined);
-			return rework.finish();
-		},
+				nextShapeId,
+				undefined,
+				track.id,
+			) ?? [track],
 	);
 }

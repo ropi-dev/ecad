@@ -71,7 +71,6 @@ export interface TrackRoute {
 	readonly net?: string;
 	readonly prefer?: Point;
 	readonly ignore: ReadonlySet<number>;
-	readonly relax?: boolean;
 }
 
 export interface RouteBudget {
@@ -143,7 +142,6 @@ function obstaclesFor(
 	route: TrackRoute,
 	routing: TrackRouting,
 	area: Bounds,
-	relax = route.relax !== false,
 ): Obstacle[] {
 	const half = route.width / 2;
 	const reach = half + routing.clearance + pitch + margin;
@@ -164,22 +162,12 @@ function obstaclesFor(
 				if (route.ignore.has(item.shapeId)) continue;
 				if (!item.layers.includes(route.layer as CopperLayer)) continue;
 				if (!foreign(item, route.net)) continue;
-				if (
-					route.net === undefined &&
-					item.hulls.some(
-						(hull) =>
-							pointHullDistance(hull, route.from) <= half ||
-							pointHullDistance(hull, route.to) <= half,
-					)
-				)
-					continue;
 				for (const hull of item.hulls) {
-					const gap = relax
-						? Math.min(
-								routing.clearance,
-								pointHullDistance(hull, route.from) - half,
-							)
-						: routing.clearance;
+					const gap = Math.min(
+						routing.clearance,
+						pointHullDistance(hull, route.from) - half,
+						pointHullDistance(hull, route.to) - half,
+					);
 					const grow = Math.max(0, half + gap + margin);
 					const { bounds } = item;
 					obstacles.push({
@@ -224,51 +212,6 @@ export function touchingItems(
 		}
 	});
 	return found;
-}
-
-export function copperClear(
-	copper: {
-		readonly hulls: readonly Hull[];
-		readonly layers: readonly string[];
-		readonly net?: string;
-	},
-	ignore: ReadonlySet<number>,
-	routing: TrackRouting | undefined,
-) {
-	if (!routing || !copper.hulls.length) return true;
-	const index = itemIndex(routing.items);
-	const area = mergeBounds(copper.hulls.map(hullBounds));
-	const reach = routing.clearance;
-	const seen = new Set<CopperItem>();
-	let clear = true;
-	forBuckets(
-		{
-			minX: area.minX - reach,
-			minY: area.minY - reach,
-			maxX: area.maxX + reach,
-			maxY: area.maxY + reach,
-		},
-		(key) => {
-			if (!clear) return;
-			for (const item of index.get(key) ?? []) {
-				if (seen.has(item)) continue;
-				seen.add(item);
-				if (ignore.has(item.shapeId) || !foreign(item, copper.net)) continue;
-				if (!item.layers.some((layer) => copper.layers.includes(layer)))
-					continue;
-				for (const own of copper.hulls)
-					for (const hull of item.hulls) {
-						const distance = hullDistance(own, hull);
-						if (copper.net === undefined && distance <= 1e-6) continue;
-						if (distance < routing.clearance - 1e-6) {
-							clear = false;
-							return;
-						}
-					}
-			}
-		},
-	);
-	return clear;
 }
 
 function pathClear(
@@ -322,20 +265,6 @@ const spanOf = (points: readonly Point[], pad: number): Bounds => ({
 	maxY: Math.max(...points.map((point) => point.y)) + pad,
 });
 
-export function trackClear(
-	route: TrackRoute,
-	path: readonly Point[],
-	routing: TrackRouting | undefined,
-	relax = true,
-) {
-	if (!routing) return true;
-	return pathClear(
-		path,
-		obstaclesFor(route, routing, spanOf(path, 0), relax),
-		route.width,
-	);
-}
-
 export function routeTrack(
 	route: TrackRoute,
 	routing: TrackRouting | undefined,
@@ -356,13 +285,6 @@ export function routeTrack(
 	for (const pad of windows) {
 		const area = spanOf([from, to], pad);
 		const obstacles = obstaclesFor(route, routing, area);
-		if (
-			obstacles.some(
-				({ hull, gap }) =>
-					pointHullDistance(hull, to) < route.width / 2 + gap - 1e-6,
-			)
-		)
-			break;
 		if (pad === windows[0]) {
 			const clear = candidates.find((path) =>
 				pathClear(path, obstacles, route.width),
