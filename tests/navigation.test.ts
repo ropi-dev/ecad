@@ -187,21 +187,25 @@ test("3D controls pan on trackpad scroll, orbit on Shift + scroll or middle-drag
 	});
 	assert.ok(camera.position.distanceTo(controls.target) < beforeZoom * 0.9);
 
-	// Shift + mouse wheel does not orbit or pan in 3D.
-	const afterZoomPos = camera.position.clone();
+	// Shift + mouse wheel orbits in 3D without changing distance.
+	const afterZoomDistance = camera.position.distanceTo(controls.target);
 	const afterZoomDir = camera.getWorldDirection(new Vector3());
 	dispatchWheel(canvas, {
 		shiftKey: true,
 		deltaX: 100,
 		wheelDeltaX: -120,
 	});
-	assert.ok(camera.position.distanceTo(afterZoomPos) < 1e-6);
 	assert.ok(
-		camera.getWorldDirection(new Vector3()).distanceTo(afterZoomDir) < 1e-6,
+		camera.getWorldDirection(new Vector3()).distanceTo(afterZoomDir) > 0.01,
+	);
+	assert.ok(
+		Math.abs(camera.position.distanceTo(controls.target) - afterZoomDistance) <
+			1e-6,
 	);
 
 	// Middle-drag pans and Shift + middle-drag orbits.
 	const beforeMiddlePan = controls.target.clone();
+	const beforeMiddlePanDir = camera.getWorldDirection(new Vector3());
 	dispatchPointer(canvas, "pointerdown", {
 		button: 1,
 		clientX: 400,
@@ -219,7 +223,8 @@ test("3D controls pan on trackpad scroll, orbit on Shift + scroll or middle-drag
 	});
 	assert.ok(controls.target.distanceTo(beforeMiddlePan) > 0.01);
 	assert.ok(
-		camera.getWorldDirection(new Vector3()).distanceTo(afterZoomDir) < 1e-6,
+		camera.getWorldDirection(new Vector3()).distanceTo(beforeMiddlePanDir) <
+			1e-6,
 	);
 
 	const beforeMiddleOrbit = camera.getWorldDirection(new Vector3());

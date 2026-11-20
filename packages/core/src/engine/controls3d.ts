@@ -214,8 +214,7 @@ export function create3DControls(
 		event.stopImmediatePropagation();
 		if (!controls.enabled) return;
 		const mouseWheel = isMouseWheel(event);
-		if (!rotationLocked && mouseWheel) {
-			if (event.shiftKey) return;
+		if (!rotationLocked && mouseWheel && !event.shiftKey) {
 			if (event.timeStamp - lastWheel > 200 || lastWheelMode !== "zoom") {
 				beginGesture(event.clientX, event.clientY);
 				wheelTravel = 0;
@@ -229,7 +228,7 @@ export function create3DControls(
 		}
 		const delta = wheelDelta(event, canvas);
 		const orbitIntent =
-			!mouseWheel && event.shiftKey && (!rotationLocked || !!unlock);
+			event.shiftKey && (!rotationLocked || (!mouseWheel && !!unlock));
 		const mode = orbitIntent ? "orbit" : "pan";
 		if (
 			(!rotationLocked || orbitIntent) &&
