@@ -9,7 +9,7 @@ Reserve browser tests for browser APIs, WebGL/SVG rendering, pointer/keyboard in
 - **Schematic editor**: `editor*.spec.ts`, `schematic-*.spec.ts`
 - **Circuit & linked PCB**: `circuit.spec.ts`, `linked-*.spec.ts`, `net-symbol-merging.spec.ts`, `pcb.spec.ts`
 - **Footprints**: `footprint*.spec.ts`
-- **Projects & symbols**: `projects*.spec.ts`, `project-errors.spec.ts`, `empty-project.spec.ts`, `edit-symbol.spec.ts`, `symbol-import.spec.ts`
+- **Projects & symbols**: `projects*.spec.ts`, `project-errors.spec.ts`, `edit-symbol.spec.ts`, `symbol-import.spec.ts`
 - **Imports, viewers & exports**: `kicad-import.spec.ts`, `viewer.spec.ts`, `shared-viewer.spec.ts`, `step.spec.ts`, `drawing-export.spec.ts`, `export-png.spec.ts`
 - **App shell**: shortcuts, toolbar, sidebar, theme, debug stats, toasts, telemetry
 

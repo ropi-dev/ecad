@@ -70,7 +70,7 @@ Interactive gestures (drawing, moving, resizing, routing) update temporary edito
 
 ## Symbol storage, footprints, and boards
 
-- **Symbol libraries** — `SymbolLibraryProvider` (`packages/core/src/symbol-library/storage.tsx`) injects user and optional project library storage. Enabled project definitions override user definitions by ID. Web persists user libraries in `localStorage`; desktop stores `symbol-libraries.json` in the platform config directory and resolves local directory sources in Electron's main process. See [docs/symbol-format.md](symbol-format.md#user-and-project-configuration).
+- **Symbol libraries** — `SymbolLibraryProvider` (`packages/core/src/symbol-library/SymbolLibraryProvider.tsx`) injects user and optional project library storage. Enabled project definitions override user definitions by ID. Web persists user libraries in `localStorage`; desktop stores `symbol-libraries.json` in the platform config directory and resolves local directory sources in Electron's main process. See [docs/symbol-format.md](symbol-format.md#user-and-project-configuration).
 - **Footprints** — Reuse the drawing store, commands, and canvas with optional `layer`, `pad`, `via`, and `hole` shape fields. `@ecad/default-footprints` and `@ecad/default-models` load on demand. See [docs/footprints.md](footprints.md).
 - **Boards (PCBs)** — Extend the footprint canvas with placed footprints, tracks, vias, and copper zones. Headless netlist, connectivity, DRC, schematic sync, and autorouting live in `packages/drawing-core/src/board/`; file format, zone fills, display, and Gerber export live in `packages/core/src/board/`. See [docs/pcb.md](pcb.md).
 
