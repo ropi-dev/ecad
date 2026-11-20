@@ -265,6 +265,18 @@ const spanOf = (points: readonly Point[], pad: number): Bounds => ({
 	maxY: Math.max(...points.map((point) => point.y)) + pad,
 });
 
+export function routeClear(
+	route: TrackRoute,
+	path: readonly Point[],
+	routing: TrackRouting,
+) {
+	return pathClear(
+		path,
+		obstaclesFor(route, routing, spanOf(path, 0)),
+		route.width,
+	);
+}
+
 export function routeTrack(
 	route: TrackRoute,
 	routing: TrackRouting | undefined,

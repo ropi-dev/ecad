@@ -150,7 +150,6 @@ type CanvasGesture =
 export interface BoardGestures {
 	/** Copper on the visible layers, in board coordinates. */
 	items(): readonly CopperItem[];
-	/** Copper on every layer, hidden ones too. */
 	copper(): readonly CopperItem[];
 	rules: BoardRules;
 	/** The copper layer new tracks, zones and copper graphics go on. */

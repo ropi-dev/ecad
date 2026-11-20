@@ -9,6 +9,7 @@ import {
 } from "#/board/geometry.ts";
 import {
 	type RouteBudget,
+	routeClear,
 	routeTrack,
 	type TrackRouting,
 	touchingItems,
@@ -108,7 +109,13 @@ interface Piece {
 	readonly after: Copper;
 	readonly net?: string;
 	readonly track?: Track;
-	readonly shift?: (point: Point) => Point;
+	readonly shift: (point: Point) => Point;
+}
+
+interface Wire {
+	readonly layer: string;
+	readonly lineWidth: number;
+	readonly net?: string;
 }
 
 interface Follower {
@@ -128,7 +135,7 @@ function rework(
 	routing: TrackRouting,
 	nextShapeId: number,
 	stretched = new Map<CopperItem, Segment>(),
-	dragged?: number,
+	dragged?: { readonly id: number; readonly end: 0 | 1 },
 ): EditorShape[] | undefined {
 	const selected = new Set(placed.map((shape) => shape.id));
 	const attached = (copper: Copper, net: string | undefined) =>
@@ -152,56 +159,61 @@ function rework(
 		followers.set(item.shapeId, follower);
 		return follower;
 	};
-	for (const piece of pieces) {
-		const { shift } = piece;
-		if (!shift) continue;
+	for (const piece of pieces)
 		for (const item of attached(piece.before, piece.net)) {
-			if (item.kind !== "track" || item.shape.locked) continue;
+			const own = item.shapeId === dragged?.id;
+			if (item.kind !== "track" || (item.shape.locked && !own)) continue;
 			for (const [index, end] of lineEnds(item.shape).entries()) {
-				if (!covers(piece.before, end)) continue;
+				const joined = piece.line.some((point) => near(point, end));
+				if (
+					own
+						? index !== dragged?.end
+						: !covers(piece.before, end) ||
+							(!joined && covers(piece.after, end))
+				)
+					continue;
 				const follower = follow(item);
-				follower.ends[index] = shift(end);
+				follower.ends[index] = piece.shift(end);
 				follower.rides.add(piece);
 			}
 		}
-	}
 	for (const [item, ends] of stretched) follow(item).path = ends;
 
 	const budget: RouteBudget = { remaining: 30_000 };
 	const ignore = new Set([...selected, ...followers.keys()]);
-	const route = (track: Track, from: Point, to: Point, prefer?: Point) =>
-		routeTrack(
-			{
-				from,
-				to,
-				layer: track.layer,
-				width: track.lineWidth,
-				net: track.net,
-				prefer,
-				ignore,
-			},
-			routing,
-			budget,
-		);
+	const routeOf = (wire: Wire, from: Point, to: Point, prefer?: Point) => ({
+		from,
+		to,
+		layer: wire.layer,
+		width: wire.lineWidth,
+		net: wire.net,
+		prefer,
+		ignore,
+	});
+	const route = (wire: Wire, from: Point, to: Point, prefer?: Point) =>
+		routeTrack(routeOf(wire, from, to, prefer), routing, budget);
+	const clear = (wire: Wire, [from, to]: Segment) =>
+		routeClear(routeOf(wire, from, to), [from, to], routing);
 	for (const follower of followers.values()) {
 		const { track, ends } = follower;
 		const [a, b] = lineEnds(track);
-		if (follower.path.length === 0) {
-			const [toA, toB] = ends;
-			if (
-				toA &&
-				toB &&
-				near(toA, { x: a.x + toB.x - b.x, y: a.y + toB.y - b.y })
-			)
-				follower.path = [toA, toB];
-			else {
-				const found = toB
-					? route(track, toA ?? a, toB, { x: b.x - a.x, y: b.y - a.y })
-					: route(track, b, toA ?? a, { x: a.x - b.x, y: a.y - b.y });
-				follower.path = found.points;
-				follower.backwards = !toB;
-				follower.clear = found.clear;
-			}
+		const [toA, toB] = ends;
+		if (follower.path.length)
+			follower.clear = clear(track, [follower.path[0], follower.path[1]]);
+		else if (
+			toA &&
+			toB &&
+			near(toA, { x: a.x + toB.x - b.x, y: a.y + toB.y - b.y }) &&
+			clear(track, [toA, toB])
+		)
+			follower.path = [toA, toB];
+		else {
+			const found = toB
+				? route(track, toA ?? a, toB, { x: b.x - a.x, y: b.y - a.y })
+				: route(track, b, toA ?? a, { x: a.x - b.x, y: a.y - b.y });
+			follower.path = found.points;
+			follower.backwards = !toB;
+			follower.clear = found.clear;
 		}
 		const lines = segments(follower.path);
 		follower.copper = {
@@ -223,7 +235,11 @@ function rework(
 		touchingItems(follower.item, routing).every((item) => {
 			if (item === follower.item || !sameNet(item.net, follower.track.net))
 				return true;
-			if (follower.track.id === dragged && reached && touches(item, reached))
+			if (
+				follower.track.id === dragged?.id &&
+				reached &&
+				touches(item, reached)
+			)
 				return true;
 			const now =
 				followers.get(item.shapeId)?.copper ??
@@ -236,6 +252,7 @@ function rework(
 			if (keeps(follower)) continue;
 			if (stretched.has(follower.item)) return undefined;
 			followers.delete(id);
+			ignore.delete(id);
 			dropped = true;
 		}
 	}
@@ -243,13 +260,13 @@ function rework(
 	const result: EditorShape[] = [...placed];
 	const added: Track[] = [];
 	let unsafe = false;
-	const place = (track: Track, path: readonly Point[], kept?: Follower) => {
+	const place = (wire: Wire, path: readonly Point[], kept?: Follower) => {
 		const [first = [path[0], path[0]] as const, ...rest] = segments(path);
 		if (kept)
 			result.push(
 				kept.backwards
-					? withEnds(track, first[1], first[0])
-					: withEnds(track, first[0], first[1]),
+					? withEnds(kept.track, first[1], first[0])
+					: withEnds(kept.track, first[0], first[1]),
 			);
 		else if (!near(first[0], first[1])) rest.unshift(first);
 		for (const [from, to] of rest)
@@ -258,9 +275,9 @@ function rework(
 					nextShapeId + added.length,
 					from,
 					to,
-					track.layer,
-					track.lineWidth,
-					track.net,
+					wire.layer as CopperLayer,
+					wire.lineWidth,
+					wire.net,
 				) as Track,
 			);
 	};
@@ -269,10 +286,8 @@ function rework(
 		if (!follower.clear) unsafe = true;
 	}
 
-	const links: { from: Point; to: Point; track: Track }[] = [];
+	const links: { from: Point; to: Point; wire: Wire }[] = [];
 	for (const piece of pieces) {
-		const { shift } = piece;
-		if (!shift) continue;
 		const holders = attached(piece.before, piece.net);
 		const riders = [...followers.values()].filter((follower) =>
 			follower.rides.has(piece),
@@ -287,36 +302,47 @@ function rework(
 				? closestOn(piece.line, ends)
 				: nearestOn(piece.line, centre);
 			const from = ends ? nearestOn(ends, at) : covers(item, at) ? at : centre;
+			const to = piece.shift(at);
 			const layer =
 				piece.track?.layer ??
 				item.layers.find((candidate) =>
 					piece.before.layers.includes(candidate),
 				);
-			const template =
+			const like =
 				piece.track ??
 				[item, ...holders].find((holder) => holder.kind === "track")?.shape ??
 				riders[0]?.track;
-			const to = shift(at);
-			if (!layer || !template || !isBoardTrack(template)) continue;
 			if (
+				!layer ||
 				links.some(
 					(link) =>
-						link.track.layer === layer &&
+						link.wire.layer === layer &&
 						near(link.from, from) &&
 						near(link.to, to),
 				)
 			)
 				continue;
-			links.push({ from, to, track: { ...template, layer } });
+			links.push({
+				from,
+				to,
+				wire: {
+					layer,
+					lineWidth:
+						like && isBoardTrack(like)
+							? like.lineWidth
+							: piece.before.hulls[0].radius,
+					net: piece.net ?? item.net,
+				},
+			});
 		}
 	}
-	for (const { from, to, track } of links) {
-		const found = route(track, from, to);
-		place(track, found.points);
+	for (const { from, to, wire } of links) {
+		const found = route(wire, from, to);
+		place(wire, found.points);
 		if (!found.clear) unsafe = true;
 	}
 
-	const merged = merge(result, added, selected, routing);
+	const merged = merge(result, added, selected, routing, dragged?.id);
 	if (unsafe) markUnsafeMove(merged);
 	return merged;
 }
@@ -333,6 +359,7 @@ function merge(
 	added: readonly Track[],
 	selected: ReadonlySet<number>,
 	routing: TrackRouting,
+	dragged?: number,
 ): EditorShape[] {
 	const tracks = new Map<number, Track>();
 	for (const shape of [...result, ...added])
@@ -361,10 +388,10 @@ function merge(
 			if (isBoardTrack(shape) && !tracks.has(shape.id)) add(shape);
 		return found;
 	};
+	const chosen = (track: Track) =>
+		selected.has(track.id) || track.id === dragged;
 	const keeps = (a: Track, b: Track) =>
-		selected.has(a.id) !== selected.has(b.id)
-			? selected.has(a.id)
-			: a.id < b.id;
+		chosen(a) !== chosen(b) ? chosen(a) : a.id < b.id;
 	const queue = [...tracks.values()].flatMap((track) =>
 		lineEnds(track).map((point) => ({ point, layer: track.layer })),
 	);
@@ -602,7 +629,7 @@ export function dragTrackEnd(
 				routing,
 				nextShapeId,
 				undefined,
-				track.id,
+				{ id: track.id, end },
 			) ?? [track],
 	);
 }

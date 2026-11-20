@@ -577,7 +577,7 @@ describe("routing and the ratsnest", () => {
 			);
 	});
 
-	test("dragging a track's end across another net's track it cannot get around is refused", () => {
+	test("a drag whose connections cannot keep clear of another net is refused", () => {
 		const track = trackSegment(
 			1,
 			{ x: 0, y: 0 },
@@ -594,17 +594,45 @@ describe("routing and the ratsnest", () => {
 			0.25,
 			"b",
 		);
-		const shapes = [track, wall];
+		const fenced = [track, wall];
 		assert.ok(
 			isUnsafeMove(
 				dragTrackEnd(
 					track,
 					1,
 					{ x: 6, y: 0 },
-					shapes,
+					fenced,
 					3,
 					0.1,
-					trackRouting(shapes),
+					trackRouting(fenced),
+				),
+			),
+		);
+		const bend = trackSegment(
+			5,
+			{ x: 2, y: 0 },
+			{ x: 6, y: 4 },
+			"F.Cu",
+			0.25,
+			"a",
+		);
+		const crossed = [
+			trackSegment(4, { x: 0, y: 0 }, { x: 2, y: 0 }, "F.Cu", 0.25, "a"),
+			bend,
+			trackSegment(6, { x: 6, y: 4 }, { x: 6, y: 8 }, "F.Cu", 0.25, "a"),
+			trackSegment(7, { x: 3.5, y: -2 }, { x: 3.5, y: 2 }, "F.Cu", 0.25, "b"),
+		];
+		assert.ok(
+			isUnsafeMove(
+				moveShapes(
+					[bend],
+					{ x: 1, y: -1 },
+					0,
+					bend,
+					crossed,
+					8,
+					false,
+					trackRouting(crossed),
 				),
 			),
 		);
