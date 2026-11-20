@@ -16,6 +16,7 @@ import {
 } from "@ecad/drawing-core/board/footprints.ts";
 import {
 	hullBounds,
+	lineEnds,
 	outlineEncloses,
 	rectangleCorners,
 	trackSegment,
@@ -36,6 +37,7 @@ import {
 } from "@ecad/drawing-core/circuit/model.ts";
 import {
 	type EditorShape,
+	moveShapes,
 	resizeHandles,
 	resizeShape,
 	symbolShapes,
@@ -50,6 +52,7 @@ import type { FootprintReference } from "@ecad/drawing-core/footprint/reference.
 import {
 	createHole,
 	createPad,
+	createVia,
 	isPad,
 } from "@ecad/drawing-core/footprint/shapes.ts";
 import {
@@ -245,6 +248,24 @@ const pourCopper = (
 	rules: BoardRules = defaultBoardRules,
 ) => layerFill(fillZones(shapes, netlist, rules), "F.Cu");
 
+function applyMove(
+	shapes: readonly EditorShape[],
+	replacements: readonly EditorShape[],
+) {
+	const byId = new Map(replacements.map((shape) => [shape.id, shape]));
+	const known = new Set(shapes.map((shape) => shape.id));
+	return [
+		...shapes.map((shape) => byId.get(shape.id) ?? shape),
+		...replacements.filter((shape) => !known.has(shape.id)),
+	];
+}
+
+const roundedEnds = (shape: EditorShape) =>
+	lineEnds(shape).map((point) => ({
+		x: Math.round(point.x * 1000) / 1000 || 0,
+		y: Math.round(point.y * 1000) / 1000 || 0,
+	}));
+
 const padNets = (footprint: EditorShape, netlist: BoardNetlist) =>
 	boardPads([footprint]).map((pad) =>
 		netlist.padNet(pad.component, pad.number),
@@ -351,6 +372,73 @@ describe("routing and the ratsnest", () => {
 			unroutedNets([...shapes, ...routeMid(shapes, netlist)], netlist),
 			["gnd"],
 		);
+	});
+
+	test("dragging a track slides it along the tracks at its ends, which keep their angles", () => {
+		const across = trackSegment(
+			1,
+			{ x: 0, y: 0 },
+			{ x: 2, y: 0 },
+			"F.Cu",
+			0.25,
+			"mid",
+		);
+		const bend = trackSegment(
+			2,
+			{ x: 2, y: 0 },
+			{ x: 4, y: 2 },
+			"F.Cu",
+			0.25,
+			"mid",
+		);
+		const down = trackSegment(
+			3,
+			{ x: 4, y: 2 },
+			{ x: 4, y: 5 },
+			"F.Cu",
+			0.25,
+			"mid",
+		);
+		const shapes = [across, bend, down];
+		const moved = applyMove(
+			shapes,
+			moveShapes([bend], { x: 0.5, y: -0.5 }, 0, bend, shapes),
+		);
+		assert.deepEqual(moved.map(roundedEnds), [
+			[
+				{ x: 0, y: 0 },
+				{ x: 3, y: 0 },
+			],
+			[
+				{ x: 3, y: 0 },
+				{ x: 4, y: 1 },
+			],
+			[
+				{ x: 4, y: 1 },
+				{ x: 4, y: 5 },
+			],
+		]);
+	});
+
+	test("moving a routed track or via keeps its net joined", () => {
+		const { shapes, netlist } = dividerBoard();
+		const [from, to] = lineEnds(required(routeMid(shapes, netlist)[0]));
+		const middle = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
+		const id = nextId++ * 10;
+		const halves = [
+			trackSegment(id, from, middle, "F.Cu", 0.25, "mid"),
+			trackSegment(id + 1, middle, to, "F.Cu", 0.25, "mid"),
+		];
+		const via = { ...createVia(id + 2, middle), net: "mid" };
+		const routed = [...shapes, ...halves, via];
+		assert.deepEqual(unroutedNets(routed, netlist), ["gnd"]);
+		for (const selection of [[halves[0]], [via], halves]) {
+			const moved = applyMove(
+				routed,
+				moveShapes(selection, { x: 0.3, y: -0.4 }, 0, selection[0], routed),
+			);
+			assert.deepEqual(unroutedNets(moved, netlist), ["gnd"]);
+		}
 	});
 
 	test("a track end snaps to the centre of a nearby pad on its net, never to another net's pad", () => {

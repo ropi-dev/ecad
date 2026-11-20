@@ -1,3 +1,4 @@
+import { dragTracks, isBoardTrack } from "#/board/track-drag.ts";
 import { connectionTolerance } from "#/drawing/connection-geometry.ts";
 import type { EditorShape } from "#/drawing/schema.ts";
 import {
@@ -29,7 +30,7 @@ import {
 	routingPitch,
 	wireEnds,
 } from "#/drawing/wire-routing.ts";
-import { isPad } from "#/footprint/shapes.ts";
+import { isPad, isVia } from "#/footprint/shapes.ts";
 import { unionFind } from "#/lib/union-find.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
@@ -64,6 +65,8 @@ export function moveShapes(
 		y: shape.y + delta.y,
 	}));
 	if (delta.x === 0 && delta.y === 0) return moved;
+	if (shapes.some((shape) => isBoardTrack(shape) || isVia(shape)))
+		return dragTracks(shapes, moved, allShapes, delta, nextShapeId);
 	return connectTransformedTerminals(shapes, moved, allShapes, nextShapeId, {
 		pitch: gridStep,
 		delta,
