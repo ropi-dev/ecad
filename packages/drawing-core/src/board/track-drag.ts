@@ -199,7 +199,9 @@ class Rework {
 		const [first, ...rest] = segments(path);
 		if (keep)
 			this.result.push(
-				first ? withEnds(track, first[0], first[1]) : { ...track, width: 0 },
+				first
+					? withEnds(track, first[0], first[1])
+					: withEnds(track, path[0], path[0]),
 			);
 		else if (first) rest.unshift(first);
 		for (const [from, to] of rest)
