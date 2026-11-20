@@ -1,13 +1,13 @@
 # Drawing architecture
 
-The editor gathers input, commands change the document, the display model decides what appears, and the engine renders it.
+In ECAD, the editor collects pointer and keyboard input, Effect commands commit document changes, the display model builds plain rendering descriptions, and the Three.js engine draws them.
 
-`packages/drawing-core` owns the headless drawing model, store, commands, schemas, and MCP tool registration. It depends on Effect, Zod, and the MCP SDK. `packages/core` adds the Solid editor, display model, and rendering. `packages/web` hosts the editor in TanStack Start, and `packages/desktop` hosts it in Electron. `packages/cli` uses the headless package to edit local drawing files and run a standalone stdio MCP server.
+`packages/drawing-core` owns the headless drawing, circuit, footprint, and board models, stores, Effect commands, schemas, ERC/DRC, and MCP tool registration (depending only on Effect, Zod, and the MCP SDK). `packages/core` adds the Solid 2.0 UI, display models, format parsers, workers, and Three.js renderer. `packages/web` hosts the app in TanStack Start, `packages/desktop` hosts it in Electron, and `packages/cli` edits local drawing files and runs the stdio MCP server.
 
 ```mermaid
 flowchart LR
     Editor[Editor tools and gestures] -->|Completed geometry| Commands[Effect commands]
-    Caller[Scripts or other callers] -->|Completed geometry| Commands
+    Caller[CLI / MCP / scripts] -->|Completed geometry| Commands
     Commands --> Document[Drawing store and history]
     Document --> Display[Drawing display model]
     Editor -->|Selection and previews| Display
@@ -15,21 +15,23 @@ flowchart LR
     Engine --> Viewport[Viewport runtime]
 ```
 
+## Layer boundaries
+
 | Layer | Location | Responsibility |
 | --- | --- | --- |
-| Drawing model | `packages/drawing-core/src/drawing/` | Shape data, geometry calculations, text alignment, symbol grouping, and history. No UI framework, Three.js, or DOM dependency. |
-| Commands | `packages/drawing-core/src/commands/` | Validate complete inputs, allocate IDs, normalize wires, and atomically publish document and history changes through Effect. |
-| CLI and stdio | `packages/cli/src/` | Read and write local drawings, preserve undo history, coordinate file access, and expose the shared commands through the CLI and MCP. |
-| Display | `packages/core/src/drawing/display.ts` | Describe shape geometry, transforms, appearance, selection outlines, open wire terminals, and previews as plain data. |
-| Three.js engine | `packages/core/src/engine/drawing/`, `packages/core/src/engine/scene-viewport.ts` | Build meshes and textures, cache and dispose resources, operate cameras, render frames, and report viewport events. |
-| Solid adapters | `packages/core/src/components/editor/useEditorScene.ts`, `packages/core/src/components/viewer/SceneViewport.tsx` | Bind rendering resource lifetimes and engine events to Solid owners. |
-| Editor | `packages/core/src/components/editor/Editor2D.tsx` | Choose tools, collect pointer input, resolve snapping and text measurements, maintain selection and temporary geometry, and execute completed commands. |
+| Drawing model | `packages/drawing-core/src/drawing/` | Shape data, geometry math, text alignment, symbol grouping, named nets, and history. No UI, Three.js, or DOM dependencies. |
+| Commands | `packages/drawing-core/src/commands/` | Validate complete inputs, allocate IDs, normalize wires, and atomically publish document and history updates via Effect. |
+| CLI & stdio | `packages/cli/src/` | Read/write local `.ecaddraw` files, persist undo history, coordinate file locking, and expose shared commands over CLI and MCP. |
+| Display | `packages/core/src/drawing/display.ts` | Produce plain data descriptions of shapes, transforms, appearance, selection outlines, open wire terminals, and previews. |
+| Three.js engine | `packages/core/src/engine/drawing/`, `packages/core/src/engine/scene-viewport.ts` | Build meshes and textures, batch draws, cache/dispose GPU resources, operate cameras, and emit viewport events. |
+| Solid adapters | `packages/core/src/components/editor/useEditorScene.ts`, `packages/core/src/components/viewer/SceneViewport.tsx` | Bind rendering resource lifetimes and viewport events to Solid reactive owners. |
+| Editor | `packages/core/src/components/editor/Editor2D.tsx` | Manage tools, pointer gestures, snapping, text measurement, selection, previews, and command execution. |
 
-Import the headless drawing, command, and MCP modules directly from `@ecad/drawing-core/...`. `packages/core` no longer re-exports them, and lint rejects the former `#/drawing/shapes.ts`-style paths. App-specific symbol catalogs, file conversion, text measurement, worksheet layout, and display descriptions remain in `packages/core/src/drawing/`.
+Import headless drawing, command, and MCP modules directly from `@ecad/drawing-core/...`. `packages/core` does not re-export them (lint rejects legacy `#/drawing/shapes.ts`-style paths). App-specific symbol catalogs, file conversion, text measurement, worksheet layout, and display builders remain in `packages/core/src/drawing/`.
 
-## Running a command without an editor
+## Headless commands
 
-Create a store and provide it to an Effect. Position is the shape center in millimetres, with positive Y upwards; rotation is in radians. Every placement input must include the final dimensions and line width.
+Commands accept complete, resolved geometry in millimetres (shape center `(x, y)`, positive Y up, rotation in radians) and never inspect active tools, selection, viewport, or pointer state.
 
 ```ts
 import { Effect } from "effect";
@@ -46,7 +48,7 @@ const placement = placeRectangleEffect({
   lineWidth: 0.2,
 });
 
-// Constructing placement has not changed the document.
+// Constructing the Effect does not mutate the store.
 const result = Effect.runSync(
   placement.pipe(Effect.provideService(DrawingStore, store)),
 );
@@ -54,111 +56,68 @@ const result = Effect.runSync(
 console.log(result.ids, store.getSnapshot().shapes);
 ```
 
-`placeShapesEffect` accepts complete shapes without IDs, including symbols and text with measured dimensions. `replaceShapesEffect` accepts explicit IDs and their finished replacement geometry. `removeShapesEffect` accepts explicit IDs. `undoEffect`, `redoEffect`, and `jumpHistoryEffect` navigate document history. None reads the current tool, selection, viewport, pointer, or UI state.
+- **Available commands** — `placeRectangleEffect`, `placeShapesEffect`, `replaceShapesEffect`, `rotateShapesEffect` (relative radians counterclockwise, default `Math.PI / 2`; wires require multiples of `Math.PI / 2`), `removeShapesEffect`, `setPagesEffect`, `setSheetEffect`, `moveShapesToPageEffect`, `undoEffect`, `redoEffect`, and `jumpHistoryEffect`.
+- **Transactions and errors** — Each command publishes one undo step. Invalid inputs fail with `InvalidDrawingCommand` and leave the document unchanged.
+- **Execution boundaries** — Commands never call `runSync`, `runPromise`, or Solid primitives internally. UI event handlers run synchronous commands with `Effect.runSync`; async callers use `runEffect` from `@ecad/drawing-core/lib/effect.ts`.
 
-`rotateShapesEffect(ids, angle)` rotates explicit IDs around each shape's center using the current committed geometry. Its relative angle is in radians, positive counterclockwise, and defaults to `Math.PI / 2`. Rotation keeps component pins and labels together and leaves unselected wires in place. Wire rotations must keep segments horizontal or vertical.
+## Previews, store, and history
 
-Commands capture their input when constructed. They run only when executed with Effect, and can be composed in `Effect.gen`. Each command publishes one complete transaction; a sequence of separate commands produces separate undo steps. Invalid inputs fail with `InvalidDrawingCommand` and leave the document unchanged. Callers can handle that error with Effect combinators before running the program.
+Interactive gestures (drawing, moving, resizing, routing) update temporary editor preview geometry during pointer motion and commit a single command on completion. Cancelling discards the preview.
 
-The current commands are synchronous, so the UI event boundary uses `Effect.runSync` and handles the error channel there. Commands themselves never call `runSync`, `runPromise`, or a Solid primitive. Asynchronous callers can provide the same service and use `runEffect` from `@ecad/drawing-core/lib/effect.ts`. See [Effect 3 execution boundaries](https://effect.website/docs/v3/getting-started/running-effects/).
+- `createDrawingStore()` exposes immutable snapshots and a subscription bridged to Solid via `fromExternalStore` (`packages/core/src/lib/external-store.ts`). Pass `<Editor2D store={store} />` to share a store with external callers.
+- An external document change cancels active gestures and prunes deleted IDs from selection so a stale preview cannot overwrite external edits.
+- Document history stores only drawing data (capped at 100 nodes across branches) with monotonic shape IDs. Selection, tool state, snapping, camera, and previews stay outside history.
 
-## Previews and history
+## Symbol storage, footprints, and boards
 
-A rectangle drag starts with temporary editor geometry. Pointer movement updates that preview. Releasing a valid rectangle executes a placement command with its completed geometry; cancelling discards the preview. Moving and resizing follow the same pattern. A wire command runs once each completed segment or routed corner is known.
-
-The store exposes stable, immutable snapshots and a subscription that `fromExternalStore` in `packages/core/src/lib/external-store.ts` turns into a Solid accessor. Pass it to `<Editor2D store={store} />` to display and edit the same document used by external commands. Without this prop, each editor creates its own store.
-
-The CLI and its stdio MCP server create a store from a drawing file for each operation. The desktop app runs no MCP server; **Settings > MCP** only adds `ecad mcp` to Claude Code and Codex, and the app reloads drawings that the server changes on disk. See [MCP access to drawings](mcp.md).
-
-The CLI and stdio server They reuse the same MCP tool definitions and commands, save successful edits, and preserve history in an adjacent file. The stdio server reloads the drawing on each call so it sees edits from other CLI processes. See [CLI and stdio access](mcp.md#cli-and-stdio-access).
-
-An external document change cancels any active gesture and removes deleted IDs from the editor's selection. A stale preview cannot overwrite the external command when the pointer is released.
-
-Document history contains only drawing data. The editor separately remembers selections for its own history navigation. Tool changes, selection, snapping, camera movement, and previews do not create document history entries. Shape IDs remain monotonic across undo branches.
-
-## Symbol storage
-
-`SymbolLibraryProvider` in `packages/core/src/symbol-library/storage.tsx` injects user storage and optional project storage into the shared editor. Core validates named library configuration and resolves enabled definitions, with project definitions taking precedence over user definitions. Without a provider, user libraries remain in memory for the editor session.
-
-`packages/web/src/symbol-library/storage.ts` persists user configuration in project-independent localStorage. The desktop adapter calls the preload bridge; Electron's main process reads and atomically writes `symbol-libraries.json` in the platform configuration directory (see `packages/desktop/src/main/config-directory.ts`) and resolves configured directory sources. Project storage persists `symbolLibraries` in the project's `symbol-libraries.json` and keeps existing standalone project symbols in the manifest. The project provider exposes both scopes, so opening a project never replaces or copies the user's libraries. See [symbol library configuration](symbol-format.md#user-and-project-configuration).
-
-## Footprints
-
-A footprint reuses the drawing store, commands and editor canvas, with board layers, pads and vias as optional fields on the shared shapes. See [the footprint editor](footprints.md).
-
-`@ecad/default-footprints` generates the built-in footprint library, as `@ecad/default-symbols` generates the built-in symbols. Symbol definitions and placements refer to a footprint by library and ID in an optional `footprint` field. A placement copies its definition's footprint when it is created and keeps its own from then on. The editor imports the footprint package on demand, so a schematic that never shows a component's footprint does not load it.
-
-## Boards
-
-A PCB reuses the footprint editor's canvas with placed footprints, tracks, vias and zones. `packages/drawing-core/src/board/` holds the headless netlist, connectivity, design rules, schematic sync and autorouter, and `packages/core/src/board/` the file format, zone fills, display and Gerber export. See [the PCB editor](pcb.md).
+- **Symbol libraries** — `SymbolLibraryProvider` (`packages/core/src/symbol-library/SymbolLibraryProvider.tsx`) injects user and optional project library storage. Enabled project definitions override user definitions by ID. Web persists user libraries in `localStorage`; desktop stores `symbol-libraries.json` in the platform config directory and resolves local directory sources in Electron's main process. See [docs/symbol-format.md](symbol-format.md#user-and-project-configuration).
+- **Footprints** — Reuse the drawing store, commands, and canvas with optional `layer`, `pad`, `via`, and `hole` shape fields. `@ecad/default-footprints` and `@ecad/default-models` load on demand. See [docs/footprints.md](footprints.md).
+- **Boards (PCBs)** — Extend the footprint canvas with placed footprints, tracks, vias, and copper zones. Headless netlist, connectivity, DRC, schematic sync, and autorouting live in `packages/drawing-core/src/board/`; file format, zone fills, display, and Gerber export live in `packages/core/src/board/`. See [docs/pcb.md](pcb.md).
 
 ## Rendering ownership
 
-`buildDrawingDisplay` accepts drawing data and explicit presentation state. Its output is suitable for testing without mounting the UI or creating a renderer. The Three.js adapter consumes those descriptions and owns cached geometry, materials, and textures. Removing shapes or previews releases their cached resources; disposing the adapter releases the worksheet and all remaining resources.
-
-The viewport runtime owns the renderer, camera, controls, input listeners, and animation scheduling. Solid creates and disposes that runtime with the component's owner and updates it through explicit methods. Solid effects handle this resource binding; they do not trigger document commands.
+`buildDrawingDisplay` converts drawing data and presentation state into plain display objects suitable for headless testing. The Three.js adapter owns cached geometry, materials, and textures, releasing resources when shapes disappear or the adapter disposes. The viewport runtime owns the WebGL renderer, camera, controls, listeners, and animation loop; Solid effects bind lifecycle only and never dispatch document commands.
 
 ## Dialogs
 
-`AppDialog` in `packages/core/src/components/ui/Dialog.tsx` is the app's dialog. The web app shows it over a dimmed page. The desktop app shows each dialog in a modal child window of the editor window.
+`AppDialog` (`packages/core/src/components/ui/Dialog.tsx`) renders over a dimmed backdrop on web, and in a frameless modal child window on desktop (opened via `window.open` with an `ecad-dialog-` window name prefix, rendered through a Solid `Portal` so it retains page state, context, stylesheets, and `data-theme`).
 
-The page opens that window with `window.open` and a name that starts with `ecad-dialog-`. The main process allows only blank windows with that prefix, makes them frameless modal children, and shows one after the page has sized it. Solid renders the dialog into the window through a `Portal`, so the dialog keeps the page's state, context and preload bridge. The page copies its stylesheets and `data-theme` into the window and keeps them in step. The window is as wide as the dialog's size, as tall as its content up to 85% of the screen, and follows the content when it changes. Its header moves it.
+Because desktop dialog elements belong to a child `window` while script executes in the parent realm:
 
-Dialog code runs in the page's JavaScript realm, but its elements belong to the dialog window. `element instanceof HTMLElement` is false for them, so check against `element.ownerDocument.defaultView.HTMLElement`, as `isEditableTarget` does. Code that reads the global `document`, such as roving focus in a tab list, misbehaves inside a dialog window, which is why the settings dialog has its own tab list. Delegated events from a dialog window stop at its root, so bubbling handlers on the page never see them. Capture handlers on the dialog's ancestors still do, so they must ignore targets from another document.
+- Check `element instanceof element.ownerDocument.defaultView.HTMLElement` rather than `element instanceof HTMLElement`.
+- Avoid code that queries the global `document` (for example, roving focus in tab lists).
+- Capture-phase handlers on parent ancestors must ignore events targeting another document.
 
-## Work that runs in workers
+## Web Workers
 
-Computation that needs no DOM and can take longer than a frame runs in a Web Worker, so the page keeps painting and answering input.
+Heavy non-DOM work runs in ES-module Web Workers (`worker.format: "es"` in Vite configs) so the UI stays responsive:
 
-| Work | Worker | Lifetime |
+| Workload | Worker | Lifetime |
 | --- | --- | --- |
-| Gerber, ZIP, STEP and KiCad import | `formats/**/*.worker.ts` | One import |
-| Zone fills, ratsnest, design rules check, Gerber and drill export | `board/analysis.worker.ts` | An open board |
-| Circuit graph layout, for **Untangle** and for a circuit opened without saved positions | `circuit/untangle.worker.ts` | Kept for 60 seconds after a layout |
-| Drawing export: SVG serialization, PNG encoding and PDF writing | `drawing/export.worker.ts` | Started when the export dialog opens, kept for 60 seconds after its last request |
+| Gerber, ZIP, STEP, and KiCad import | `formats/**/*.worker.ts` | Single import |
+| Zone fills, ratsnest, DRC, Gerber/drill export | `board/analysis.worker.ts` | Open board (loads Gerber/ZIP/glyph tables on first export) |
+| Circuit graph layout (`Untangle` & initial open) | `circuit/untangle.worker.ts` | Warm for 60 s after completion |
+| Drawing export (SVG, PNG, PDF) | `drawing/export.worker.ts` | Started when export dialog opens; warm for 60 s |
 
-`inWorkerOrHere` in `packages/core/src/lib/worker-task.ts` runs a one-off task. It starts the worker, lets the task post any number of requests, and terminates the worker when the task settles or its `AbortSignal` fires. `keepWarm` wraps a worker so that a task that finished cleanly parks it for the next task instead, for 60 seconds. The layout worker and the export worker use it, so only the first layout or export pays for starting a worker. A worker stopped during a request, one that crashed, or one that answered `unavailable` is terminated and replaced. A worker answers each request with `{ result }`, `{ error }` or `{ unavailable: true }`. An error is the task's own failure and rejects. When there is no `Worker`, the worker cannot start, it crashes, it answers `unavailable`, or it gives no answer within 30 seconds of a request, the helper terminates the worker at once and the same function runs in the page instead, loaded on demand. Node tests take that path. An aborted task never falls back to the page.
+- `inWorkerOrHere` (`packages/core/src/lib/worker-task.ts`) manages one-off workers; `keepWarm` parks finished workers for 60 s. Workers reply with `{ result }`, `{ error }`, or `{ unavailable: true }`. If `Worker` is unavailable, crashes, returns `unavailable`, or exceeds 30 s, the helper terminates it and falls back to running the function on the page (used by Node tests). Aborted tasks never fall back.
+- The export worker loads JetBrains Mono into its own `FontFaceSet` and measures text on an `OffscreenCanvas`. PNG export decodes the worker's SVG to an `ImageBitmap` on the page and transfers it back to the worker for PNG encoding; PDF export runs entirely in the worker, loading `drawing/export-pdf.ts` and glyph outlines on first use.
+- Interactive wire rerouting during drags, 3D board mesh updates, rendering, ERC, and autosave stay on the page thread.
 
-Opening a circuit without saved positions waits for its layout. The background preload of a circuit's views and an explicit open share one layout, and a second request for the circuit that is already opening joins the first. Opening another circuit, reloading the project or closing it aborts the pending layout and stops its worker. The preload never does: while the user is opening a different circuit it skips its own layout. **Untangle** stays focusable while it runs, so Ctrl+Z still reaches the editor, and ignores further clicks until the result arrives. A result for a graph that changed in the meantime is dropped.
+## Circuits and the graph editor
 
-The export worker loads the schematic font into its own font set and measures text on an `OffscreenCanvas`, so it lays text out exactly as the page does. Opening the export dialog starts the worker and loads that font (`warmDrawingExport`), and an export requested before the worker is ready waits for it instead of starting a second one. It answers `unavailable` when it has no canvas or the font fails to load. A PNG still needs the page for one step: only a document can decode an SVG, so the page turns the worker's SVG into an `ImageBitmap` and transfers it back. The worker's canvas takes that bitmap over without copying it and encodes the PNG, which keeps peak memory where it was when the page did the work. Nothing paints behind the bitmap, so for a PNG the worker widens the SVG's view box to the image's aspect ratio (`coverOutput`) and the SVG's own background reaches the edges. If the browser cannot make the bitmap, or the worker cannot encode it, the page paints and encodes the PNG from the SVG the worker already built. A PDF needs no page step. The worker loads the PDF writer (`drawing/export-pdf.ts`) and the glyph outline table on the first PDF export, and transfers the finished file back.
+The circuit model (`packages/drawing-core/src/circuit/`) separates electrical connectivity from schematic geometry. `CircuitEditor` (`packages/core/src/components/circuit/CircuitEditor.tsx`) loads on demand when a circuit is opened.
 
-Workers are built as ES modules (`worker.format` in both Vite configs), so a worker can load code on demand. The board worker loads the Gerber writer, the ZIP packer and the 262 KB glyph outline table only for the first fabrication export, which keeps them out of the script every open board starts.
+- **Document model** — `.ecadcircuit` (and embedded circuit sections in `.ecaddraw`) is JSON (`format: "ecad-circuit"`, `version: 1`) containing a stable document ID, name, revision, components (each with embedded pin snapshots so library edits never break existing connectivity), nets (display name + aliases + `pinIds`), and `noConnectPinIds`. Graph positions and collapse state live in memory only (undoable, never persisted).
+- **Store and commands** — `createCircuitStore(file, options)` maintains immutable snapshots and up to 100 undo entries, throwing `CircuitCommandError` on invalid commands or schema failures. Electrical edits increment the revision; layout edits do not.
+- **No-connect sync** — Circuit no-connect declarations and paired schematic no-connect markers stay synchronized on save.
+- **Linked view mounting** — A circuit's schematic, circuit, and PCB editors stay mounted together. After 1 second of user inactivity, the session preloads the other two views hidden and inert so view switches are instant. Hidden circuit views release their SVG graph and re-render on show to keep DOM node counts low.
+- **Selection sync** — `packages/core/src/circuit/selection-sync.ts` maps selections across views after autosave: symbols ↔ components, pins ↔ pins, wires/labels ↔ nets (between schematic and circuit), and symbols/components ↔ placed footprints (with PCB). Switching back without changing selection restores the original selection.
 
-Three costs stay on the page because they are tied to the frame or to WebGL objects: wire rerouting during a move, which the same event must commit, building the 3D board's meshes, and rendering. Electrical rules checks and autosave measured 25 ms or less on the RP2350A reference design and stay too.
+## External file watching (desktop)
 
-## Circuit documents and the graph editor
+Electron's main process watches the open project directory and each directory containing a listed drawing, symbol, or footprint (non-recursively, ignoring temp, lock, history, and asset files). After a 300 ms quiet period (or on window focus), it compares file bytes against the last read/written snapshot:
 
-The circuit editor is the first stage of separating electrical connectivity from schematic geometry. Circuit files contain electrical data. Graph layouts are temporary view state. Existing `.ecaddraw` files retain their geometry-based connectivity and do not yet share connectivity with circuit files.
-
-Create a circuit with **Add file → New circuit** in an open project. The Components picker uses the same enabled built-in, user, and project symbol libraries as the schematic editor. Choosing a symbol starts a placement preview; clicking the canvas creates a component and its position in one undo step. Escape cancels placement. Symbols without pins cannot become electrical components. The picker refreshes the catalog when opened. The editor autosaves and has no file menu. Project APIs can import circuit documents with optional graph layouts; duplicate circuit identities are rejected.
-
-`packages/drawing-core/src/circuit/` owns the headless model, schemas, commands, store, and graph construction. It has no UI framework, DOM, or renderer dependency. `packages/core/src/components/circuit/CircuitEditor.tsx` handles selection, temporary drags, inspection, and completed commands. The editor loads on demand through `Editor2D` when the project selects a circuit file, on both web and desktop. A circuit's schematic, circuit and PCB editors stay mounted together. Once one of them is open, the project session opens the other two documents after a second with no clicks, keys or wheel input, and `EditorDocument` renders their editors hidden and inert, so the view switch only changes which one shows. Waiting for that pause keeps the first draw of the hidden canvases out of whatever the user is doing. A switch before then keeps the view it leaves mounted. The hidden circuit editor keeps its document, camera and selection but not its SVG graph, which it renders again when it shows. A circuit without a PCB gets its editor the first time its PCB opens. Its canvas fills the workspace. It shares the schematic editor's bottom toolbar groups. Components, History tools, and View tools open above the dock. Double-click a net name or component header to edit its attributes in place. Select a connection and press Delete to remove that pin's membership. Pin context menus provide connect, disconnect, and no-connect actions. Ctrl or Cmd-click connections to toggle them in a selection of several memberships, Shift-click to add them, or Ctrl or Cmd + Shift-click to remove them, then use their context menu to split them into a new net. There is no floating inspector. The Pan tool and middle-drag move the viewport without editing the circuit.
-
-A `.ecadcircuit` file is JSON with `format: "ecad-circuit"` and `version: 1`. It contains a stable document ID, name, revision, components, nets, and `noConnectPinIds`. Each component has a stable ID, editable reference and value, part identity and optional part revision, and an embedded snapshot of its pins. Each pin has a stable ID, name, number, and electrical type, plus `activeLow: true` for an active-low pin. Components created from symbols retain the source library scope and ID in `part.library`, and each pin retains its definition child ID in `sourcePinId`. Unnumbered symbol pins receive sequential numbers. The circuit stores pin snapshots, so later library edits cannot change an existing component's connectivity. Symbol pins currently have no electrical type metadata, so these component pins start as passive. Changing a symbol library cannot alter these pins.
-
-A net has a stable ID, `names`, and `pinIds`. Its first name is the display name; the remaining names are aliases. Names are trimmed and case sensitive. Names must be unique across the circuit, pins must exist, and a pin can belong to at most one net. Pins without memberships are unconnected. A no-connect declaration records an intentionally unconnected pin and cannot coexist with membership. Empty and one-pin nets are valid. Add net places a standalone net and opens its name field. Removing its last membership preserves the net and its position. Only explicit net deletion or a merge removes a net.
-
-Graph positions and collapse state live in memory for the current editing session. They support undo but never enter saved circuit files. Opening a circuit generates a deterministic layout from its components and net memberships and fits it to the viewport.
-
-The graph displays components as boxes, their pins as nodes, and each net as a shared node. Each membership produces one edge, so an N-pin net has N edges. Pin sides follow the net positions to keep connections visible. Crossings have no electrical effect. Unnamed nets derive their labels from distinct member pin names, or component references and pin numbers when no useful names exist. Labels update with membership changes, use up to three names, and add suffixes to avoid duplicate labels or manually assigned names and aliases. These derived labels are not saved as explicit names. Editing a label assigns a manual name; clearing it restores automatic naming. Each alias has a separate field, so commas remain part of a name. Add alias appends a field without committing other edits. Choosing a component or Add net transfers focus to placement in the graph. Placement starts at the viewport center. Arrow keys move the snapped preview, Shift moves ten grid steps, Enter or Space places, and Escape cancels. A placement is one undo command. Dragging headers or net nodes updates graph positions only. Dragging a pin onto another pin or a net node commits a connection, with a temporary preview while dragging. Dropping onto a named net keeps that target net. Component top-left corners and net centers snap to the visible background dots during placement, dragging, arrow-key movement, and Untangle. The grid coarsens at low zoom, and these edits use that same spacing. Snapping changes only graph positions. Each component has a collapse control at the bottom. Collapsed cards hide all pins and route their membership edges to a shared point on each side without joining their nets. Each connection uses the side facing its net. Expanding restores the full pin stack. Card height and wire endpoints animate for 180 ms, unless reduced motion is enabled. Collapse state supports undo without changing circuit contents or revisions. Untangle and Fit use the visible card heights. Arrow keys move a focused node. The Untangle button searches several component orders and column counts, places nets in gaps, and chooses a grid-aligned result by node overlap, wires passing through other components, sampled curve crossings, and wire length. Small circuits also try empty grid slots and refine component swaps and net placement. It keeps the current arrangement when no candidate scores better. Zoom percentages and limits use the actual SVG screen scale. Fit resets zoom to 100%, one CSS pixel per graph unit, and centers the graph, even if the graph is larger than the viewport. Opening a circuit and Untangle still frame the complete layout. These actions change only the viewport.
-
-`createCircuitStore(file, options)` exposes immutable snapshots, subscription, `execute(command)`, `undo()`, and `redo()`. It keeps at most 100 undo entries. Commands validate a complete result before publishing; failure preserves both documents and history. Invalid commands, results, and synchronizations throw `CircuitCommandError`, an Effect tagged error with a stable `reason` and a display `message`. Schema failures join their issue messages and keep the Zod error as `cause`. An unknown command type fails with the `unknown-command` reason, and the command switch must handle every `CircuitCommand` type to compile. Connecting unconnected pins and splitting a net allocate net IDs with `options.createId`, which defaults to `crypto.randomUUID`. A store created without a file also takes its circuit ID from `createId`. Tests inject a counter for deterministic results. Electrical edits increment the circuit revision; layout edits preserve the entire circuit document. Undo restores the previous document revision, so the revision is not an external concurrency token.
-
-Connect merges the selected pins' nets into the explicitly selected target net, or the first existing net when no target is supplied. The surviving net keeps its ID. An explicit target keeps its display name first, and the other names become aliases. Connecting an intentional no-connect pin clears that declaration. Split moves an explicitly selected proper subset into a new unnamed net. Disconnect removes selected memberships without connecting the detached pins to one another. Deleting a component removes its pins, memberships, no-connect declarations, and obsolete graph positions. Net and component attributes never act as identities.
-
-No-connect declarations and the paired schematic's no-connect markers stay in sync. Declaring a pin no-connect in the circuit view puts a marker on that pin's terminal, on the symbol's page. Clearing the declaration, or connecting the pin, deletes the markers that marked it, including a marker on the pin's wire stub. Markers drawn inside a symbol definition stay. In the other direction, a schematic marker on an unconnected pin's terminal, or on a wire that reaches only that pin, declares the pin no-connect, and deleting the marker clears it. A marker on a wired pin declares nothing, because a pin cannot be both connected and no-connect. ERC reports that clash. Moving or rotating a symbol leaves its markers in place, so the moved pins lose their declarations on the next save, and ERC reports the left-behind markers as stray. If a circuit edit is saved together with the move, the sync places a new marker on the pin and the old one stays where it was. Deleting a symbol in the schematic also leaves its markers in place. Deleting the component in the circuit view removes them.
-
-The project manifest optionally lists circuit paths in `circuits`. Browser storage writes electrical circuit JSON into a new revision and publishes the manifest last. Desktop storage writes visible circuit files, retains old bytes until the manifest commits, and restores them on failure. Desktop saves reject external electrical file changes. The project session queues autosave immediately after an electrical edit. It coalesces queued edits and drains changes made during an in-flight save before completing. Store identities track unsaved documents. Linked PCB synchronization runs only for changed PCB inputs or invalidated symbol libraries. Resolved libraries remain cached within the session until project library inputs change, the library storage publishes an update, or the project reloads. Failed saves retain dirty state for an explicit retry or the next edit. Moving, collapsing, or untangling nodes does not mark the circuit dirty or write files. Undo history and view state survive switching files in the current session and reset after reload.
-
-### Changes from other programs
-
-The desktop app watches the open project for changes that other programs make, such as the CLI, a text editor, or `git checkout`. The Electron main process watches the project directory and each directory that holds a listed drawing or symbol, without recursion. It ignores temporary, lock, history, and asset files. After 300 ms without further events, it compares each listed file with the bytes the project last read or wrote. This window's own saves therefore never count as changes. Missed events are caught when the window regains focus. When a file differs, the renderer asks the main process to re-read the project, then replaces only the documents whose files changed. A changed document starts a new undo history. Every other open document keeps its store, history, selection, and camera, and the editor does not remount. A document whose file was removed closes, and the editor returns to the main drawing. A project without one shows the start page instead. A toast names the reloaded documents.
-
-Unsaved local edits are never replaced. If any edit is pending when a change arrives, or an edit happens while the files are read, the project enters the existing conflict state. Saving pauses until **Reload from disk**. If a changed file cannot be read, for example while another program is partway through writing it, the open documents stay unchanged and a warning toast explains why. The next save then reports a conflict. Browser projects and untitled desktop projects are not watched.
-
-The next migration stage is to bind schematic symbol occurrences and route attachments to these component, pin, and net IDs. Geometry-based extraction remains authoritative only for legacy drawings until that binding exists. Circuit files are currently edited through the headless store or graph editor, rather than the drawing CLI/MCP commands.
-
-The view switch carries the selection between the schematic, circuit and PCB views. A schematic symbol selects its circuit component, a symbol's pin selects the circuit pin, and wires, net labels and net symbols select their circuit net. A schematic selection that stands for more than one circuit item, or for none, leaves the circuit view without a selection. In the other direction, a component selects all its unit symbols, a pin selects its symbol and pin, a net selects its wires, net labels and net symbols, and several selected connections select their symbols. The PCB maps through components: selected footprints select their components' symbols in the schematic, or the component in the circuit view when there is exactly one. Schematic symbols and circuit components and pins select their components' footprints. Nets, wires and tracks do not carry over to or from the PCB. Locked shapes stay unselected. Switching back before selecting anything else restores the original selection, so a single wire stays a single wire. Reloading files that another program changed cancels a pending selection handoff and that restore. The mapping runs after the switch's autosave, against the current documents, and lives in `packages/core/src/circuit/selection-sync.ts`. Each view keeps its own camera, tool and panels. Opening a file from the sidebar keeps whatever each view last had selected.
-
-Editor file selections invalidate earlier asynchronous circuit opens. A delayed circuit load cannot replace a subsequently selected drawing, symbol, asset, or circuit.
+- Only changed documents reload (starting fresh undo history); unchanged open documents keep their store, history, selection, and camera without remounting.
+- Removed files close and return to the main drawing or start page.
+- If local edits are pending (or occur mid-read), the project enters a conflict state and pauses saves until **Reload from disk**. Unreadable files show a warning toast and keep open documents intact.
+- Browser projects and untitled desktop projects are not watched.

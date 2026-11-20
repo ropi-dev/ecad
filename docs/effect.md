@@ -1,69 +1,76 @@
 # Effect integration
 
-The project uses Effect 3 for drawing commands, file imports, browser requests, subscriptions, server operations, and resource cleanup. Solid owns transient UI state. Drawing commands own committed drawing data and history. TanStack owns routing. Geometry algorithms and frame rendering remain synchronous TypeScript.
+ECAD uses Effect 3 for drawing commands, file imports, HTTP requests, subscriptions, server operations, and scoped resource cleanup. Solid 2.0 owns transient UI state, TanStack Start owns routing, and geometry/rendering math remains synchronous TypeScript.
 
-See [drawing architecture](architecture.md) for complete command inputs, the document store, gesture previews, and rendering boundaries. Synchronous drawing commands run at event boundaries after input is resolved, using `Effect.runSync`. Solid effects bind rendering resources and subscriptions; they do not trigger document edits.
+See [docs/architecture.md](architecture.md) for drawing command inputs and store boundaries.
 
-## Running operations
+## Execution boundaries
 
-Compose operations with `Effect.gen`, and run them at an event handler, Solid effect, server function, or HTTP handler using `runEffect` from `packages/drawing-core/src/lib/effect.ts`. Pass the framework's `AbortSignal` when one is available.
+Compose async domain workflows with `Effect.gen` and run them at UI event handlers, Solid effects, server functions, or HTTP handlers via `runEffect` (`packages/drawing-core/src/lib/effect.ts`), forwarding any available `AbortSignal`:
 
 ```ts
 const value = await runEffect(program, signal);
 ```
 
-`runEffect` preserves expected error objects instead of exposing Effect's fiber error wrapper to existing callers. Interruption preserves the caller's abort reason. Register cleanup inside the operation so resources are released before its Promise rejects. A successfully completed operation returns its value even if the signal aborts just after completion; the caller must handle a superseded result if it owns resources.
+- `runEffect` unwraps expected errors instead of exposing Effect's fiber wrapper, and preserves caller abort reasons on interruption.
+- Register cleanup inside the Effect so resources release before the returned Promise rejects. If an operation completes just before abort, it returns its value; callers owning resources must dispose superseded results.
+- Declare expected domain errors with `Data.TaggedError` and convert them to UI messages or protocol errors at boundaries. Do not call `runPromise` nested inside domain Effects.
+- Synchronous drawing commands execute via `Effect.runSync` at event boundaries.
 
-Domain functions return Effects and declare expected errors with `Data.TaggedError`. Handle those errors where recovery is possible. Convert them into UI messages or protocol errors at the boundary. Keep unexpected programming defects distinct from invalid input. Avoid running nested Effects with `runPromise` inside domain operations.
+## File imports and resource ownership
 
-## Imports and ownership
+- `packages/core/src/formats/import-effects.ts` defines file read errors, scoped worker requests, timeouts, and ownership registration.
+- `parseGerberFileEffect`, `parseStepFileEffect`, `parseKiCadFileEffect`, and `expandGerberFileEffect` compose imports (Promise wrappers remain available for non-Effect callers).
+- `importFilesEffect` processes files in order, returning accepted inputs alongside per-file error messages so valid files survive an invalid neighbor. Gerber archives preserve physical layer ordering.
+- `useFileImport` runs one batch at a time, aborts superseded batches, updates Solid signals, and uses `ImportOwnership` to keep pending and displayed scene objects alive until unmounted or replaced.
 
-- `packages/core/src/formats/import-effects.ts` contains file read errors, scoped worker requests, timeouts, and import ownership registration.
-- `parseGerberFileEffect`, `parseStepFileEffect`, `parseKiCadFileEffect`, and `expandGerberFileEffect` compose the import operations. The existing Promise functions remain available for callers outside Effect.
-- `importFilesEffect` processes files in order and collects per-file failures as messages. Valid files survive a neighboring invalid file. Gerber archives retain their physical layer ordering.
-- `useFileImport` runs a batch once, aborts a superseded batch, and updates Solid signals. Its synchronous acceptance callback stages ownership before another request or unmount can intervene. `ImportOwnership` keeps pending and displayed resources alive until the UI shows them, and releases uncommitted results on unmount.
+### Size limits
 
-Each file parser compares `file.size` with its byte limit before reading the file and fails with `InvalidFile` when the file is too large. The limits live in `packages/core/src/formats/import-limits.ts`: `MAX_STEP_FILE_BYTES` (256 MiB), `MAX_GERBER_FILE_BYTES` (64 MiB), `MAX_GERBER_ARCHIVE_BYTES` (256 MiB, checked before a ZIP archive is read) and `MAX_KICAD_FILE_BYTES` (32 MiB). Checks on the decoded content, such as the Gerber parser's character limit and the per-entry and total ZIP extraction limits, still apply.
+Parsers and project asset storage check `file.size` before reading, failing with `InvalidFile` (or `ProjectAssetTooLarge` for project assets) when exceeded (`packages/core/src/formats/import-limits.ts`):
 
-Project assets use the same limits. Adding a Gerber or STEP file to a project checks its size before it is read, and an oversized file is reported as `ProjectAssetTooLarge` and not stored. `importFilesEffect` returns the inputs that imported (`accepted`), and only those are stored, so a rejected file in a dropped batch is not kept. The project repository rejects oversized asset bytes before writing them, and checks a stored asset's size from the browser file or the desktop file status before reading it back. When a workspace restores its assets, `readAssets` returns the files that passed and names each oversized one in `problems`; the Gerber and STEP workspaces load the valid files and show the problems as their restore message, which a later successful load clears. Creating a project from one that holds an oversized asset leaves that asset out of the copy and names it in the project message, which the editor, start page, Gerber and STEP workspaces show; the original project keeps it.
+| File type | Constant | Limit |
+| --- | --- | --- |
+| STEP model | `MAX_STEP_FILE_BYTES` | 256 MiB |
+| Gerber layer | `MAX_GERBER_FILE_BYTES` | 64 MiB |
+| Gerber ZIP archive | `MAX_GERBER_ARCHIVE_BYTES` | 256 MiB (64 MiB per entry) |
+| KiCad schematic | `MAX_KICAD_FILE_BYTES` | 32 MiB |
 
-Workers belong to the parsing operation. Their finalizers terminate them on success, failure, timeout, or interruption. CPU-heavy parsing still runs in Web Workers. ZIP cancellation invokes the decompressor's cancellation function. Browser `File.text()` and `File.arrayBuffer()` cannot themselves be interrupted, but cancellation prevents subsequent processing.
+Project asset restores return valid files and report oversized assets in `problems` without failing the whole workspace. Copying a project skips oversized assets and reports them while leaving the original intact.
 
-Imported scene objects have a different lifetime. `acquireImported` registers rollback on failure or interruption. Each file has a child scope, so a failure after allocation releases that file's geometry while other files can still succeed. A successful import scope transfers ownership to its caller, which must call the returned `dispose()` when the model or layer is removed. Do not treat an import scope as an ordinary scope that disposes successful results. Do not cache disposable scene objects without defining who owns them.
+### Worker vs. scene lifetimes
 
-## Viewer and editor resources
+- **Workers** belong to the parsing Effect scope and terminate automatically on success, failure, timeout, or interruption (ZIP decompression cancels via its abort hook).
+- **Imported scene objects** outlive the import scope. `acquireImported` registers rollback on failure/interruption inside a per-file child scope, then transfers ownership on success to the caller, which must invoke the returned `dispose()` when removing the model or layer.
 
-`createLifecycle` bridges Effect scopes to synchronous Solid setup and cleanup. Register each resource immediately after acquisition with `acquire`, `addFinalizer`, or `listen`. Call `dispose` on initialization failure and on unmount. Finalizers run in reverse order, including when another finalizer fails.
+## Viewer and editor lifecycles
 
-Viewport renderers, scene displays, hover overlays, controls, listeners, and editor materials use this lifetime. Calculations inside render and pointer handlers do not execute an Effect for every frame.
+`createLifecycle` bridges Effect scopes to synchronous Solid setup and cleanup. Register every resource immediately via `acquire`, `addFinalizer`, or `listen`, and call `dispose` on init failure or unmount. Finalizers run in reverse order even if an earlier finalizer throws. Frame rendering and pointer-move math stay synchronous and never execute per-frame Effects.
 
-## Browser services
+## Browser HTTP client
 
-`HttpClient` is an injectable service in `packages/core/src/lib/http.ts`. `requestJson` checks HTTP status and decodes the response with Effect Schema. Its request scope remains open while the body is read, so aborting after headers still cancels the fetch. Use `HttpClientLive` in production and `makeHttpClient` with a test implementation in tests.
+`HttpClient` (`packages/core/src/lib/http.ts`) is an injectable service. `requestJson` verifies HTTP status and decodes responses with Effect Schema while keeping the request scope open through body read so mid-body aborts cancel the fetch. Use `HttpClientLive` in production and `makeHttpClient` in tests.
 
-## Project storage errors
+## Project storage errors and queuing
 
-Project storage keeps its Promise API, but its expected failures are `Data.TaggedError` classes from `packages/core/src/projects/errors.ts`. Callers match the tag with `isProjectError(cause, "ProjectConflict")`, never the message text. `ProjectConflict` means a project file changed on disk after it was loaded. `InvalidProjectFile` names the file and gives a readable reason instead of raw Zod issues. Save-time document validation fails with `InvalidProjectDocument`. Electron keeps only an error's message across IPC, so the main process encodes a project error's tag and fields in the message and the renderer storage rebuilds the class.
+Project storage exposes a Promise API whose expected failures are `Data.TaggedError` classes in `packages/core/src/projects/errors.ts`. Match them by tag with `isProjectError(cause, "ProjectConflict")`, never by message text:
 
-After a conflict, `ProjectProvider` stops saving and keeps edits in memory. `ProjectShell` shows the conflict with a **Reload from disk** action and warns that reloading discards unsaved changes. Library load failures during a save appear as editor issues. A circuit part from a library that failed to load fails the save instead of becoming a placeholder symbol.
+- `ProjectConflict` — A project file changed on disk after load. `ProjectProvider` pauses saving while preserving in-memory edits, and `ProjectShell` offers **Reload from disk**.
+- `InvalidProjectFile` — Names the offending file with a readable schema reason.
+- `InvalidProjectDocument` — Save-time document validation failure.
 
-Storage classes and the provider serialize their operations with `createSerialQueue` from `packages/core/src/lib/serial-queue.ts`. A task that throws or rejects fails only its own promise.
+Because Electron IPC preserves only error messages, the main process encodes tag/field metadata into the message and the renderer reconstructs the tagged error. Storage classes and `ProjectProvider` serialize operations via `createSerialQueue` (`packages/core/src/lib/serial-queue.ts`).
 
-## Server services
+## Server and desktop boundaries
 
-Web server services stay behind Start server functions and server routes. Desktop filesystem operations, including the MCP client config edits, live in Electron's main process and are called through the preload bridge. Never import filesystem services into browser helpers or renderer components.
-
-Keep Zod where the existing framework integration already uses it. Effect Schema validates new application data boundaries. A process-wide managed runtime is unnecessary for the current services; use one only when shared scoped resources need an explicit application shutdown lifecycle.
+- Web server services live behind TanStack Start server functions and server routes.
+- Desktop filesystem operations (including MCP client config edits) live in Electron's main process behind the preload bridge. Never import filesystem modules into browser helpers or renderer components.
+- Keep Zod where existing framework/MCP integrations use it; use Effect Schema at new data boundaries.
 
 ## Verification
 
-```sh
+```bash
 pnpm run typecheck
 pnpm test
 pnpm run test:browser
 pnpm run build
 ```
-
-Tests cover cancellation, worker failures and timeouts, import rollback and ownership, partial success, HTTP decoding and cancellation, and viewer finalizers. Browser tests cover the existing rendering and editor behavior.
-
-Use pnpm for this repository and commit changes to `pnpm-lock.yaml`.
