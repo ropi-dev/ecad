@@ -1,34 +1,29 @@
-import { useLayoutEffect, useRef } from "react";
+import { For, onSettled } from "solid-js";
 
-export function CircuitContextMenu({
-	x,
-	y,
-	actions,
-	onClose,
-}: {
+export function CircuitContextMenu(props: {
 	x: number;
 	y: number;
 	actions: { label: string; disabled?: boolean; run(): void }[];
 	onClose(): void;
 }) {
-	const menu = useRef<HTMLDivElement>(null);
-	useLayoutEffect(() => {
-		menu.current
-			?.querySelector<HTMLButtonElement>("button:not(:disabled)")
+	let menu!: HTMLDivElement;
+	onSettled(() => {
+		menu
+			.querySelector<HTMLButtonElement>("button:not(:disabled)")
 			?.focus({ preventScroll: true });
-	}, []);
+	});
 	return (
 		<div
 			ref={menu}
 			role="menu"
 			aria-label="Graph actions"
-			className="circuit-context-menu"
-			style={{ left: x, top: y }}
+			class="circuit-context-menu"
+			style={{ left: `${props.x}px`, top: `${props.y}px` }}
 			onKeyDown={(event) => {
 				event.stopPropagation();
 				if (event.key === "Escape") {
 					event.preventDefault();
-					onClose();
+					props.onClose();
 				}
 				if (event.key === "ArrowDown" || event.key === "ArrowUp") {
 					event.preventDefault();
@@ -45,20 +40,21 @@ export function CircuitContextMenu({
 				}
 			}}
 		>
-			{actions.map((action) => (
-				<button
-					key={action.label}
-					type="button"
-					role="menuitem"
-					disabled={action.disabled}
-					onClick={() => {
-						action.run();
-						onClose();
-					}}
-				>
-					{action.label}
-				</button>
-			))}
+			<For each={props.actions} keyed={(action) => action.label}>
+				{(action) => (
+					<button
+						type="button"
+						role="menuitem"
+						disabled={action().disabled}
+						onClick={() => {
+							action().run();
+							props.onClose();
+						}}
+					>
+						{action().label}
+					</button>
+				)}
+			</For>
 		</div>
 	);
 }

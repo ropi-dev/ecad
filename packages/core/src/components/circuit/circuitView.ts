@@ -8,7 +8,6 @@ import type {
 	CircuitStore,
 } from "@ecad/drawing-core/circuit/store.ts";
 import type { ErcSubject } from "@ecad/drawing-core/erc/engine.ts";
-import type { Dispatch, SetStateAction } from "react";
 import type {
 	CircuitGraph,
 	CircuitSelection,
@@ -93,7 +92,7 @@ export function revealCircuitSubject(
 		store: CircuitStore;
 		run(command: CircuitCommand): boolean;
 		select(next: CircuitSelection): void;
-		setView: Dispatch<SetStateAction<CircuitView>>;
+		setView(update: (current: CircuitView) => CircuitView): void;
 	},
 ) {
 	if (subject.kind === "shape") return;

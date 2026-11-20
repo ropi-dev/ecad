@@ -4,7 +4,7 @@ import {
 	type EditorShape,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
-import { type ClipboardEvent as ReactClipboardEvent, useRef } from "react";
+import type { Accessor } from "solid-js";
 import type { EditorSession } from "#/components/editor/editorSession.ts";
 import {
 	drawingClipboardType,
@@ -33,24 +33,24 @@ export interface DrawingClipboardOptions {
 	beforePaste: () => void;
 }
 
-export function useDrawingClipboard({
-	session,
-	enabled,
-	target,
-	pasteStep,
-	beforePaste,
-}: DrawingClipboardOptions) {
-	const lastPaste = useRef({ text: "", count: 0 });
-	const available = (event: ReactClipboardEvent) => {
+export function useDrawingClipboard(
+	options: Accessor<DrawingClipboardOptions>,
+) {
+	let lastPaste = { text: "", count: 0 };
+	const available = (
+		event: ClipboardEvent,
+	): event is ClipboardEvent & { clipboardData: DataTransfer } => {
 		const element = event.target;
 		return (
-			enabled() &&
+			!!event.clipboardData &&
+			options().enabled() &&
 			!isEditableTarget(event) &&
 			!(element instanceof HTMLElement && element.closest("[role=dialog]"))
 		);
 	};
-	const copy = (event: ReactClipboardEvent, cut: boolean) => {
+	const copy = (event: ClipboardEvent, cut: boolean) => {
 		if (!available(event)) return;
+		const { session } = options();
 		const { selection, allowLocked } = session.getState();
 		const source = session
 			.shapes()
@@ -85,7 +85,7 @@ export function useDrawingClipboard({
 		}
 		event.preventDefault();
 		event.stopPropagation();
-		lastPaste.current = { text, count: 0 };
+		lastPaste = { text, count: 0 };
 		if (cut)
 			session.commit(
 				removeShapesEffect(
@@ -95,8 +95,9 @@ export function useDrawingClipboard({
 				new Set(),
 			);
 	};
-	const paste = (event: ReactClipboardEvent) => {
+	const paste = (event: ClipboardEvent) => {
 		if (!available(event)) return;
+		const { session, pasteStep, target, beforePaste } = options();
 		const text = clipboardSelectionText(event.clipboardData);
 		const source = parseSelection(text);
 		if (!source) {
@@ -109,8 +110,7 @@ export function useDrawingClipboard({
 		}
 		event.preventDefault();
 		event.stopPropagation();
-		const count =
-			lastPaste.current.text === text ? lastPaste.current.count + 1 : 1;
+		const count = lastPaste.text === text ? lastPaste.count + 1 : 1;
 		const step = pasteStep * count;
 		let pasted: EditorShape[];
 		try {
@@ -129,11 +129,11 @@ export function useDrawingClipboard({
 		}
 		beforePaste();
 		session.place(pasted, "Paste selection");
-		lastPaste.current = { text, count };
+		lastPaste = { text, count };
 	};
 	return {
-		onCopy: (event: ReactClipboardEvent) => copy(event, false),
-		onCut: (event: ReactClipboardEvent) => copy(event, true),
+		onCopy: (event: ClipboardEvent) => copy(event, false),
+		onCut: (event: ClipboardEvent) => copy(event, true),
 		onPaste: paste,
 	};
 }

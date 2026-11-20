@@ -10,7 +10,7 @@ import {
 	sheetPaper,
 	sheetSettingsSchema,
 } from "@ecad/drawing-core/drawing/sheet.ts";
-import { useId, useState } from "react";
+import { createSignal, createUniqueId, For, Show, untrack } from "solid-js";
 import { AppDialog, dialogBodyClassName } from "#/components/ui/Dialog.tsx";
 
 const fieldLabel =
@@ -31,85 +31,87 @@ function today() {
 	return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
-export function SchematicSettingsDialog({
-	sheet,
-	onSave,
-	onClose,
-}: {
-	sheet: SheetSettings | undefined;
-	onSave: (sheet: SheetSettings) => boolean;
-	onClose: () => void;
+function TextField(props: {
+	label: string;
+	value: string;
+	onValue: (value: string) => void;
+	name?: string;
 }) {
-	const formId = useId();
-	const initialPaper = sheetPaper(sheet);
-	const [paper, setPaper] = useState<PaperSize | "custom">(
-		sheet?.paper ?? DEFAULT_PAPER,
-	);
-	const [portrait, setPortrait] = useState(sheet?.portrait ?? false);
-	const [width, setWidth] = useState(formatMm(initialPaper.width));
-	const [height, setHeight] = useState(formatMm(initialPaper.height));
-	const [title, setTitle] = useState(sheet?.title ?? "");
-	const [date, setDate] = useState(sheet?.date ?? "");
-	const [revision, setRevision] = useState(sheet?.revision ?? "");
-	const [company, setCompany] = useState(sheet?.company ?? "");
-	const [comments, setComments] = useState(() =>
-		Array.from(
-			{ length: SHEET_COMMENT_COUNT },
-			(_, index) => sheet?.comments?.[index] ?? "",
-		),
-	);
-	const [error, setError] = useState("");
-	const custom = paper === "custom";
-	const choosePaper = (next: PaperSize | "custom") => {
-		if (next === "custom" && !custom) {
-			const current = sheetPaper({ paper, portrait });
-			setWidth(formatMm(current.width));
-			setHeight(formatMm(current.height));
-		}
-		setPaper(next);
-	};
-	const text = (
-		label: string,
-		value: string,
-		set: (value: string) => void,
-		options: { name?: string } = {},
-	) => (
-		<label className={fieldLabel}>
-			{label}
+	return (
+		<label class={fieldLabel}>
+			{props.label}
 			<input
-				className="ui-input h-8 w-full"
-				name={options.name}
-				maxLength={SHEET_TEXT_LIMIT}
-				value={value}
-				onChange={(event) => set(event.target.value)}
+				class="ui-input h-8 w-full"
+				name={props.name}
+				maxlength={SHEET_TEXT_LIMIT}
+				value={props.value}
+				onInput={(event) => props.onValue(event.currentTarget.value)}
 			/>
 		</label>
 	);
-	const dimension = (
-		label: string,
-		value: string,
-		set: (value: string) => void,
-	) => (
-		<label className={fieldLabel}>
-			{label}
+}
+
+function DimensionField(props: {
+	label: string;
+	value: string;
+	onValue: (value: string) => void;
+}) {
+	return (
+		<label class={fieldLabel}>
+			{props.label}
 			<input
-				className="ui-input h-8 w-full tabular-nums"
+				class="ui-input h-8 w-full tabular-nums"
 				type="number"
 				min={CUSTOM_SHEET_MIN}
 				max={CUSTOM_SHEET_MAX}
 				step="any"
 				required
-				value={value}
-				onChange={(event) => set(event.target.value)}
+				value={props.value}
+				onInput={(event) => props.onValue(event.currentTarget.value)}
 			/>
 		</label>
 	);
+}
+
+export function SchematicSettingsDialog(props: {
+	sheet: SheetSettings | undefined;
+	onSave: (sheet: SheetSettings) => boolean;
+	onClose: () => void;
+}) {
+	const formId = createUniqueId();
+	const sheet = untrack(() => props.sheet);
+	const [paper, setPaper] = createSignal<PaperSize | "custom">(
+		sheet?.paper ?? DEFAULT_PAPER,
+	);
+	const [portrait, setPortrait] = createSignal(sheet?.portrait ?? false);
+	const [width, setWidth] = createSignal(formatMm(sheetPaper(sheet).width));
+	const [height, setHeight] = createSignal(formatMm(sheetPaper(sheet).height));
+	const [title, setTitle] = createSignal(sheet?.title ?? "");
+	const [date, setDate] = createSignal(sheet?.date ?? "");
+	const [revision, setRevision] = createSignal(sheet?.revision ?? "");
+	const [company, setCompany] = createSignal(sheet?.company ?? "");
+	const [comments, setComments] = createSignal(
+		Array.from(
+			{ length: SHEET_COMMENT_COUNT },
+			(_, index) => sheet?.comments?.[index] ?? "",
+		),
+	);
+	const [error, setError] = createSignal("");
+	const custom = () => paper() === "custom";
+	const choosePaper = (next: PaperSize | "custom") => {
+		if (next === "custom" && !custom()) {
+			const current = sheetPaper({ paper: paper(), portrait: portrait() });
+			setWidth(formatMm(current.width));
+			setHeight(formatMm(current.height));
+		}
+		setPaper(next);
+	};
 
 	return (
 		<AppDialog
 			open
 			onOpenChange={(open) => {
-				if (!open) onClose();
+				if (!open) props.onClose();
 			}}
 			title="Schematic settings"
 			description="Paper size and title block for every page of this schematic."
@@ -117,17 +119,17 @@ export function SchematicSettingsDialog({
 				<>
 					<button
 						type="button"
-						className="ui-button"
+						class="ui-button"
 						data-variant="ghost"
 						data-size="md"
-						onClick={onClose}
+						onClick={() => props.onClose()}
 					>
 						Cancel
 					</button>
 					<button
 						type="submit"
 						form={formId}
-						className="ui-button"
+						class="ui-button"
 						data-variant="primary"
 						data-size="md"
 					>
@@ -138,19 +140,19 @@ export function SchematicSettingsDialog({
 		>
 			<form
 				id={formId}
-				className={`${dialogBodyClassName} flex max-h-[min(36rem,calc(100dvh-12rem))] flex-col gap-3.5`}
+				class={`${dialogBodyClassName} flex max-h-[min(36rem,calc(100dvh-12rem))] flex-col gap-3.5`}
 				onSubmit={(event) => {
 					event.preventDefault();
 					const parsed = sheetSettingsSchema.safeParse({
-						paper,
-						...(custom
-							? { width: Number(width), height: Number(height) }
-							: { portrait }),
-						title,
-						date,
-						revision,
-						company,
-						comments,
+						paper: paper(),
+						...(custom()
+							? { width: Number(width()), height: Number(height()) }
+							: { portrait: portrait() }),
+						title: title(),
+						date: date(),
+						revision: revision(),
+						company: company(),
+						comments: comments(),
 					});
 					if (!parsed.success) {
 						setError(
@@ -159,42 +161,41 @@ export function SchematicSettingsDialog({
 						return;
 					}
 					setError("");
-					if (onSave(parsed.data)) onClose();
+					if (props.onSave(parsed.data)) props.onClose();
 				}}
 			>
-				<fieldset className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
-					<legend className="mb-2 p-0 text-sm font-semibold text-fg">
-						Paper
-					</legend>
-					<div className="grid grid-cols-2 gap-3">
-						<label className={fieldLabel}>
+				<fieldset class="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
+					<legend class="mb-2 p-0 text-sm font-semibold text-fg">Paper</legend>
+					<div class="grid grid-cols-2 gap-3">
+						<label class={fieldLabel}>
 							Size
 							<select
-								className="ui-select h-8 w-full"
-								value={paper}
+								class="ui-select h-8 w-full"
+								value={paper()}
 								onChange={(event) =>
-									choosePaper(event.target.value as PaperSize | "custom")
+									choosePaper(event.currentTarget.value as PaperSize | "custom")
 								}
 							>
-								{paperNames.map((name) => {
-									const size = PAPER_SIZES[name];
-									return (
-										<option key={name} value={name}>
-											{`${name} (${formatMm(size.width)} × ${formatMm(size.height)} mm)`}
+								<For each={paperNames}>
+									{(name) => (
+										<option value={name} selected={paper() === name}>
+											{`${name} (${formatMm(PAPER_SIZES[name].width)} × ${formatMm(PAPER_SIZES[name].height)} mm)`}
 										</option>
-									);
-								})}
-								<option value="custom">Custom</option>
+									)}
+								</For>
+								<option value="custom" selected={custom()}>
+									Custom
+								</option>
 							</select>
 						</label>
-						<label className={fieldLabel}>
+						<label class={fieldLabel}>
 							Orientation
 							<select
-								className="ui-select h-8 w-full"
-								value={portrait ? "portrait" : "landscape"}
-								disabled={custom}
+								class="ui-select h-8 w-full"
+								value={portrait() ? "portrait" : "landscape"}
+								disabled={custom()}
 								onChange={(event) =>
-									setPortrait(event.target.value === "portrait")
+									setPortrait(event.currentTarget.value === "portrait")
 								}
 							>
 								<option value="landscape">Landscape</option>
@@ -202,33 +203,46 @@ export function SchematicSettingsDialog({
 							</select>
 						</label>
 					</div>
-					{custom && (
-						<div className="grid grid-cols-2 gap-3">
-							{dimension("Width in mm", width, setWidth)}
-							{dimension("Height in mm", height, setHeight)}
+					{custom() && (
+						<div class="grid grid-cols-2 gap-3">
+							<DimensionField
+								label="Width in mm"
+								value={width()}
+								onValue={setWidth}
+							/>
+							<DimensionField
+								label="Height in mm"
+								value={height()}
+								onValue={setHeight}
+							/>
 						</div>
 					)}
 				</fieldset>
-				<fieldset className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
-					<legend className="mb-2 p-0 text-sm font-semibold text-fg">
+				<fieldset class="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
+					<legend class="mb-2 p-0 text-sm font-semibold text-fg">
 						Title block
 					</legend>
-					{text("Title", title, setTitle, { name: "title" })}
-					<div className="grid grid-cols-[1fr_7rem] gap-3">
-						<label className={fieldLabel}>
+					<TextField
+						label="Title"
+						name="title"
+						value={title()}
+						onValue={setTitle}
+					/>
+					<div class="grid grid-cols-[1fr_7rem] gap-3">
+						<label class={fieldLabel}>
 							Date
-							<span className="flex gap-1.5">
+							<span class="flex gap-1.5">
 								<input
-									className="ui-input h-8 min-w-0 flex-1"
+									class="ui-input h-8 min-w-0 flex-1"
 									name="date"
-									maxLength={SHEET_TEXT_LIMIT}
+									maxlength={SHEET_TEXT_LIMIT}
 									placeholder="YYYY-MM-DD"
-									value={date}
-									onChange={(event) => setDate(event.target.value)}
+									value={date()}
+									onInput={(event) => setDate(event.currentTarget.value)}
 								/>
 								<button
 									type="button"
-									className="ui-button"
+									class="ui-button"
 									data-variant="secondary"
 									data-size="md"
 									onClick={() => setDate(today())}
@@ -237,32 +251,40 @@ export function SchematicSettingsDialog({
 								</button>
 							</span>
 						</label>
-						{text("Revision", revision, setRevision, { name: "revision" })}
+						<TextField
+							label="Revision"
+							name="revision"
+							value={revision()}
+							onValue={setRevision}
+						/>
 					</div>
-					{text("Company", company, setCompany, { name: "company" })}
-					{commentLines.map((line, index) => (
-						<label key={line} className={fieldLabel}>
-							{line}
-							<input
-								className="ui-input h-8 w-full"
-								maxLength={SHEET_TEXT_LIMIT}
-								value={comments[index]}
-								onChange={(event) =>
+					<TextField
+						label="Company"
+						name="company"
+						value={company()}
+						onValue={setCompany}
+					/>
+					<For each={commentLines}>
+						{(line, index) => (
+							<TextField
+								label={line}
+								value={comments()[index()]}
+								onValue={(value) =>
 									setComments((current) =>
-										current.map((value, at) =>
-											at === index ? event.target.value : value,
+										current.map((entry, at) =>
+											at === index() ? value : entry,
 										),
 									)
 								}
 							/>
-						</label>
-					))}
+						)}
+					</For>
 				</fieldset>
-				{error && (
-					<p role="alert" className="m-0 text-sm text-danger">
-						{error}
+				<Show when={error()}>
+					<p role="alert" class="m-0 text-sm text-danger">
+						{error()}
 					</p>
-				)}
+				</Show>
 			</form>
 		</AppDialog>
 	);

@@ -158,10 +158,10 @@
 							"level": "error",
 							"options": {
 								"paths": {
-									"react": "packages/drawing-core is UI- and app-independent: it must not import React, three.js or @ecad/core.",
-									"react-dom": "packages/drawing-core is UI- and app-independent: it must not import React, three.js or @ecad/core.",
-									"three": "packages/drawing-core is UI- and app-independent: it must not import React, three.js or @ecad/core.",
-									"@ecad/core": "packages/drawing-core is UI- and app-independent: it must not import React, three.js or @ecad/core."
+									"solid-js": "packages/drawing-core is UI- and app-independent: it must not import Solid, three.js or @ecad/core.",
+									"@solidjs/web": "packages/drawing-core is UI- and app-independent: it must not import Solid, three.js or @ecad/core.",
+									"three": "packages/drawing-core is UI- and app-independent: it must not import Solid, three.js or @ecad/core.",
+									"@ecad/core": "packages/drawing-core is UI- and app-independent: it must not import Solid, three.js or @ecad/core."
 								},
 								"patterns": [
 									{
@@ -170,12 +170,12 @@
 									},
 									{
 										"group": [
-											"react/**",
-											"react-dom/**",
+											"solid-js/**",
+											"@solidjs/**",
 											"three/**",
 											"@ecad/core/**"
 										],
-										"message": "packages/drawing-core is UI- and app-independent: it must not import React, three.js or @ecad/core."
+										"message": "packages/drawing-core is UI- and app-independent: it must not import Solid, three.js or @ecad/core."
 									}
 								]
 							}

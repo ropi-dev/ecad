@@ -1,3 +1,5 @@
+import { Loading, lazy } from "solid-js";
+import { ErcButton } from "#/components/editor/ErcButton.tsx";
 import {
 	Cable,
 	CirclePlus,
@@ -9,9 +11,7 @@ import {
 	Shuffle,
 	Trash2,
 	Undo2,
-} from "lucide-react";
-import { lazy, memo, Suspense } from "react";
-import { ErcButton } from "#/components/editor/ErcButton.tsx";
+} from "#/components/ui/icons.tsx";
 import {
 	ToolbarDock,
 	ToolbarSeparator,
@@ -29,24 +29,7 @@ const CircuitComponentPicker = lazy(() =>
 
 export type CircuitTool = "select" | "connect" | "pan" | "component" | "net";
 
-export const CircuitToolbar = memo(function CircuitToolbar({
-	tool,
-	onToolChange,
-	canDelete,
-	onDelete,
-	canUndo,
-	canRedo,
-	zoomLevel,
-	onZoom,
-	onFit,
-	untangling,
-	onUntangle,
-	ercOpen,
-	onErc,
-	onChooseComponent,
-	onUndo,
-	onRedo,
-}: {
+export function CircuitToolbar(props: {
 	tool: CircuitTool;
 	onToolChange(tool: CircuitTool): void;
 	canDelete: boolean;
@@ -72,12 +55,13 @@ export const CircuitToolbar = memo(function CircuitToolbar({
 		toggles = false,
 	) => (
 		<TooltipButton
-			key={id}
-			className={button}
+			class={button}
 			tooltip={label}
 			aria-label={label}
-			aria-pressed={tool === id}
-			onClick={() => onToolChange(toggles && tool === id ? "select" : id)}
+			aria-pressed={props.tool === id ? "true" : "false"}
+			onClick={() =>
+				props.onToolChange(toggles && props.tool === id ? "select" : id)
+			}
 		>
 			<Icon size={18} aria-hidden="true" />
 		</TooltipButton>
@@ -85,24 +69,24 @@ export const CircuitToolbar = memo(function CircuitToolbar({
 	return (
 		<ToolbarDock label="Circuit tools">
 			<TooltipButton
-				className={button}
+				class={button}
 				tooltip="Undo"
 				aria-label="Undo"
 				data-shortcut-keeps-focus
 				shortcut="Ctrl/Cmd + Z"
-				disabled={!canUndo}
-				onClick={onUndo}
+				disabled={!props.canUndo}
+				onClick={() => props.onUndo()}
 			>
 				<Undo2 size={17} aria-hidden="true" />
 			</TooltipButton>
 			<TooltipButton
-				className={button}
+				class={button}
 				tooltip="Redo"
 				aria-label="Redo"
 				data-shortcut-keeps-focus
 				shortcut="Ctrl/Cmd + Shift + Z"
-				disabled={!canRedo}
-				onClick={onRedo}
+				disabled={!props.canRedo}
+				onClick={() => props.onRedo()}
 			>
 				<Redo2 size={17} aria-hidden="true" />
 			</TooltipButton>
@@ -110,61 +94,56 @@ export const CircuitToolbar = memo(function CircuitToolbar({
 			{toolButton("select", "Select", MousePointer2)}
 			{toolButton("pan", "Pan", Hand)}
 			<ToolbarSeparator />
-			<Suspense
+			<Loading
 				fallback={
-					<button
-						type="button"
-						className={button}
-						aria-label="Components"
-						disabled
-					>
+					<button type="button" class={button} aria-label="Components" disabled>
 						<Cpu size={18} aria-hidden="true" />
 					</button>
 				}
 			>
 				<CircuitComponentPicker
-					active={tool === "component"}
-					onChoose={onChooseComponent}
+					active={props.tool === "component"}
+					onChoose={(definition) => props.onChooseComponent(definition)}
 				/>
-			</Suspense>
+			</Loading>
 			{toolButton("connect", "Connect pins", Cable, true)}
 			{toolButton("net", "Add net", CirclePlus, true)}
 			<ToolbarSeparator />
 			<TooltipButton
-				className={button}
+				class={button}
 				tooltip="Untangle"
 				aria-label="Untangle"
-				aria-busy={untangling}
-				aria-disabled={untangling}
-				onClick={onUntangle}
+				aria-busy={props.untangling ? "true" : "false"}
+				aria-disabled={props.untangling ? "true" : "false"}
+				onClick={() => props.onUntangle()}
 			>
 				<Shuffle size={18} aria-hidden="true" />
 			</TooltipButton>
 			<TooltipButton
-				className={button}
+				class={button}
 				tooltip="Delete selection"
 				aria-label="Delete"
 				shortcut="Delete"
-				disabled={!canDelete}
-				onClick={onDelete}
+				disabled={!props.canDelete}
+				onClick={() => props.onDelete()}
 			>
 				<Trash2 size={18} aria-hidden="true" />
 			</TooltipButton>
 			<ToolbarSeparator />
-			<ErcButton open={ercOpen} onClick={onErc} />
+			<ErcButton open={props.ercOpen} onClick={() => props.onErc()} />
 			<ToolbarSeparator />
 			<ZoomControls
-				zoom={onZoom}
-				fit={onFit}
-				canZoomIn={zoomLevel < 10 - 1e-6}
-				canZoomOut={zoomLevel > 0.1 + 1e-6}
+				zoom={(factor) => props.onZoom(factor)}
+				fit={() => props.onFit()}
+				canZoomIn={props.zoomLevel < 10 - 1e-6}
+				canZoomOut={props.zoomLevel > 0.1 + 1e-6}
 				buttonClassName={button}
 				fitClassName={`${button} min-w-14 tabular-nums`}
 				fitLabel="Fit graph"
 				fitTitle="Fit graph"
 			>
-				{Math.round(zoomLevel * 100)}%
+				{Math.round(props.zoomLevel * 100)}%
 			</ZoomControls>
 		</ToolbarDock>
 	);
-});
+}

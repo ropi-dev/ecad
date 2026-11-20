@@ -8,7 +8,7 @@ import type { ProjectSnapshot } from "#/projects/format.ts";
 import { createProjectSession } from "#/projects/ProjectSession.ts";
 import { primaryPcbId } from "#/projects/pcb.ts";
 import type { ProjectRefresh, ProjectStorage } from "#/projects/storage.ts";
-import type { SymbolLibraryStorage } from "#/symbol-library/storage.tsx";
+import type { SymbolLibraryStorage } from "#/symbol-library/storage.ts";
 
 const rectangle = {
 	id: 1,

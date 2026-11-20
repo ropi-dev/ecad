@@ -14,6 +14,7 @@ import {
 } from "@playwright/test";
 import { openProjectFiles, projectRail } from "../browser/project-files.ts";
 import { toolbarButton } from "../browser/toolbar.ts";
+import { createCircuit } from "./circuit.ts";
 
 // Launches the built desktop app (`pnpm run build:desktop`) in real Electron.
 // Only the native folder picker is replaced, because a test cannot click it.
@@ -111,6 +112,7 @@ test("the desktop app saves a project to disk and reopens it after a relaunch", 
 
 	let { app, page } = await launch(home);
 	try {
+		await createCircuit(page, () => app.waitForEvent("window"));
 		await (await openProjectFiles(page))
 			.getByRole("link", { name: /^Open .+\.ecaddraw$/ })
 			.first()
@@ -144,11 +146,12 @@ test("the desktop app saves a project to disk and reopens it after a relaunch", 
 	({ app, page } = await launch(home));
 	try {
 		await chooseFolder(app, directory);
+		const prompt = app.waitForEvent("window");
 		await projectRail(page)
 			.getByRole("button", { name: "Open project", exact: true })
 			.click();
 		// The relaunched app starts in an empty in-memory project.
-		await page
+		await (await prompt)
 			.getByRole("button", { name: "Discard and open", exact: true })
 			.click();
 		await (await openProjectFiles(page))
@@ -179,6 +182,7 @@ test("the desktop app reloads a drawing another program changed and keeps saving
 
 	const { app, page } = await launch(home);
 	try {
+		await createCircuit(page, () => app.waitForEvent("window"));
 		await (await openProjectFiles(page))
 			.getByRole("link", { name: /^Open .+\.ecaddraw$/ })
 			.first()
@@ -299,6 +303,10 @@ test("Enable MCP in the sidebar opens the drawing and lets an MCP client edit it
 		await app.evaluate(({ dialog }) => {
 			dialog.showMessageBoxSync = (() => 1) as typeof dialog.showMessageBoxSync;
 		});
+		await createCircuit(page, () => app.waitForEvent("window"));
+		await (await openProjectFiles(page))
+			.getByRole("link", { name: "Workspace home", exact: true })
+			.click();
 		await projectRail(page)
 			.getByRole("link", { name: "Enable MCP", exact: true })
 			.click();

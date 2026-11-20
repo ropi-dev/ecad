@@ -1,5 +1,5 @@
 import { ArrowBigUp, ChevronUp, Command, createElement } from "lucide";
-import { useEffect } from "react";
+import { onSettled } from "solid-js";
 import {
 	hasShortcutModifier,
 	shortcutModifier,
@@ -373,7 +373,7 @@ function listen() {
 }
 
 export function useButtonShortcuts() {
-	useEffect(() => {
+	onSettled(() => {
 		if (users++ === 0) dispose = listen();
 		return () => {
 			if (--users === 0) {
@@ -381,5 +381,5 @@ export function useButtonShortcuts() {
 				dispose = undefined;
 			}
 		};
-	}, []);
+	});
 }

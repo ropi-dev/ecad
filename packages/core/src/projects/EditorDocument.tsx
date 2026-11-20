@@ -1,12 +1,16 @@
+import { Dynamic, type JSX } from "@solidjs/web";
 import {
-	type ComponentType,
+	type Component,
+	createEffect,
+	createMemo,
+	For,
+	Loading,
 	lazy,
-	type ReactNode,
-	Suspense,
-	useEffect,
-	useRef,
-	useState,
-} from "react";
+	Match,
+	omit,
+	Show,
+	Switch,
+} from "solid-js";
 import type {
 	Editor2DProps,
 	EditorCanvasProps,
@@ -14,6 +18,7 @@ import type {
 import { SymbolAttributesButton } from "#/components/editor/SymbolAttributesDialog.tsx";
 import { useDrawingFonts } from "#/components/editor/useDrawingFonts.ts";
 import { FootprintModelField } from "#/components/footprint/FootprintModelField.tsx";
+import { Keyed } from "#/components/ui/Keyed.tsx";
 import { quietFocus } from "#/components/viewer/ToolbarGroup.tsx";
 import { EditorViewSwitch } from "#/projects/EditorViewSwitch.tsx";
 import {
@@ -21,20 +26,19 @@ import {
 	type CircuitDocument,
 	type DrawingDocument,
 	type EditorViews,
+	type SymbolDocument,
 	useProjectActions,
 	useProjectEditor,
 	useProjectSelection,
 } from "#/projects/ProjectProvider.tsx";
+import type { FootprintDocument } from "#/projects/ProjectSession.ts";
 
-const WorkspaceStart = lazy(() =>
-	import("#/projects/WorkspaceStart.tsx").then((module) => ({
-		default: module.WorkspaceStart,
-	})),
-);
-const CircuitEditor = lazy(() =>
-	import("#/components/circuit/CircuitEditor.tsx").then((module) => ({
-		default: module.CircuitEditor,
-	})),
+const WorkspaceStart = lazy(() => import("#/projects/WorkspaceStart.tsx"), {
+	export: "WorkspaceStart",
+});
+const CircuitEditor = lazy(
+	() => import("#/components/circuit/CircuitEditor.tsx"),
+	{ export: "CircuitEditor" },
 );
 
 const pauseMs = 1000;
@@ -98,221 +102,313 @@ function PreloadEditorViews() {
 			preloadEditorViews,
 		}),
 	);
-	useEffect(() => {
-		if (!project?.project) return;
-		const { preloadEditorViews } = project;
-		return whenPaused(() => void preloadEditorViews().catch(() => undefined));
-	}, [project]);
+	createEffect(
+		() => project(),
+		(current) => {
+			if (!current?.project) return;
+			const { preloadEditorViews } = current;
+			return whenPaused(() => void preloadEditorViews().catch(() => undefined));
+		},
+	);
 	return null;
 }
 
-function EditorPane({
-	active,
-	children,
-}: {
-	active: boolean;
-	children: ReactNode;
-}) {
-	const pane = useRef<HTMLDivElement>(null);
-	const shown = useRef(active);
-	useEffect(() => {
-		const opened = active && !shown.current;
-		shown.current = active;
-		const focused = document.activeElement;
-		if (
-			!opened ||
-			(focused && focused !== document.body && !focused.closest("[inert]"))
-		)
-			return;
-		quietFocus(
-			pane.current?.querySelector<HTMLElement>(
-				'[aria-label="Editor view"] [aria-pressed="true"]',
-			) ?? null,
-		);
-	}, [active]);
+function EditorPane(props: { active: boolean; children: JSX.Element }) {
+	let pane!: HTMLDivElement;
+	createEffect(
+		() => props.active,
+		(active, previous) => {
+			const opened = active && previous === false;
+			const focused = document.activeElement;
+			if (
+				!opened ||
+				(focused && focused !== document.body && !focused.closest("[inert]"))
+			)
+				return;
+			quietFocus(
+				pane.querySelector<HTMLElement>(
+					'[aria-label="Editor view"] [aria-pressed="true"]',
+				),
+			);
+		},
+	);
 	return (
 		<div
 			ref={pane}
-			className={active ? undefined : "invisible absolute inset-0"}
-			inert={!active}
-			data-editor-pane={active ? "active" : "hidden"}
+			class={{ "invisible absolute inset-0": !props.active }}
+			inert={!props.active}
+			data-editor-pane={props.active ? "active" : "hidden"}
 		>
-			{children}
+			{props.children}
 		</div>
 	);
 }
 
-export function EditorDocument({
-	Canvas,
-	...props
-}: Editor2DProps & { Canvas: ComponentType<EditorCanvasProps> }) {
+function OpeningCircuit() {
+	return (
+		<output class="block p-6 text-sm text-fg-muted">Opening circuit...</output>
+	);
+}
+
+function SingleFileControls(props: {
+	symbol: SymbolDocument | null;
+	footprint: FootprintDocument | null;
+}) {
+	const actions = useProjectActions();
+	return (
+		<Switch>
+			<Match when={props.symbol}>
+				{(symbol) => (
+					<SymbolAttributesButton
+						attributes={symbol().file.attributes}
+						onSave={(attributes) =>
+							actions()?.saveSymbolAttributes(symbol().file.id, attributes)
+						}
+					/>
+				)}
+			</Match>
+			<Match when={props.footprint}>
+				{(footprint) => (
+					<FootprintModelField
+						model={footprint().file.model}
+						onChange={async (model) => {
+							await actions()?.saveFootprintModel(footprint().file.id, model);
+						}}
+					/>
+				)}
+			</Match>
+		</Switch>
+	);
+}
+
+type View = "schematic" | "circuit" | "pcb";
+
+export function EditorDocument(
+	props: Editor2DProps & { Canvas: Component<EditorCanvasProps> },
+) {
 	const project = useProjectEditor();
 	const actions = useProjectActions();
+	const canvasProps = omit(props, "Canvas");
 	// A circuit link opens this route while its circuit is still loading.
 	// Showing the schematic for that moment would start its viewer, which
 	// then keeps that camera, so wait for the circuit that was opening on
 	// arrival. A switch from an open schematic keeps it on screen instead.
-	const [arrivedOpening] = useState(() => project?.openingCircuit ?? null);
+	const arrivedOpening = createMemo<number | null>((arrived) =>
+		arrived !== undefined ? arrived : (project()?.openingCircuit ?? null),
+	);
 	// Text sizes are measured with the schematic font, so wait for it to load.
 	const fontsReady = useDrawingFonts();
-	const inProject = !props.store && !!project;
-	const symbol = inProject ? project.editorSymbol : null;
-	const footprint = inProject ? project.editorFootprint : null;
-	const board = inProject ? project.editorBoard : null;
-	const drawing = inProject ? project.editorDrawing : null;
-	const circuit = inProject ? project.editorCircuit : null;
-	const activeViews = inProject ? project.editorViews : null;
-	if (!fontsReady) return null;
-	const openingCircuit = (
-		<output className="block p-6 text-sm text-fg-muted">
-			Opening circuit...
-		</output>
-	);
-	if (
-		inProject &&
-		!circuit &&
-		arrivedOpening !== null &&
-		project.openingCircuit === arrivedOpening
-	)
-		return openingCircuit;
-	if (
-		inProject &&
-		!project.mainDrawing &&
-		!symbol &&
-		!footprint &&
-		!board &&
-		!drawing &&
-		!circuit &&
-		project.openingCircuit === null
-	)
+	const state = createMemo(() => {
+		const current = project();
+		const inProject = !props.store && !!current;
+		return {
+			inProject,
+			mainDrawing: !!current?.mainDrawing,
+			openingCircuit: current?.openingCircuit ?? null,
+			session: current?.session ?? 0,
+			symbol: inProject ? current.editorSymbol : null,
+			footprint: inProject ? current.editorFootprint : null,
+			board: inProject ? current.editorBoard : null,
+			drawing: inProject ? current.editorDrawing : null,
+			circuit: inProject ? current.editorCircuit : null,
+			activeViews: inProject ? current.editorViews : null,
+		};
+	});
+	const waiting = () => {
+		const current = state();
 		return (
-			<Suspense fallback={null}>
-				<WorkspaceStart />
-			</Suspense>
+			current.inProject &&
+			!current.circuit &&
+			arrivedOpening() !== null &&
+			current.openingCircuit === arrivedOpening()
 		);
-	const session = project?.session ?? 0;
-	const preload = inProject && <PreloadEditorViews />;
-	if (symbol || footprint)
+	};
+	const showStart = () => {
+		const current = state();
 		return (
-			<>
-				{preload}
-				<Canvas
-					key={`${session}:${symbol ? `symbol:${symbol.file.id}` : `footprint:${footprint?.file.id}`}`}
-					{...props}
-					store={symbol?.store ?? footprint?.store}
-					symbolName={symbol?.file.name}
-					headerControls={
-						symbol && actions ? (
-							<SymbolAttributesButton
-								attributes={symbol.file.attributes}
-								onSave={(attributes) =>
-									actions.saveSymbolAttributes(symbol.file.id, attributes)
-								}
-							/>
-						) : footprint && actions ? (
-							<FootprintModelField
-								model={footprint.file.model}
-								onChange={(model) =>
-									actions.saveFootprintModel(footprint.file.id, model)
-								}
-							/>
-						) : undefined
-					}
-					footprintName={footprint?.file.name}
-					footprintModel={footprint?.file.model}
-					documentSelection={
-						symbol
-							? `symbol:${symbol.file.id}`
-							: `footprint:${footprint?.file.id}`
-					}
-				/>
-			</>
+			current.inProject &&
+			!current.mainDrawing &&
+			!current.symbol &&
+			!current.footprint &&
+			!current.board &&
+			!current.drawing &&
+			!current.circuit &&
+			current.openingCircuit === null
 		);
-	const activeView = circuit ? "circuit" : board ? "pcb" : "schematic";
-	const activeCircuitId =
-		circuit?.file.circuit.id ??
-		board?.file.circuitId ??
-		(activeView === "schematic" &&
-		activeViews &&
-		activeViews.schematic === (drawing ?? "main")
-			? activeViews.circuitId
-			: undefined);
-	const views: EditorViews | null =
-		inProject &&
-		activeCircuitId !== undefined &&
-		activeViews?.circuitId === activeCircuitId
-			? activeViews
-			: null;
-	const schematic: DrawingDocument | "main" | null =
-		activeView === "schematic"
-			? (drawing ?? "main")
-			: (views?.schematic ?? null);
-	const circuitDocument: CircuitDocument | null =
-		circuit ?? views?.circuit ?? null;
-	const boardDocument: BoardDocument | null = board ?? views?.board ?? null;
-	const panes = [
-		schematic && (
-			<EditorPane
-				key={`${session}:schematic:${schematic === "main" ? "main" : schematic.file.id}`}
-				active={activeView === "schematic"}
-			>
-				<Canvas
-					{...props}
-					active={activeView === "schematic"}
-					store={schematic === "main" ? props.store : schematic.store}
-					drawingName={schematic === "main" ? undefined : schematic.file.name}
-					documentSelection={
-						props.store
-							? undefined
-							: schematic === "main"
-								? "drawing"
-								: `drawing:${schematic.file.id}`
-					}
-					viewSwitch={
-						props.store ? undefined : <EditorViewSwitch view="schematic" />
-					}
-					syncSelection={!props.store}
-				/>
-			</EditorPane>
-		),
-		circuitDocument && (
-			<EditorPane
-				key={`${session}:circuit:${circuitDocument.file.circuit.id}`}
-				active={activeView === "circuit"}
-			>
-				<Suspense fallback={activeView === "circuit" ? openingCircuit : null}>
-					<CircuitEditor
-						document={circuitDocument}
-						active={activeView === "circuit"}
-					/>
-				</Suspense>
-			</EditorPane>
-		),
-		boardDocument && (
-			<EditorPane
-				key={`${session}:board:${boardDocument.file.circuitId}`}
-				active={activeView === "pcb"}
-			>
-				<Canvas
-					{...props}
-					active={activeView === "pcb"}
-					store={boardDocument.store}
-					board={boardDocument}
-					documentSelection={`board:${boardDocument.file.circuitId}`}
-					viewSwitch={<EditorViewSwitch view="pcb" />}
-					syncSelection
-				/>
-			</EditorPane>
-		),
-	];
-	const activeIndex = ["schematic", "circuit", "pcb"].indexOf(activeView);
+	};
+	const singleKey = () => {
+		const { session, symbol, footprint } = state();
+		return `${session}:${symbol ? `symbol:${symbol.file.id}` : `footprint:${footprint?.file.id}`}`;
+	};
+	const activeView = createMemo<View>(() => {
+		const { circuit, board } = state();
+		return circuit ? "circuit" : board ? "pcb" : "schematic";
+	});
+	const documents = createMemo(() => {
+		const { inProject, circuit, board, drawing, activeViews } = state();
+		const view = activeView();
+		const activeCircuitId =
+			circuit?.file.circuit.id ??
+			board?.file.circuitId ??
+			(view === "schematic" &&
+			activeViews &&
+			activeViews.schematic === (drawing ?? "main")
+				? activeViews.circuitId
+				: undefined);
+		const views: EditorViews | null =
+			inProject &&
+			activeCircuitId !== undefined &&
+			activeViews?.circuitId === activeCircuitId
+				? activeViews
+				: null;
+		const schematic: DrawingDocument | "main" | null =
+			view === "schematic" ? (drawing ?? "main") : (views?.schematic ?? null);
+		const circuitDocument: CircuitDocument | null =
+			circuit ?? views?.circuit ?? null;
+		const boardDocument: BoardDocument | null = board ?? views?.board ?? null;
+		return { schematic, circuit: circuitDocument, board: boardDocument };
+	});
+	const panes = createMemo(() => {
+		const { session } = state();
+		const { schematic, circuit, board } = documents();
+		const list: { view: View; key: string }[] = [];
+		if (schematic)
+			list.push({
+				view: "schematic",
+				key: `${session}:schematic:${schematic === "main" ? "main" : schematic.file.id}`,
+			});
+		if (circuit)
+			list.push({
+				view: "circuit",
+				key: `${session}:circuit:${circuit.file.circuit.id}`,
+			});
+		if (board)
+			list.push({
+				view: "pcb",
+				key: `${session}:board:${board.file.circuitId}`,
+			});
+		const view = activeView();
+		return [
+			...list.filter((pane) => pane.view === view),
+			...list.filter((pane) => pane.view !== view),
+		];
+	});
+	const schematicDocument = () => {
+		const schematic = documents().schematic;
+		return schematic === "main" ? null : schematic;
+	};
 	return (
-		<div className="relative">
-			{preload}
-			{[
-				panes[activeIndex],
-				...panes.filter((_, index) => index !== activeIndex),
-			]}
-		</div>
+		<Show when={fontsReady()}>
+			<Switch
+				fallback={
+					<div class="relative">
+						{state().inProject && <PreloadEditorViews />}
+						<For each={panes()} keyed={(pane) => pane.key}>
+							{(pane) => (
+								<EditorPane active={activeView() === pane().view}>
+									<Switch>
+										<Match when={pane().view === "schematic"}>
+											<Dynamic
+												component={props.Canvas}
+												{...canvasProps}
+												active={activeView() === "schematic"}
+												store={
+													documents().schematic === "main"
+														? props.store
+														: schematicDocument()?.store
+												}
+												drawingName={schematicDocument()?.file.name}
+												documentSelection={
+													props.store
+														? undefined
+														: documents().schematic === "main"
+															? "drawing"
+															: `drawing:${schematicDocument()?.file.id}`
+												}
+												viewSwitch={
+													props.store ? undefined : (
+														<EditorViewSwitch view="schematic" />
+													)
+												}
+												syncSelection={!props.store}
+											/>
+										</Match>
+										<Match
+											when={pane().view === "circuit" && documents().circuit}
+										>
+											{(circuit) => (
+												<Loading
+													fallback={
+														<Show when={activeView() === "circuit"}>
+															<OpeningCircuit />
+														</Show>
+													}
+												>
+													<CircuitEditor
+														document={circuit()}
+														active={activeView() === "circuit"}
+													/>
+												</Loading>
+											)}
+										</Match>
+										<Match when={pane().view === "pcb" && documents().board}>
+											{(board) => (
+												<Dynamic
+													component={props.Canvas}
+													{...canvasProps}
+													active={activeView() === "pcb"}
+													store={board().store}
+													board={board()}
+													documentSelection={`board:${board().file.circuitId}`}
+													viewSwitch={<EditorViewSwitch view="pcb" />}
+													syncSelection
+												/>
+											)}
+										</Match>
+									</Switch>
+								</EditorPane>
+							)}
+						</For>
+					</div>
+				}
+			>
+				<Match when={waiting()}>
+					<OpeningCircuit />
+				</Match>
+				<Match when={showStart()}>
+					<Loading fallback={null}>
+						<WorkspaceStart />
+					</Loading>
+				</Match>
+				<Match when={state().symbol || state().footprint}>
+					<Show when={state().inProject}>
+						<PreloadEditorViews />
+					</Show>
+					<Keyed key={singleKey()}>
+						<Dynamic
+							component={props.Canvas}
+							{...canvasProps}
+							store={state().symbol?.store ?? state().footprint?.store}
+							symbolName={state().symbol?.file.name}
+							headerControls={
+								actions() ? (
+									<SingleFileControls
+										symbol={state().symbol}
+										footprint={state().footprint}
+									/>
+								) : undefined
+							}
+							footprintName={state().footprint?.file.name}
+							footprintModel={state().footprint?.file.model}
+							documentSelection={
+								state().symbol
+									? `symbol:${state().symbol?.file.id}`
+									: `footprint:${state().footprint?.file.id}`
+							}
+						/>
+					</Keyed>
+				</Match>
+			</Switch>
+		</Show>
 	);
 }

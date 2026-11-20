@@ -1,12 +1,6 @@
 import type { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
-import {
-	createContext,
-	type ReactNode,
-	useCallback,
-	useContext,
-	useMemo,
-	useState,
-} from "react";
+import type { JSX } from "@solidjs/web";
+import { createContext, createSignal, useContext } from "solid-js";
 
 interface EditorControls {
 	id: symbol;
@@ -49,62 +43,63 @@ interface WorkspaceRegistration {
 const WorkspaceControls = createContext<WorkspaceControlsValue | null>(null);
 const Registration = createContext<WorkspaceRegistration | null>(null);
 
-export function WorkspaceControlsProvider({
-	children,
-}: {
-	children: ReactNode;
-}) {
-	const [editors, setEditors] = useState<EditorControls[]>([]);
-	const [documents, setDocuments] = useState<
+const owned = { ownedWrite: true };
+
+export function WorkspaceControlsProvider(props: { children: JSX.Element }) {
+	const [editors, setEditors] = createSignal<EditorControls[]>([], owned);
+	const [documents, setDocuments] = createSignal<
 		(WorkspaceDocument & { id: symbol })[]
-	>([]);
-	const [sidebarDocked, setSidebarDocked] = useState(false);
-	const [sidebar, setSidebar] = useState<SidebarActions | null>(null);
-	const registerSidebar = useCallback((actions: SidebarActions) => {
-		setSidebar(actions);
+	>([], owned);
+	const [sidebarDocked, setSidebarDocked] = createSignal(false, owned);
+	const [sidebar, setSidebar] = createSignal<SidebarActions | null>(
+		null,
+		owned,
+	);
+	const registerSidebar = (actions: SidebarActions) => {
+		setSidebar(() => actions);
 		return () =>
 			setSidebar((current) => (current === actions ? null : current));
-	}, []);
-	const registerEditor = useCallback(
-		(store: EditorControls["store"], enableMcp: boolean) => {
-			const id = Symbol();
-			setEditors((current) => [...current, { id, store, enableMcp }]);
-			return () =>
-				setEditors((current) => current.filter((editor) => editor.id !== id));
-		},
-		[],
-	);
-	const registerDocument = useCallback((document: WorkspaceDocument) => {
+	};
+	const registerEditor = (
+		store: EditorControls["store"],
+		enableMcp: boolean,
+	) => {
+		const id = Symbol();
+		setEditors((current) => [...current, { id, store, enableMcp }]);
+		return () =>
+			setEditors((current) => current.filter((editor) => editor.id !== id));
+	};
+	const registerDocument = (document: WorkspaceDocument) => {
 		const id = Symbol();
 		setDocuments((current) => [...current, { ...document, id }]);
 		return () =>
 			setDocuments((current) => current.filter((entry) => entry.id !== id));
-	}, []);
-	const registration = useMemo(
-		() => ({
-			registerEditor,
-			registerDocument,
-			setSidebarDocked,
-			registerSidebar,
-		}),
-		[registerEditor, registerDocument, registerSidebar],
-	);
-	const value = useMemo(
-		() => ({
-			editor: editors.at(-1) ?? null,
-			registerEditor,
-			document: documents.at(-1) ?? null,
-			sidebarDocked,
-			sidebar,
-		}),
-		[editors, registerEditor, documents, sidebarDocked, sidebar],
-	);
+	};
+	const registration: WorkspaceRegistration = {
+		registerEditor,
+		registerDocument,
+		setSidebarDocked: (docked) => setSidebarDocked(docked),
+		registerSidebar,
+	};
+	const value: WorkspaceControlsValue = {
+		get editor() {
+			return editors().at(-1) ?? null;
+		},
+		registerEditor,
+		get document() {
+			return documents().at(-1) ?? null;
+		},
+		get sidebarDocked() {
+			return sidebarDocked();
+		},
+		get sidebar() {
+			return sidebar();
+		},
+	};
 	return (
-		<Registration.Provider value={registration}>
-			<WorkspaceControls.Provider value={value}>
-				{children}
-			</WorkspaceControls.Provider>
-		</Registration.Provider>
+		<Registration value={registration}>
+			<WorkspaceControls value={value}>{props.children}</WorkspaceControls>
+		</Registration>
 	);
 }
 

@@ -235,10 +235,6 @@ export async function finish(
 				`${scenario}.${name} budget ${maximum}`,
 			).toBeLessThanOrEqual(maximum);
 	}
-	if (value.mode === "development")
-		expect(
-			Object.keys(value.metrics).some((name) => name.startsWith("react.")),
-		).toBe(true);
 	expect(value.events.length).toBeLessThanOrEqual(512);
 }
 

@@ -1,12 +1,11 @@
 import {
-	type Ref,
-	useCallback,
-	useId,
-	useImperativeHandle,
-	useLayoutEffect,
-	useRef,
-	useState,
-} from "react";
+	createEffect,
+	createMemo,
+	createSignal,
+	createUniqueId,
+	onSettled,
+	Show,
+} from "solid-js";
 import {
 	RULER_BAND as BAND,
 	createTickLayer,
@@ -62,247 +61,253 @@ function setStyle(
 	if (element.style[property] !== value) element.style[property] = value;
 }
 
+const sameBounds = (a: Bounds | undefined, b: Bounds | undefined) =>
+	a === b ||
+	(a !== undefined &&
+		b !== undefined &&
+		a.minX === b.minX &&
+		a.maxX === b.maxX &&
+		a.minY === b.minY &&
+		a.maxY === b.maxY);
+
 /**
  * Rulers along the bottom and right of a top view, and the paper under it.
  *
- * React renders the frame, which changes only with the viewport size. The
+ * Solid renders the frame, which changes only with the viewport size. The
  * ticks and the paper follow the camera on every frame, so they are placed
  * directly: a pan slides the laid out ticks with a compositor transform, and
- * a zoom lays them out again without a React render. A view always gets the
- * same ticks, however it was reached, so positions read from them repeat.
+ * a zoom lays them out again without touching the reactive graph. A view
+ * always gets the same ticks, however it was reached, so positions read from
+ * them repeat.
  */
-export function ViewportRulers({
-	ref,
-	gridBounds,
-	unit = "mm",
-}: {
-	ref: Ref<ViewportRulersHandle>;
+export function ViewportRulers(props: {
+	ref: (handle: ViewportRulersHandle) => void;
 	gridBounds?: Bounds;
 	unit?: GridUnit;
 }) {
-	const descriptionId = useId();
-	const [size, setSize] = useState<{ width: number; height: number }>();
-	const latest = useRef<RulerView>(undefined);
+	const descriptionId = createUniqueId();
+	const [size, setSize] = createSignal<{ width: number; height: number }>();
+	const unit = createMemo(() => props.unit ?? "mm");
+	const bounds = createMemo(() => props.gridBounds, { equals: sameBounds });
+	let latest: RulerView | undefined;
+	let shownUnit: GridUnit = "mm";
+	let paper: Bounds | undefined;
 	/** The view the ticks are laid out for. */
-	const anchor = useRef<RulerView>(undefined);
-	const horizontalTicks = useRef<SVGSVGElement>(null);
-	const verticalTicks = useRef<SVGSVGElement>(null);
-	const paperElement = useRef<HTMLDivElement>(null);
-	const layers = useRef<{
-		horizontal: SVGSVGElement;
-		vertical: SVGSVGElement;
-		x: TickLayer;
-		y: TickLayer;
-	}>(undefined);
-	const settings = useRef({ unit, bounds: gridBounds });
-	settings.current = { unit, bounds: gridBounds };
-	const settle = useRef<ReturnType<typeof setTimeout>>(undefined);
-	useLayoutEffect(() => () => clearTimeout(settle.current), []);
+	let anchor: RulerView | undefined;
+	let horizontalTicks: SVGSVGElement | undefined;
+	let verticalTicks: SVGSVGElement | undefined;
+	let paperElement: HTMLDivElement | undefined;
+	let layers:
+		| {
+				horizontal: SVGSVGElement;
+				vertical: SVGSVGElement;
+				x: TickLayer;
+				y: TickLayer;
+		  }
+		| undefined;
+	let settle: ReturnType<typeof setTimeout> | undefined;
+	onSettled(() => () => clearTimeout(settle));
 
 	/** Lays the ticks and the paper out for `view`; false before the frame exists. */
-	const layout = useCallback((view: RulerView) => {
-		const horizontal = horizontalTicks.current;
-		const vertical = verticalTicks.current;
+	const layout = (view: RulerView) => {
+		const horizontal = horizontalTicks;
+		const vertical = verticalTicks;
 		if (!horizontal || !vertical) return false;
-		if (
-			layers.current?.horizontal !== horizontal ||
-			layers.current.vertical !== vertical
-		)
-			layers.current = {
+		if (layers?.horizontal !== horizontal || layers.vertical !== vertical)
+			layers = {
 				horizontal,
 				vertical,
 				x: createTickLayer(horizontal, "x"),
 				y: createTickLayer(vertical, "y"),
 			};
 		const { camera, viewport } = view;
-		const { unit, bounds } = settings.current;
-		layers.current.x.layout(
+		layers.x.layout(
 			rulerTicks(
 				camera.x,
 				camera.scale,
 				viewport.width + 2 * OVERSCAN,
 				false,
-				unit,
+				shownUnit,
 			),
 			-OVERSCAN,
 		);
-		layers.current.y.layout(
+		layers.y.layout(
 			rulerTicks(
 				camera.y,
 				camera.scale,
 				viewport.height + 2 * OVERSCAN,
 				true,
-				unit,
+				shownUnit,
 			),
 			-OVERSCAN,
 		);
-		if (paperElement.current && bounds) {
+		if (paperElement && paper) {
 			setStyle(
-				paperElement.current,
+				paperElement,
 				"width",
-				`${(bounds.maxX - bounds.minX) * camera.scale}px`,
+				`${(paper.maxX - paper.minX) * camera.scale}px`,
 			);
 			setStyle(
-				paperElement.current,
+				paperElement,
 				"height",
-				`${(bounds.maxY - bounds.minY) * camera.scale}px`,
+				`${(paper.maxY - paper.minY) * camera.scale}px`,
 			);
 		}
-		anchor.current = view;
+		anchor = view;
 		return true;
-	}, []);
+	};
 
 	/** Moves the ticks and the paper to the latest view. */
-	const place = useCallback(() => {
-		const view = latest.current;
+	const place = () => {
+		const view = latest;
 		if (!view) return;
-		let offset = anchor.current && slide(anchor.current, view);
+		let offset = anchor && slide(anchor, view);
 		if (!offset) {
 			if (!layout(view)) return;
 			offset = { x: 0, y: 0, sharp: true };
 		}
-		clearTimeout(settle.current);
+		clearTimeout(settle);
 		if (!offset.sharp)
-			settle.current = setTimeout(() => {
-				if (latest.current && layout(latest.current)) place();
+			settle = setTimeout(() => {
+				if (latest && layout(latest)) place();
 			}, SETTLE_MS);
-		const { horizontal, vertical } = layers.current ?? {};
-		if (horizontal)
-			setStyle(horizontal, "transform", `translateX(${offset.x}px)`);
-		if (vertical) setStyle(vertical, "transform", `translateY(${offset.y}px)`);
-		const paper = settings.current.bounds;
-		if (paperElement.current && paper) {
+		if (layers) {
+			setStyle(layers.horizontal, "transform", `translateX(${offset.x}px)`);
+			setStyle(layers.vertical, "transform", `translateY(${offset.y}px)`);
+		}
+		if (paperElement && paper) {
 			const { camera, viewport } = view;
 			setStyle(
-				paperElement.current,
+				paperElement,
 				"transform",
 				`translate(${
 					viewport.width / 2 + (paper.minX - camera.x) * camera.scale
 				}px, ${viewport.height / 2 + (camera.y - paper.maxY) * camera.scale}px)`,
 			);
 		}
-	}, [layout]);
+	};
 
-	useImperativeHandle(
-		ref,
-		() => ({
-			update: (next) => {
-				const previous = latest.current?.viewport;
-				latest.current = next;
-				const { width, height } = next.viewport;
-				if (previous?.width !== width || previous.height !== height)
-					setSize({ width, height });
-				place();
-			},
-		}),
-		[place],
-	);
-	const paperMinX = gridBounds?.minX;
-	const paperMaxX = gridBounds?.maxX;
-	const paperMinY = gridBounds?.minY;
-	const paperMaxY = gridBounds?.maxY;
+	props.ref({
+		update: (next) => {
+			const previous = latest?.viewport;
+			latest = next;
+			const { width, height } = next.viewport;
+			if (previous?.width !== width || previous.height !== height)
+				setSize({ width, height });
+			place();
+		},
+	});
 	// The frame, the unit or the paper changed: lay everything out again.
-	// biome-ignore lint/correctness/useExhaustiveDependencies: the values are read through refs
-	useLayoutEffect(() => {
-		anchor.current = undefined;
-		place();
-	}, [size, unit, paperMinX, paperMaxX, paperMinY, paperMaxY, place]);
+	createEffect(
+		() => [size(), unit(), bounds()] as const,
+		([, nextUnit, nextBounds]) => {
+			shownUnit = nextUnit;
+			paper = nextBounds;
+			anchor = undefined;
+			place();
+		},
+	);
 
-	if (!size) return null;
-	const { width, height } = size;
+	const width = () => size()?.width ?? 0;
+	const height = () => size()?.height ?? 0;
+	const unitName = () => (unit() === "mm" ? "millimetres" : "mils");
 	// The viewport draws the grid dots. The paper and the ticks move on their
 	// own compositor layers; the bands and corner stay still. Nothing under
 	// these elements holds or moves a button, so shortcut hints ignore their
 	// changes.
 	return (
-		<>
-			{gridBounds && (
-				// Clip, not hide: a sheet larger than the view must not make any
-				// ancestor scrollable.
+		<Show when={size()}>
+			<Show when={props.gridBounds}>
+				{/* Clip, not hide: a sheet larger than the view must not make any
+				ancestor scrollable. */}
 				<div
-					className="pointer-events-none absolute inset-0 z-0 overflow-clip"
+					class="pointer-events-none absolute inset-0 z-0 overflow-clip"
 					aria-hidden="true"
 					data-shortcut-mutations="ignore"
 				>
 					<div
 						ref={paperElement}
 						data-testid="viewport-paper"
-						className="absolute top-0 left-0 bg-paper will-change-transform"
+						class="absolute top-0 left-0 bg-paper will-change-transform"
 					/>
 				</div>
-			)}
+			</Show>
 			<div
-				className="pointer-events-none absolute inset-0 z-2 overflow-clip [&_line]:stroke-1 [&_text]:fill-current [&_text]:font-mono [&_text]:text-[10px] [&_text]:tabular-nums text-fg-muted [&_line]:stroke-ruler-tick [&_.ruler-band]:fill-ruler [&_.ruler-edge]:stroke-line [&_svg]:absolute"
+				class="pointer-events-none absolute inset-0 z-2 overflow-clip [&_line]:stroke-1 [&_text]:fill-current [&_text]:font-mono [&_text]:text-[10px] [&_text]:tabular-nums text-fg-muted [&_line]:stroke-ruler-tick [&_.ruler-band]:fill-ruler [&_.ruler-edge]:stroke-line [&_svg]:absolute"
 				role="img"
-				aria-label={`Drawing rulers in ${unit === "mm" ? "millimetres" : "mils"}`}
+				aria-label={`Drawing rulers in ${unitName()}`}
 				aria-describedby={descriptionId}
 				data-shortcut-mutations="ignore"
 			>
-				<span id={descriptionId} className="sr-only">
-					Coordinates in {unit === "mm" ? "millimetres" : "mils"}. X increases
-					to the right; Y increases upward.
+				<span id={descriptionId} class="sr-only">
+					Coordinates in {unitName()}. X increases to the right; Y increases
+					upward.
 				</span>
 				<div
-					className="absolute bottom-0 left-0 overflow-clip"
-					style={{ width: Math.max(width - BAND, 0), height: BAND + 1 }}
+					class="absolute bottom-0 left-0 overflow-clip"
+					style={{
+						width: `${Math.max(width() - BAND, 0)}px`,
+						height: `${BAND + 1}px`,
+					}}
 				>
 					<svg
-						className="top-0 left-0"
-						width={width}
+						class="top-0 left-0"
+						width={width()}
 						height={BAND + 1}
 						aria-hidden="true"
 					>
-						<path className="ruler-band" d={`M0 1H${width}V${BAND + 1}H0Z`} />
-						<path className="ruler-edge fill-none" d={`M0 1H${width}`} />
+						<path class="ruler-band" d={`M0 1H${width()}V${BAND + 1}H0Z`} />
+						<path class="ruler-edge fill-none" d={`M0 1H${width()}`} />
 					</svg>
 					<svg
 						ref={horizontalTicks}
-						className="top-0 will-change-transform"
-						style={{ left: -OVERSCAN }}
-						width={width + 2 * OVERSCAN}
+						class="top-0 will-change-transform"
+						style={{ left: `${-OVERSCAN}px` }}
+						width={width() + 2 * OVERSCAN}
 						height={BAND + 1}
-						viewBox={`${-OVERSCAN} 0 ${width + 2 * OVERSCAN} ${BAND + 1}`}
+						viewBox={`${-OVERSCAN} 0 ${width() + 2 * OVERSCAN} ${BAND + 1}`}
 						aria-hidden="true"
 					/>
 				</div>
 				<div
-					className="absolute top-0 overflow-clip"
-					style={{ left: width - BAND - 1, width: BAND + 1, height }}
+					class="absolute top-0 overflow-clip"
+					style={{
+						left: `${width() - BAND - 1}px`,
+						width: `${BAND + 1}px`,
+						height: `${height()}px`,
+					}}
 				>
 					<svg
-						className="top-0 left-0"
+						class="top-0 left-0"
 						width={BAND + 1}
-						height={height}
+						height={height()}
 						aria-hidden="true"
 					>
-						<path className="ruler-band" d={`M1 0H${BAND + 1}V${height}H1Z`} />
-						<path
-							className="ruler-edge fill-none"
-							d={`M1 0V${height - BAND}`}
-						/>
+						<path class="ruler-band" d={`M1 0H${BAND + 1}V${height()}H1Z`} />
+						<path class="ruler-edge fill-none" d={`M1 0V${height() - BAND}`} />
 					</svg>
 					<svg
 						ref={verticalTicks}
-						className="left-0 will-change-transform"
-						style={{ top: -OVERSCAN }}
+						class="left-0 will-change-transform"
+						style={{ top: `${-OVERSCAN}px` }}
 						width={BAND + 1}
-						height={height + 2 * OVERSCAN}
-						viewBox={`0 ${-OVERSCAN} ${BAND + 1} ${height + 2 * OVERSCAN}`}
+						height={height() + 2 * OVERSCAN}
+						viewBox={`0 ${-OVERSCAN} ${BAND + 1} ${height() + 2 * OVERSCAN}`}
 						aria-hidden="true"
 					/>
 					<svg
-						className="bottom-0 left-0"
+						class="bottom-0 left-0"
 						width={BAND + 1}
 						height={BAND}
 						aria-hidden="true"
 					>
-						<path className="ruler-band" d={`M1 0H${BAND + 1}V${BAND}H1Z`} />
-						<text x={BAND / 2 + 1} y="15" textAnchor="middle">
-							{unit === "mm" ? "mm" : "mil"}
+						<path class="ruler-band" d={`M1 0H${BAND + 1}V${BAND}H1Z`} />
+						<text x={BAND / 2 + 1} y="15" text-anchor="middle">
+							{unit() === "mm" ? "mm" : "mil"}
 						</text>
 					</svg>
 				</div>
 			</div>
-		</>
+		</Show>
 	);
 }

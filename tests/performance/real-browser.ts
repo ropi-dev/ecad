@@ -73,7 +73,7 @@ const preload = `() => {
 				callback(time);
 			} finally {
 				// Queued after the callback's own microtasks, so synchronous
-				// React work the callback schedules is included.
+				// UI work the callback schedules is included.
 				queueMicrotask(() => {
 					state.script[index] += performance.now() - started;
 				});

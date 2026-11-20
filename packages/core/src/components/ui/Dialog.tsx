@@ -1,16 +1,13 @@
-import { X } from "lucide-react";
-import { Dialog } from "radix-ui";
+import { type JSX, Portal } from "@solidjs/web";
 import {
-	type ReactNode,
-	type SyntheticEvent,
-	useEffect,
-	useEffectEvent,
-	useId,
-	useLayoutEffect,
-	useRef,
-	useState,
-} from "react";
-import { createPortal } from "react-dom";
+	children,
+	createEffect,
+	createSignal,
+	createUniqueId,
+	onSettled,
+	Show,
+	useContext,
+} from "solid-js";
 import {
 	dialogWindowsEnabled,
 	dialogWindowWidths,
@@ -19,6 +16,16 @@ import {
 	mirrorPageStyles,
 	openDialogWindow,
 } from "#/components/ui/dialog-window.ts";
+import { X } from "#/components/ui/icons.tsx";
+import {
+	attachLayer,
+	createLayer,
+	focusElement,
+	hideOthers,
+	LayerContext,
+	returnFocusLater,
+	tabbables,
+} from "#/components/ui/primitives.tsx";
 import { panelIconButtonClassName } from "#/components/viewer/viewControlStyles.ts";
 
 const widths = {
@@ -27,22 +34,6 @@ const widths = {
 	lg: "max-w-lg",
 	xl: "max-w-3xl",
 } as const;
-
-/** Title and optional description shared by every dialog. */
-export function DialogHeader({
-	title,
-	description,
-}: {
-	title: ReactNode;
-	description?: ReactNode;
-}) {
-	return (
-		<header className="shrink-0 pt-4 pr-12 pb-1 pl-5">
-			{title}
-			{description}
-		</header>
-	);
-}
 
 /**
  * Place for a dialog's close button. The button follows the dialog's content
@@ -60,15 +51,15 @@ interface AppDialogProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	title: string;
-	description?: ReactNode;
+	description?: JSX.Element;
 	size?: keyof typeof widths;
 	/**
 	 * Focus the dialog itself on opening, instead of its first control. For a
 	 * dialog whose content loads after it opens.
 	 */
 	focusDialog?: boolean;
-	children?: ReactNode;
-	footer?: ReactNode;
+	children?: JSX.Element;
+	footer?: JSX.Element;
 }
 
 /**
@@ -77,211 +68,279 @@ interface AppDialogProps {
  * in a window of its own.
  */
 export function AppDialog(props: AppDialogProps) {
-	return dialogWindowsEnabled() ? (
-		<WindowDialog {...props} />
-	) : (
-		<PageDialog {...props} />
+	return (
+		<Show when={dialogWindowsEnabled()} fallback={<PageDialog {...props} />}>
+			<WindowDialog {...props} />
+		</Show>
 	);
 }
 
-function PageDialog({
-	open,
-	onOpenChange,
-	title,
-	description,
-	size = "md",
-	focusDialog = false,
-	children,
-	footer,
-}: AppDialogProps) {
-	const content = useRef<HTMLDivElement>(null);
+function PageDialog(props: AppDialogProps) {
 	return (
-		<Dialog.Root open={open} onOpenChange={onOpenChange}>
-			<Dialog.Portal>
-				<Dialog.Overlay className="ui-scrim" />
-				<Dialog.Content
-					ref={content}
-					aria-describedby={description ? undefined : ""}
-					className={`ui-dialog fixed top-1/2 left-1/2 z-50 -translate-x-1/2 -translate-y-1/2 outline-none ${widths[size]}`}
-					onOpenAutoFocus={(event) => {
-						if (!focusDialog) return;
+		<Show when={props.open}>
+			<PageDialogCard {...props} />
+		</Show>
+	);
+}
+
+function DialogCard(props: {
+	titleId: string;
+	descriptionId: string;
+	description: JSX.Element;
+	dialog: AppDialogProps;
+	close: () => void;
+}) {
+	const footer = children(() => props.dialog.footer);
+	return (
+		<>
+			<header class="shrink-0 pt-4 pr-12 pb-1 pl-5">
+				<h2 id={props.titleId} class={dialogTitleClassName}>
+					{props.dialog.title}
+				</h2>
+				<Show when={props.description}>
+					<p id={props.descriptionId} class={dialogDescriptionClassName}>
+						{props.description}
+					</p>
+				</Show>
+			</header>
+			{props.dialog.children}
+			<Show when={footer.toArray().length}>
+				<footer class={dialogFooterClassName}>{footer()}</footer>
+			</Show>
+			<button
+				type="button"
+				aria-label="Close dialog"
+				class={dialogCloseClassName}
+				onClick={() => props.close()}
+			>
+				<X size={16} aria-hidden="true" />
+			</button>
+		</>
+	);
+}
+
+function PageDialogCard(props: AppDialogProps) {
+	const titleId = createUniqueId();
+	const descriptionId = createUniqueId();
+	const description = children(() => props.description);
+	let scrim!: HTMLDivElement;
+	let content!: HTMLDivElement;
+	let lastFocused: HTMLElement | undefined;
+	const close = () => props.onOpenChange(false);
+	const layer = createLayer(useContext(LayerContext), {
+		escape(event) {
+			event.preventDefault();
+			close();
+		},
+		pointerDownOutside(event) {
+			if (event.button === 2 || (event.button === 0 && event.ctrlKey)) return;
+			close();
+		},
+		focusOutside() {
+			(lastFocused?.isConnected ? lastFocused : content).focus({
+				preventScroll: true,
+			});
+		},
+	});
+	onSettled(() => {
+		const opener = document.activeElement;
+		const detach = attachLayer(layer, content);
+		const restore = hideOthers([scrim, content]);
+		if (props.focusDialog) content.focus({ preventScroll: true });
+		else {
+			const first = tabbables(content, false)[0];
+			if (first) focusElement(first, true);
+			else content.focus({ preventScroll: true });
+		}
+		return () => {
+			detach();
+			restore();
+			returnFocusLater(opener);
+		};
+	});
+	return (
+		<Portal>
+			<div ref={scrim} class="ui-scrim" />
+			<div
+				ref={content}
+				role="dialog"
+				aria-modal="true"
+				aria-labelledby={titleId}
+				aria-describedby={description() ? descriptionId : undefined}
+				tabindex="-1"
+				class={`ui-dialog fixed top-1/2 left-1/2 z-50 -translate-x-1/2 -translate-y-1/2 outline-none ${widths[props.size ?? "md"]}`}
+				onFocusIn={(event) => {
+					if (content.contains(event.target))
+						lastFocused = event.target as HTMLElement;
+				}}
+				onKeyDown={(event) => {
+					if (
+						event.key !== "Tab" ||
+						event.altKey ||
+						event.ctrlKey ||
+						event.metaKey
+					)
+						return;
+					const focusable = tabbables(content);
+					const first = focusable[0];
+					const last = focusable.at(-1);
+					if (!first || !last) {
 						event.preventDefault();
-						content.current?.focus();
-					}}
-				>
-					<DialogHeader
-						title={
-							<Dialog.Title className={dialogTitleClassName}>
-								{title}
-							</Dialog.Title>
-						}
-						description={
-							description && (
-								<Dialog.Description className={dialogDescriptionClassName}>
-									{description}
-								</Dialog.Description>
-							)
-						}
+						return;
+					}
+					const active = document.activeElement;
+					if (!event.shiftKey && active === last) {
+						event.preventDefault();
+						focusElement(first, true);
+					} else if (
+						event.shiftKey &&
+						(active === first || active === content)
+					) {
+						event.preventDefault();
+						focusElement(last, true);
+					}
+				}}
+			>
+				<LayerContext value={layer}>
+					<DialogCard
+						titleId={titleId}
+						descriptionId={descriptionId}
+						description={description()}
+						dialog={props}
+						close={close}
 					/>
-					{children}
-					{footer && (
-						<footer className={dialogFooterClassName}>{footer}</footer>
-					)}
-					<Dialog.Close
-						aria-label="Close dialog"
-						className={dialogCloseClassName}
-					>
-						<X size={16} aria-hidden="true" />
-					</Dialog.Close>
-				</Dialog.Content>
-			</Dialog.Portal>
-		</Dialog.Root>
+				</LayerContext>
+			</div>
+		</Portal>
 	);
 }
 
 function WindowDialog(props: AppDialogProps) {
-	const { open, title, size = "md" } = props;
-	const [popup, setPopup] = useState<Window | null>(null);
-	const [failed, setFailed] = useState(false);
-	const close = useEffectEvent(() => props.onOpenChange(false));
-	useEffect(() => {
-		if (!open || failed) return;
-		const child = openDialogWindow(dialogWindowWidths[size]);
-		if (!child) {
-			setFailed(true);
-			return;
-		}
-		let closing = false;
-		const stopMirroring = mirrorPageStyles(child);
-		const beforeUnload = (event: BeforeUnloadEvent) => {
-			if (closing) return;
-			event.preventDefault();
-			close();
-		};
-		const pageHide = () => {
-			if (closing) return;
-			closing = true;
-			setPopup(null);
-			close();
-		};
-		child.addEventListener("beforeunload", beforeUnload);
-		child.addEventListener("pagehide", pageHide);
-		setPopup(child);
-		return () => {
-			closing = true;
-			stopMirroring();
-			setPopup(null);
-			child.close();
-		};
-	}, [open, failed, size]);
-	useEffect(() => {
-		if (popup) popup.document.title = title;
-	}, [popup, title]);
-	if (failed) return <PageDialog {...props} />;
-	if (!popup) return null;
-	return createPortal(
-		<div className="contents" {...isolated}>
-			<WindowCard {...props} popup={popup} />
-		</div>,
-		popup.document.body,
+	const [popup, setPopup] = createSignal<Window | null>(null);
+	const [failed, setFailed] = createSignal(false);
+	const close = () => props.onOpenChange(false);
+	createEffect(
+		() => ({ open: props.open, failed: failed(), size: props.size ?? "md" }),
+		({ open, failed, size }) => {
+			if (!open || failed) return;
+			const child = openDialogWindow(dialogWindowWidths[size]);
+			if (!child) {
+				setFailed(true);
+				return;
+			}
+			let closing = false;
+			const stopMirroring = mirrorPageStyles(child);
+			const beforeUnload = (event: BeforeUnloadEvent) => {
+				if (closing) return;
+				event.preventDefault();
+				close();
+			};
+			const pageHide = () => {
+				if (closing) return;
+				closing = true;
+				setPopup(null);
+				close();
+			};
+			child.addEventListener("beforeunload", beforeUnload);
+			child.addEventListener("pagehide", pageHide);
+			setPopup(child);
+			return () => {
+				closing = true;
+				stopMirroring();
+				setPopup(null);
+				child.close();
+			};
+		},
+	);
+	createEffect(
+		() => ({ child: popup(), title: props.title }),
+		({ child, title }) => {
+			if (child) child.document.title = title;
+		},
+	);
+	return (
+		<Show when={!failed()} fallback={<PageDialog {...props} />}>
+			<Show when={popup()}>
+				{(child) => (
+					<Portal mount={child().document.body}>
+						<div class="contents" {...isolated}>
+							<WindowCard {...props} popup={child()} />
+						</div>
+					</Portal>
+				)}
+			</Show>
+		</Show>
 	);
 }
 
-const stop = (event: SyntheticEvent) => event.stopPropagation();
+const stop = (event: Event) => event.stopPropagation();
 
 const isolated = Object.fromEntries(
 	[
-		"onBlur",
-		"onChange",
+		"onBeforeInput",
 		"onClick",
 		"onContextMenu",
-		"onCopy",
-		"onCut",
-		"onDoubleClick",
-		"onDragEnd",
-		"onDragEnter",
-		"onDragLeave",
-		"onDragOver",
-		"onDragStart",
-		"onDrop",
-		"onFocus",
+		"onDblClick",
+		"onFocusIn",
+		"onFocusOut",
 		"onInput",
 		"onKeyDown",
 		"onKeyUp",
 		"onMouseDown",
+		"onMouseMove",
+		"onMouseOut",
+		"onMouseOver",
 		"onMouseUp",
-		"onPaste",
 		"onPointerDown",
 		"onPointerMove",
+		"onPointerOut",
+		"onPointerOver",
 		"onPointerUp",
-		"onSubmit",
 		"onTouchEnd",
 		"onTouchMove",
 		"onTouchStart",
-		"onWheel",
 	].map((name) => [name, stop]),
 );
 
-function WindowCard({
-	popup,
-	onOpenChange,
-	title,
-	description,
-	size = "md",
-	focusDialog = false,
-	children,
-	footer,
-}: AppDialogProps & { popup: Window }) {
-	const card = useRef<HTMLDivElement>(null);
-	const titleId = useId();
-	const descriptionId = useId();
-	const width = dialogWindowWidths[size];
-	useLayoutEffect(() => {
-		if (card.current) return fitDialogWindow(popup, card.current, width);
-	}, [popup, width]);
-	useLayoutEffect(() => {
-		if (card.current) focusDialogWindow(popup, card.current, focusDialog);
-	}, [popup, focusDialog]);
+function WindowCard(props: AppDialogProps & { popup: Window }) {
+	let card!: HTMLDivElement;
+	const titleId = createUniqueId();
+	const descriptionId = createUniqueId();
+	const description = children(() => props.description);
+	const width = () => dialogWindowWidths[props.size ?? "md"];
+	createEffect(
+		() => ({ popup: props.popup, width: width() }),
+		({ popup, width }) => fitDialogWindow(popup, card, width),
+	);
+	createEffect(
+		() => ({ popup: props.popup, focusCard: props.focusDialog ?? false }),
+		({ popup, focusCard }) => {
+			focusDialogWindow(popup, card, focusCard);
+		},
+	);
 	return (
 		<div
 			ref={card}
 			role="dialog"
 			aria-modal="true"
 			aria-labelledby={titleId}
-			aria-describedby={description ? descriptionId : undefined}
-			tabIndex={-1}
-			className="ui-dialog relative outline-none"
-			style={{ width }}
+			aria-describedby={description() ? descriptionId : undefined}
+			tabindex="-1"
+			class="ui-dialog relative outline-none"
+			style={{ width: `${width()}px` }}
 			onKeyDown={(event) => {
 				if (event.key !== "Escape" || event.defaultPrevented) return;
 				event.preventDefault();
-				onOpenChange(false);
+				props.onOpenChange(false);
 			}}
 		>
-			<DialogHeader
-				title={
-					<h2 id={titleId} className={dialogTitleClassName}>
-						{title}
-					</h2>
-				}
-				description={
-					description && (
-						<p id={descriptionId} className={dialogDescriptionClassName}>
-							{description}
-						</p>
-					)
-				}
+			<DialogCard
+				titleId={titleId}
+				descriptionId={descriptionId}
+				description={description()}
+				dialog={props}
+				close={() => props.onOpenChange(false)}
 			/>
-			{children}
-			{footer && <footer className={dialogFooterClassName}>{footer}</footer>}
-			<button
-				type="button"
-				aria-label="Close dialog"
-				className={dialogCloseClassName}
-				onClick={() => onOpenChange(false)}
-			>
-				<X size={16} aria-hidden="true" />
-			</button>
 		</div>
 	);
 }

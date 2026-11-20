@@ -3,6 +3,7 @@ import type {
 	ProjectLinkProps,
 	ProjectPath,
 } from "@ecad/core/projects/ProjectLink.tsx";
+import { omit } from "solid-js";
 
 export function createRouterProjectLink(
 	navigate: (
@@ -11,23 +12,20 @@ export function createRouterProjectLink(
 		view?: "circuit" | "pcb",
 	) => Promise<void>,
 ) {
-	return function RouterProjectLink({
-		href,
-		file,
-		view,
-		onClick,
-		...props
-	}: ProjectLinkProps) {
+	return function RouterProjectLink(props: ProjectLinkProps) {
+		const rest = omit(props, "href", "file", "view", "onClick");
 		return (
 			<a
-				{...props}
+				{...rest}
 				href={
-					file
-						? `${href}?${new URLSearchParams({ file: projectFileUrlPath(file), ...(view ? { view } : {}) })}`
-						: href
+					props.file
+						? `${props.href}?${new URLSearchParams({ file: projectFileUrlPath(props.file), ...(props.view ? { view: props.view } : {}) })}`
+						: props.href
 				}
 				onClick={(event) => {
-					onClick?.(event);
+					const onClick = props.onClick;
+					if (typeof onClick === "function") onClick(event);
+					else if (onClick) onClick[0](onClick[1], event);
 					if (
 						event.defaultPrevented ||
 						event.button !== 0 ||
@@ -41,9 +39,9 @@ export function createRouterProjectLink(
 						return;
 					event.preventDefault();
 					void navigate(
-						href,
-						file ? projectFileUrlPath(file) : undefined,
-						view,
+						props.href,
+						props.file ? projectFileUrlPath(props.file) : undefined,
+						props.view,
 					);
 				}}
 			/>

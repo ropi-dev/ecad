@@ -1,4 +1,4 @@
-import type { KeyboardEventHandler, ReactNode } from "react";
+import { Dynamic, type JSX } from "@solidjs/web";
 
 export type FloatingPanelPosition = "top-right" | "top-left" | "left-center";
 
@@ -12,15 +12,7 @@ const positionClassName: Record<FloatingPanelPosition, string> = {
 	"left-center": `top-1/2 left-[var(--chrome-gap)] max-h-[calc(100%-2*var(--chrome-dock))] -translate-y-1/2 ${sheet}`,
 };
 
-export function FloatingPanel({
-	label,
-	position = "top-right",
-	as: Element = "aside",
-	raised = false,
-	narrow = false,
-	onKeyDown,
-	children,
-}: {
+export function FloatingPanel(props: {
 	label: string;
 	position?: FloatingPanelPosition;
 	/** `section` exposes the panel as a region, for tool output such as ERC. */
@@ -28,16 +20,24 @@ export function FloatingPanel({
 	/** Floats above the editor header and messages, for panels the user opens. */
 	raised?: boolean;
 	narrow?: boolean;
-	onKeyDown?: KeyboardEventHandler<HTMLElement>;
-	children: ReactNode;
+	onKeyDown?: JSX.EventHandler<HTMLElement, KeyboardEvent>;
+	children: JSX.Element;
 }) {
 	return (
-		<Element
-			className={`ui-panel absolute bg-raised ${raised ? "z-5" : "z-2"} flex min-h-0 ${narrow ? "w-56" : "w-72"} flex-col overflow-hidden ${positionClassName[position]}`}
-			aria-label={label}
-			onKeyDown={onKeyDown}
+		<Dynamic
+			component={props.as ?? "aside"}
+			class={[
+				"ui-panel absolute flex min-h-0 flex-col overflow-hidden bg-raised",
+				props.raised ? "z-5" : "z-2",
+				props.narrow ? "w-56" : "w-72",
+				positionClassName[props.position ?? "top-right"],
+			]}
+			aria-label={props.label}
+			onKeyDown={(
+				event: KeyboardEvent & { currentTarget: HTMLElement; target: Element },
+			) => props.onKeyDown?.(event)}
 		>
-			{children}
-		</Element>
+			{props.children}
+		</Dynamic>
 	);
 }

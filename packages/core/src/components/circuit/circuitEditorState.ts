@@ -5,16 +5,12 @@ import type {
 	CircuitStore,
 } from "@ecad/drawing-core/circuit/store.ts";
 import {
-	type Dispatch,
-	type MouseEvent as ReactMouseEvent,
-	type PointerEvent as ReactPointerEvent,
-	type SetStateAction,
-	useEffect,
-	useEffectEvent,
-	useLayoutEffect,
-	useMemo,
-	useRef,
-} from "react";
+	type Accessor,
+	createEffect,
+	createMemo,
+	createProjection,
+	type Setter,
+} from "solid-js";
 import {
 	type CircuitSelectionItem,
 	pruneCircuitSelection,
@@ -42,6 +38,9 @@ export type ConnectionDrag = {
 	active: boolean;
 	target: { kind: "pin" | "net"; id: string } | null;
 };
+export type GraphButtonEvent<E extends Event> = E & {
+	currentTarget: HTMLButtonElement;
+};
 
 /** Editor commands the graph's nodes and connections call. */
 export interface CircuitGraphActions {
@@ -49,41 +48,34 @@ export interface CircuitGraphActions {
 	edit(item: NonNullable<CircuitSelection>): void;
 	finishEditing(): void;
 	openMenu(
-		event: ReactMouseEvent<HTMLButtonElement>,
+		event: GraphButtonEvent<MouseEvent>,
 		item: NonNullable<CircuitSelection>,
 	): void;
 	selectPin(id: string): void;
 	selectNet(id: string): void;
 	selectConnection(id: string, mode: SelectionMode): void;
 	startDrag(
-		event: ReactPointerEvent<HTMLButtonElement>,
+		event: GraphButtonEvent<PointerEvent>,
 		position: CircuitPosition,
 	): void;
 	startConnectionDrag(
-		event: ReactPointerEvent<HTMLButtonElement>,
+		event: GraphButtonEvent<PointerEvent>,
 		pinId: string,
 	): void;
 	run(command: CircuitCommand): boolean;
 	snap<T extends { x: number; y: number }>(position: T): T;
 }
 
-export function useStableHandlers<T extends object>(handlers: T): T {
-	const latest = useRef(handlers);
-	useLayoutEffect(() => {
-		latest.current = handlers;
-	});
-	return useMemo(() => {
-		const call = (key: string, args: unknown[]) =>
-			(latest.current as Record<string, (...args: unknown[]) => unknown>)[key](
-				...args,
-			);
-		return Object.fromEntries(
-			Object.keys(latest.current).map((key) => [
-				key,
-				(...args: unknown[]) => call(key, args),
-			]),
-		) as T;
-	}, []);
+export function createIdFlags(
+	ids: () => readonly (string | null | undefined)[],
+): Readonly<Record<string, boolean>> {
+	let previous: string[] = [];
+	return createProjection<Record<string, boolean>>((draft) => {
+		const next = ids().filter((id): id is string => !!id);
+		for (const id of previous) if (!next.includes(id)) delete draft[id];
+		for (const id of next) draft[id] = true;
+		previous = next;
+	}, {});
 }
 
 /**
@@ -93,76 +85,69 @@ export function useStableHandlers<T extends object>(handlers: T): T {
  * gone.
  */
 export function usePruneToSnapshot(
-	snapshot: ReturnType<CircuitStore["getSnapshot"]>,
-	{
-		selection,
-		checkedPins,
-		setDrag,
-		setConnectionDrag,
-		setCheckedPins,
-		setSelection,
-		setEditing,
-		setPendingPin,
-	}: {
-		selection: CircuitSelection;
-		checkedPins: string[];
-		setDrag: Dispatch<SetStateAction<CircuitDrag | null>>;
-		setConnectionDrag: Dispatch<SetStateAction<ConnectionDrag | null>>;
-		setCheckedPins: Dispatch<SetStateAction<string[]>>;
-		setSelection: Dispatch<SetStateAction<CircuitSelection>>;
-		setEditing: Dispatch<SetStateAction<CircuitSelection>>;
-		setPendingPin: Dispatch<SetStateAction<string | null>>;
+	snapshot: Accessor<ReturnType<CircuitStore["getSnapshot"]>>,
+	state: {
+		selection: Accessor<CircuitSelection>;
+		checkedPins: Accessor<string[]>;
+		setDrag: Setter<CircuitDrag | null>;
+		setConnectionDrag: Setter<ConnectionDrag | null>;
+		setCheckedPins: Setter<string[]>;
+		setSelection: Setter<CircuitSelection>;
+		setEditing: Setter<CircuitSelection>;
+		setPendingPin: Setter<string | null>;
 	},
 ) {
-	// Saves and schematic syncs publish new snapshots without changing what the
-	// user picked, so keep the selection while it still exists. The selected
-	// connection and the checked pins are pruned together so they stay paired.
-	const pruneSelection = useEffectEvent(
-		(next: ReturnType<CircuitStore["getSnapshot"]>) => {
-			const current = { item: selection, checkedPins };
-			const valid = pruneCircuitSelection(next, current);
-			if (sameCircuitSelection(valid, current)) return;
-			setSelection(valid.item);
-			setCheckedPins([...valid.checkedPins]);
-		},
+	const pruning = createMemo(
+		() => ({
+			next: snapshot(),
+			current: { item: state.selection(), checkedPins: state.checkedPins() },
+		}),
+		{ equals: (a, b) => a.next === b.next },
 	);
-	useEffect(() => {
-		pruneSelection(snapshot);
-		setDrag((current) =>
-			current &&
-			(current.position.kind === "component"
-				? snapshot.circuit.components
-				: snapshot.circuit.nets
-			).some((item) => item.id === current.position.id)
-				? current
+	createEffect(pruning, ({ next, current }) => {
+		// Saves and schematic syncs publish new snapshots without changing what the
+		// user picked, so keep the selection while it still exists. The selected
+		// connection and the checked pins are pruned together so they stay paired.
+		const valid = pruneCircuitSelection(next, current);
+		if (!sameCircuitSelection(valid, current)) {
+			state.setSelection(valid.item);
+			state.setCheckedPins([...valid.checkedPins]);
+		}
+		state.setDrag((drag) =>
+			drag &&
+			(drag.position.kind === "component"
+				? next.circuit.components
+				: next.circuit.nets
+			).some((item) => item.id === drag.position.id)
+				? drag
 				: null,
 		);
-		setConnectionDrag((current) =>
-			current &&
-			snapshot.circuit.components.some(
+		state.setConnectionDrag((drag) =>
+			drag &&
+			next.circuit.components.some(
 				(component) =>
-					component.pins.some((pin) => pin.id === current.pinId) &&
-					!(snapshot.graph.collapsedComponentIds ?? []).includes(component.id),
+					component.pins.some((pin) => pin.id === drag.pinId) &&
+					!(next.graph.collapsedComponentIds ?? []).includes(component.id),
 			)
-				? current
+				? drag
 				: null,
 		);
-		setEditing((current) =>
-			current &&
-			(current.kind === "net"
-				? snapshot.circuit.nets
-				: snapshot.circuit.components
-			).some((item) => item.id === current.id)
-				? current
+		state.setEditing((editing) =>
+			editing &&
+			(editing.kind === "net"
+				? next.circuit.nets
+				: next.circuit.components
+			).some((item) => item.id === editing.id)
+				? editing
 				: null,
 		);
-		setPendingPin((id) =>
+		state.setPendingPin((id) =>
 			id &&
-			snapshot.circuit.components.some((component) =>
+			next.circuit.components.some((component) =>
 				component.pins.some((pin) => pin.id === id),
 			)
 				? id
 				: null,
 		);
-	}, [snapshot, setDrag, setConnectionDrag, setEditing, setPendingPin]);
+	});
 }

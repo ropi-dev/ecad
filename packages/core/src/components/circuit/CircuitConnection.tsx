@@ -1,23 +1,10 @@
 import { connectionCurveOffset } from "@ecad/drawing-core/circuit/graph.ts";
-import { memo } from "react";
+import { createMemo } from "solid-js";
 import type { CircuitGraphActions } from "#/components/circuit/circuitEditorState.ts";
 import { GraphButton } from "#/components/circuit/GraphButton.tsx";
 import { selectionMode } from "#/components/editor/selectionMode.ts";
 
-const connectionStyle = { pointerEvents: "none" } as const;
-
-export const CircuitConnection = memo(function CircuitConnection({
-	pinId,
-	pinX,
-	pinY,
-	side,
-	netX,
-	netY,
-	label,
-	selected,
-	highlighted,
-	actions,
-}: {
+export function CircuitConnection(props: {
 	pinId: string;
 	pinX: number;
 	pinY: number;
@@ -29,34 +16,40 @@ export const CircuitConnection = memo(function CircuitConnection({
 	highlighted: boolean;
 	actions: CircuitGraphActions;
 }) {
-	const x = Math.min(pinX, netX) - 80;
-	const y = Math.min(pinY, netY) - 16;
-	const offset =
-		side === "left" ? -connectionCurveOffset : connectionCurveOffset;
-	const path = `M ${pinX} ${pinY} C ${pinX + offset} ${pinY}, ${netX - offset} ${netY}, ${netX} ${netY}`;
+	const path = createMemo(() => {
+		const offset =
+			props.side === "left" ? -connectionCurveOffset : connectionCurveOffset;
+		return `M ${props.pinX} ${props.pinY} C ${props.pinX + offset} ${props.pinY}, ${props.netX - offset} ${props.netY}, ${props.netX} ${props.netY}`;
+	});
 	return (
 		<GraphButton
-			x={x}
-			y={y}
-			width={Math.abs(pinX - netX) + 160}
-			height={Math.abs(pinY - netY) + 32}
-			className="circuit-connection"
-			style={connectionStyle}
-			aria-label={label}
-			aria-pressed={selected}
+			x={Math.min(props.pinX, props.netX) - 80}
+			y={Math.min(props.pinY, props.netY) - 16}
+			width={Math.abs(props.pinX - props.netX) + 160}
+			height={Math.abs(props.pinY - props.netY) + 32}
+			class="circuit-connection"
+			style={{ "pointer-events": "none" }}
+			aria-label={props.label}
+			aria-pressed={props.selected ? "true" : "false"}
 			onClick={(event) => {
 				event.stopPropagation();
-				actions.selectConnection(pinId, selectionMode(event));
+				props.actions.selectConnection(props.pinId, selectionMode(event));
 			}}
 			onContextMenu={(event) =>
-				actions.openMenu(event, { kind: "connection", id: pinId })
+				props.actions.openMenu(event, { kind: "connection", id: props.pinId })
 			}
 		>
 			<path
-				className={`circuit-edge ${selected ? "is-selected" : highlighted ? "is-highlighted" : ""}`}
-				d={path}
+				class={[
+					"circuit-edge",
+					{
+						"is-selected": props.selected,
+						"is-highlighted": !props.selected && props.highlighted,
+					},
+				]}
+				d={path()}
 			/>
-			<path className="circuit-edge-hit" d={path} />
+			<path class="circuit-edge-hit" d={path()} />
 		</GraphButton>
 	);
-});
+}

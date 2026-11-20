@@ -3,12 +3,12 @@ import type {
 	CircuitComponent,
 	CircuitNet,
 } from "@ecad/drawing-core/circuit/model.ts";
-import { ChevronDown, ChevronUp } from "lucide-react";
-import { memo } from "react";
+import { createMemo, For, Show } from "solid-js";
 import { CircuitInlineFields } from "#/components/circuit/CircuitInlineFields.tsx";
 import type { CircuitTool } from "#/components/circuit/CircuitToolbar.tsx";
 import type { CircuitGraphActions } from "#/components/circuit/circuitEditorState.ts";
 import { GraphButton } from "#/components/circuit/GraphButton.tsx";
+import { ChevronDown, ChevronUp } from "#/components/ui/icons.tsx";
 import { arrowDelta } from "#/lib/keyboard.ts";
 
 /**
@@ -16,27 +16,7 @@ import { arrowDelta } from "#/lib/keyboard.ts";
  * button, inline reference and value editing, and a button for each visible
  * pin.
  */
-export const CircuitComponentNode = memo(function CircuitComponentNode({
-	component,
-	x,
-	y,
-	height,
-	collapsed,
-	connectsLeft,
-	connectsRight,
-	pinSides,
-	pinNets,
-	noConnectPinIds,
-	tool,
-	gridStep,
-	selected,
-	isEditing,
-	selectedPinId,
-	pendingPinId,
-	dragSourcePinId,
-	targetPinId,
-	actions,
-}: {
+export function CircuitComponentNode(props: {
 	component: CircuitComponent;
 	x: number;
 	y: number;
@@ -51,77 +31,73 @@ export const CircuitComponentNode = memo(function CircuitComponentNode({
 	gridStep: number;
 	selected: boolean;
 	isEditing: boolean;
-	selectedPinId: string | null;
-	pendingPinId: string | null;
-	dragSourcePinId: string | null;
-	targetPinId: string | null;
+	highlightedPins: Readonly<Record<string, boolean>>;
+	targetPins: Readonly<Record<string, boolean>>;
 	actions: CircuitGraphActions;
 }) {
-	const {
-		select,
-		edit,
-		finishEditing,
-		openMenu,
-		selectPin,
-		startDrag,
-		startConnectionDrag,
-		run,
-		snap,
-	} = actions;
-	const visiblePins = collapsed ? [] : component.pins;
-	const collapsedSides = [
-		...(connectsLeft ? (["left"] as const) : []),
-		...(connectsRight ? (["right"] as const) : []),
-	];
+	const visiblePins = createMemo(() =>
+		props.collapsed ? [] : props.component.pins,
+	);
+	const collapsedSides = createMemo(() => [
+		...(props.connectsLeft ? (["left"] as const) : []),
+		...(props.connectsRight ? (["right"] as const) : []),
+	]);
 	return (
 		<g
-			className={`circuit-component ${selected ? "is-selected" : ""}`}
-			transform={`translate(${x},${y})`}
+			class={["circuit-component", { "is-selected": props.selected }]}
+			transform={`translate(${props.x},${props.y})`}
 		>
 			<rect
-				className="circuit-component-body"
+				class={["circuit-component-body", { "is-selected": props.selected }]}
 				width={componentWidth}
-				height={height}
+				height={props.height}
 				rx="10"
 			/>
 			<GraphButton
 				width={componentWidth}
 				height={65}
-				className="circuit-node-handle"
-				aria-label={`Select component ${component.reference}`}
-				onDoubleClick={() => {
-					if (tool === "select") edit({ kind: "component", id: component.id });
+				class="circuit-node-handle"
+				aria-label={`Select component ${props.component.reference}`}
+				onDblClick={() => {
+					if (props.tool === "select")
+						props.actions.edit({ kind: "component", id: props.component.id });
 				}}
 				onContextMenu={(event) =>
-					openMenu(event, { kind: "component", id: component.id })
+					props.actions.openMenu(event, {
+						kind: "component",
+						id: props.component.id,
+					})
 				}
 				onClick={() => {
-					if (tool === "select")
-						select({ kind: "component", id: component.id });
+					if (props.tool === "select")
+						props.actions.select({ kind: "component", id: props.component.id });
 				}}
 				onPointerDown={(event) =>
-					startDrag(event, {
-						id: component.id,
+					props.actions.startDrag(event, {
+						id: props.component.id,
 						kind: "component",
-						x,
-						y,
+						x: props.x,
+						y: props.y,
 					})
 				}
 				onKeyDown={(event) => {
 					if (event.key === "Enter" || event.key === " ") {
 						event.preventDefault();
-						select({ kind: "component", id: component.id });
+						props.actions.select({ kind: "component", id: props.component.id });
 					}
-					const delta = arrowDelta(event.key, gridStep);
+					const delta = arrowDelta(event.key, props.gridStep);
 					if (delta) {
 						event.preventDefault();
-						run({
+						props.actions.run({
 							type: "move",
 							positions: [
 								{
-									id: component.id,
+									id: props.component.id,
 									kind: "component",
-									...snap({ x: x + delta.x, y: y + delta.y }),
+									...props.actions.snap({
+										x: props.x + delta.x,
+										y: props.y + delta.y,
+									}),
 								},
 							],
 						});
@@ -129,67 +105,72 @@ export const CircuitComponentNode = memo(function CircuitComponentNode({
 				}}
 			>
 				<rect width={componentWidth} height="65" rx="10" fill="transparent" />
-				<text className="circuit-reference" x="18" y="28">
-					{component.reference}
+				<text class="circuit-reference" x="18" y="28">
+					{props.component.reference}
 				</text>
-				<text className="circuit-value" x="18" y="49">
-					{component.value || component.part.name}
+				<text class="circuit-value" x="18" y="49">
+					{props.component.value || props.component.part.name}
 				</text>
 			</GraphButton>
 			<g
-				className="circuit-collapse-footer"
-				style={{ transform: `translateY(${height - 32}px)` }}
+				class="circuit-collapse-footer"
+				style={{ transform: `translateY(${props.height - 32}px)` }}
 			>
 				<GraphButton
 					x={(componentWidth - 28) / 2}
 					y={0}
 					width={28}
 					height={28}
-					className="circuit-collapse-button"
-					aria-label={`${collapsed ? "Expand" : "Collapse"} ${component.reference}`}
-					aria-expanded={!collapsed}
-					title={collapsed ? "Show pins" : "Hide pins"}
+					class="circuit-collapse-button"
+					aria-label={`${props.collapsed ? "Expand" : "Collapse"} ${props.component.reference}`}
+					aria-expanded={props.collapsed ? "false" : "true"}
+					title={props.collapsed ? "Show pins" : "Hide pins"}
 					onPointerDown={(event) => {
-						if (tool === "select") event.stopPropagation();
+						if (props.tool === "select") event.stopPropagation();
 					}}
 					onClick={(event) => {
 						event.stopPropagation();
-						if (tool !== "select") return;
-						select({ kind: "component", id: component.id });
-						run({
+						if (props.tool !== "select") return;
+						props.actions.select({ kind: "component", id: props.component.id });
+						props.actions.run({
 							type: "set-component-collapsed",
-							id: component.id,
-							collapsed: !collapsed,
+							id: props.component.id,
+							collapsed: !props.collapsed,
 						});
 					}}
 				>
 					<rect
-						className="circuit-collapse-control"
+						class="circuit-collapse-control"
 						x={(componentWidth - 28) / 2}
 						y={0}
 						width={28}
 						height={28}
 						rx={4}
 					/>
-					{collapsed ? (
+					<Show
+						when={props.collapsed}
+						fallback={
+							<ChevronUp x={(componentWidth - 20) / 2} y={4} size={20} />
+						}
+					>
 						<ChevronDown x={(componentWidth - 20) / 2} y={4} size={20} />
-					) : (
-						<ChevronUp x={(componentWidth - 20) / 2} y={4} size={20} />
-					)}
+					</Show>
 				</GraphButton>
 			</g>
-			{collapsed &&
-				collapsedSides.map((side) => (
-					<circle
-						key={side}
-						data-side={side}
-						className="circuit-collapsed-anchor"
-						cx={side === "left" ? 0 : componentWidth}
-						cy={32}
-						r={6}
-					/>
-				))}
-			{isEditing && (
+			{props.collapsed && (
+				<For each={collapsedSides()}>
+					{(side) => (
+						<circle
+							data-side={side}
+							class="circuit-collapsed-anchor"
+							cx={side === "left" ? 0 : componentWidth}
+							cy={32}
+							r={6}
+						/>
+					)}
+				</For>
+			)}
+			{props.isEditing && (
 				<CircuitInlineFields
 					x={8}
 					y={4}
@@ -197,91 +178,100 @@ export const CircuitComponentNode = memo(function CircuitComponentNode({
 					fields={[
 						{
 							label: "Reference",
-							value: component.reference,
+							value: props.component.reference,
 							maxLength: 200,
 							required: true,
 						},
 						{
 							label: "Value",
-							value: component.value,
+							value: props.component.value,
 							maxLength: 200,
 						},
 					]}
-					onCancel={finishEditing}
+					onCancel={props.actions.finishEditing}
 					onCommit={([reference, value]) => {
 						if (
-							(reference === component.reference &&
-								value === component.value) ||
-							run({
+							(reference === props.component.reference &&
+								value === props.component.value) ||
+							props.actions.run({
 								type: "update-component",
-								id: component.id,
+								id: props.component.id,
 								reference,
 								value,
 							})
 						) {
-							finishEditing();
+							props.actions.finishEditing();
 							return true;
 						}
 						return false;
 					}}
 				/>
 			)}
-			{visiblePins.map((pin, index) => {
-				const left = pinSides[index] === "l";
-				return (
-					<GraphButton
-						x={-24}
-						y={70 + index * 30}
-						width={248}
-						height={28}
-						key={pin.id}
-						aria-label={`Pin ${component.reference}.${pin.number}`}
-						data-circuit-pin-id={pin.id}
-						onContextMenu={(event) =>
-							openMenu(event, { kind: "pin", id: pin.id })
-						}
-						className={`circuit-pin ${pin.id === selectedPinId || pin.id === pendingPinId || pin.id === dragSourcePinId ? "is-selected" : ""} ${targetPinId === pin.id ? "is-target" : ""}`}
-						onPointerDown={(event) => startConnectionDrag(event, pin.id)}
-						onClick={() => selectPin(pin.id)}
-						onKeyDown={(event) => {
-							if (event.key === "Enter" || event.key === " ") {
-								event.preventDefault();
-								selectPin(pin.id);
+			<For each={visiblePins()} keyed={(pin) => pin.id}>
+				{(pin, index) => {
+					const left = () => props.pinSides[index()] === "l";
+					return (
+						<GraphButton
+							x={-24}
+							y={70 + index() * 30}
+							width={248}
+							height={28}
+							aria-label={`Pin ${props.component.reference}.${pin().number}`}
+							data-circuit-pin-id={pin().id}
+							onContextMenu={(event) =>
+								props.actions.openMenu(event, { kind: "pin", id: pin().id })
 							}
-						}}
-					>
-						<rect
-							x="8"
-							y={70 + index * 30}
-							width="202"
-							height="28"
-							fill="transparent"
-						/>
-						<text x="18" y={89 + index * 30}>
-							{pin.number}
-							<tspan
-								className="circuit-pin-name"
-								dx="10"
-								textDecoration={pin.activeLow ? "overline" : undefined}
-							>
-								{pin.name}
-							</tspan>
-						</text>
-						<circle
-							className={pinNets.has(pin.id) ? "connected" : ""}
-							cx={left ? 0 : componentWidth}
-							cy={84 + index * 30}
-							r="6"
-						/>
-						{noConnectPinIds.includes(pin.id) && (
-							<path
-								className="circuit-no-connect"
-								d={`M ${left ? -21 : 211} ${79 + index * 30} l 10 10 m 0 -10 l -10 10`}
+							class={[
+								"circuit-pin",
+								{
+									"is-selected": props.highlightedPins[pin().id] === true,
+									"is-target": props.targetPins[pin().id] === true,
+								},
+							]}
+							onPointerDown={(event) =>
+								props.actions.startConnectionDrag(event, pin().id)
+							}
+							onClick={() => props.actions.selectPin(pin().id)}
+							onKeyDown={(event) => {
+								if (event.key === "Enter" || event.key === " ") {
+									event.preventDefault();
+									props.actions.selectPin(pin().id);
+								}
+							}}
+						>
+							<rect
+								x="8"
+								y={70 + index() * 30}
+								width="202"
+								height="28"
+								fill="transparent"
 							/>
-						)}
-					</GraphButton>
-				);
-			})}
+							<text x="18" y={89 + index() * 30}>
+								{pin().number}
+								<tspan
+									class="circuit-pin-name"
+									dx="10"
+									text-decoration={pin().activeLow ? "overline" : undefined}
+								>
+									{pin().name}
+								</tspan>
+							</text>
+							<circle
+								class={{ connected: props.pinNets.has(pin().id) }}
+								cx={left() ? 0 : componentWidth}
+								cy={84 + index() * 30}
+								r="6"
+							/>
+							<Show when={props.noConnectPinIds.includes(pin().id)}>
+								<path
+									class="circuit-no-connect"
+									d={`M ${left() ? -21 : 211} ${79 + index() * 30} l 10 10 m 0 -10 l -10 10`}
+								/>
+							</Show>
+						</GraphButton>
+					);
+				}}
+			</For>
 		</g>
 	);
-});
+}

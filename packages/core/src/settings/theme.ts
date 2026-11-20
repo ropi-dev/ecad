@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { type Accessor, createMemo } from "solid-js";
 import {
 	activeTheme,
 	type SchematicTheme,
@@ -8,6 +8,7 @@ import {
 	type ViewerTheme,
 	viewerThemes,
 } from "#/drawing/schematic-theme.ts";
+import { fromExternalStore } from "#/lib/external-store.ts";
 import type { ThemeMode } from "#/settings/schema.ts";
 import { getAppSettings, subscribeAppSettings } from "#/settings/store.ts";
 
@@ -51,13 +52,15 @@ function subscribe(listener: () => void) {
 	};
 }
 
-const serverTheme = (): ThemeName => "dark";
+export const useTheme = (): Accessor<ThemeName> =>
+	fromExternalStore(subscribe, activeTheme, { serverSnapshot: () => "dark" });
 
-export function useTheme(): ThemeName {
-	return useSyncExternalStore(subscribe, activeTheme, serverTheme);
+export function useSchematicTheme(): Accessor<SchematicTheme> {
+	const theme = useTheme();
+	return createMemo(() => schematicThemes[theme()]);
 }
 
-export const useSchematicTheme = (): SchematicTheme =>
-	schematicThemes[useTheme()];
-
-export const useViewerTheme = (): ViewerTheme => viewerThemes[useTheme()];
+export function useViewerTheme(): Accessor<ViewerTheme> {
+	const theme = useTheme();
+	return createMemo(() => viewerThemes[theme()]);
+}

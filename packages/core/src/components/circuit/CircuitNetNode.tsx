@@ -1,6 +1,6 @@
 import { netNodeBox } from "@ecad/drawing-core/circuit/graph.ts";
 import type { CircuitNet } from "@ecad/drawing-core/circuit/model.ts";
-import { memo } from "react";
+import { createMemo } from "solid-js";
 import { CircuitInlineFields } from "#/components/circuit/CircuitInlineFields.tsx";
 import type { CircuitTool } from "#/components/circuit/CircuitToolbar.tsx";
 import type { CircuitGraphActions } from "#/components/circuit/circuitEditorState.ts";
@@ -11,18 +11,7 @@ import { arrowDelta } from "#/lib/keyboard.ts";
  * One net node on the circuit graph, with inline editing of the net name and
  * its aliases.
  */
-export const CircuitNetNode = memo(function CircuitNetNode({
-	net,
-	x,
-	y,
-	label,
-	tool,
-	gridStep,
-	selected,
-	isEditing,
-	isTarget,
-	actions: { edit, finishEditing, openMenu, selectNet, startDrag, run, snap },
-}: {
+export function CircuitNetNode(props: {
 	net: CircuitNet;
 	x: number;
 	y: number;
@@ -34,43 +23,60 @@ export const CircuitNetNode = memo(function CircuitNetNode({
 	isTarget: boolean;
 	actions: CircuitGraphActions;
 }) {
+	const box = createMemo(() => netNodeBox(props.label));
 	return (
 		<g>
 			<GraphButton
-				{...netNodeBox(label)}
-				key={net.id}
-				className={`circuit-net ${selected ? "is-selected" : ""} ${isTarget ? "is-target" : ""}`}
-				aria-label={`Net ${label}`}
-				data-circuit-net-id={net.id}
-				onDoubleClick={() => {
-					if (tool === "select") edit({ kind: "net", id: net.id });
+				x={box().x}
+				y={box().y}
+				width={box().width}
+				height={box().height}
+				class={[
+					"circuit-net",
+					{ "is-selected": props.selected, "is-target": props.isTarget },
+				]}
+				aria-label={`Net ${props.label}`}
+				data-circuit-net-id={props.net.id}
+				onDblClick={() => {
+					if (props.tool === "select")
+						props.actions.edit({ kind: "net", id: props.net.id });
 				}}
-				onContextMenu={(event) => openMenu(event, { kind: "net", id: net.id })}
-				transform={`translate(${x},${y})`}
-				onClick={() => selectNet(net.id)}
+				onContextMenu={(event) =>
+					props.actions.openMenu(event, { kind: "net", id: props.net.id })
+				}
+				transform={`translate(${props.x},${props.y})`}
+				onClick={() => props.actions.selectNet(props.net.id)}
 				onPointerDown={(event) =>
-					startDrag(event, { id: net.id, kind: "net", x, y })
+					props.actions.startDrag(event, {
+						id: props.net.id,
+						kind: "net",
+						x: props.x,
+						y: props.y,
+					})
 				}
 				onKeyDown={(event) => {
-					if (event.key === "Enter" && tool === "select") {
+					if (event.key === "Enter" && props.tool === "select") {
 						event.preventDefault();
-						edit({ kind: "net", id: net.id });
+						props.actions.edit({ kind: "net", id: props.net.id });
 						return;
 					}
 					if (event.key === "Enter" || event.key === " ") {
 						event.preventDefault();
-						selectNet(net.id);
+						props.actions.selectNet(props.net.id);
 					}
-					const delta = arrowDelta(event.key, gridStep);
+					const delta = arrowDelta(event.key, props.gridStep);
 					if (delta) {
 						event.preventDefault();
-						run({
+						props.actions.run({
 							type: "move",
 							positions: [
 								{
-									id: net.id,
+									id: props.net.id,
 									kind: "net",
-									...snap({ x: x + delta.x, y: y + delta.y }),
+									...props.actions.snap({
+										x: props.x + delta.x,
+										y: props.y + delta.y,
+									}),
 								},
 							],
 						});
@@ -80,20 +86,20 @@ export const CircuitNetNode = memo(function CircuitNetNode({
 				<circle r="10" />
 				<text
 					y="-23"
-					textAnchor="middle"
-					visibility={isEditing ? "hidden" : undefined}
+					text-anchor="middle"
+					visibility={props.isEditing ? "hidden" : undefined}
 				>
-					{label}
+					{props.label}
 				</text>
 			</GraphButton>
-			{isEditing && (
+			{props.isEditing && (
 				<CircuitInlineFields
-					x={x - 110}
-					y={y - 58}
+					x={props.x - 110}
+					y={props.y - 58}
 					width={220}
-					fields={(net.names.length
-						? net.names
-						: [net.pinIds.length ? label : ""]
+					fields={(props.net.names.length
+						? props.net.names
+						: [props.net.pinIds.length ? props.label : ""]
 					).map((value, index) => ({
 						label: index ? `Net alias ${index}` : "Net name",
 						value,
@@ -104,17 +110,17 @@ export const CircuitNetNode = memo(function CircuitNetNode({
 						action: "Add alias",
 						maxLength: 200,
 					}}
-					onCancel={finishEditing}
+					onCancel={props.actions.finishEditing}
 					onCommit={(values) => {
 						const names = values.map((name) => name.trim()).filter(Boolean);
 						if (
-							(!net.names.length &&
+							(!props.net.names.length &&
 								values.length === 1 &&
-								values[0].trim() === label) ||
-							JSON.stringify(names) === JSON.stringify(net.names) ||
-							run({ type: "rename-net", id: net.id, names })
+								values[0].trim() === props.label) ||
+							JSON.stringify(names) === JSON.stringify(props.net.names) ||
+							props.actions.run({ type: "rename-net", id: props.net.id, names })
 						) {
-							finishEditing();
+							props.actions.finishEditing();
 							return true;
 						}
 						return false;
@@ -123,4 +129,4 @@ export const CircuitNetNode = memo(function CircuitNetNode({
 			)}
 		</g>
 	);
-});
+}

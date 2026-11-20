@@ -1,3 +1,4 @@
+import { type Accessor, createMemo } from "solid-js";
 import type { AntialiasingMode } from "#/settings/schema.ts";
 import { useAppSettings } from "#/settings/store.ts";
 
@@ -36,6 +37,7 @@ export function resolveAntialiasing(mode: AntialiasingMode = "auto") {
 	return mode === "auto" ? automaticAntialiasing() : mode === "on";
 }
 
-export function useAntialiasing() {
-	return resolveAntialiasing(useAppSettings().antialiasing);
+export function useAntialiasing(): Accessor<boolean> {
+	const settings = useAppSettings();
+	return createMemo(() => resolveAntialiasing(settings().antialiasing));
 }

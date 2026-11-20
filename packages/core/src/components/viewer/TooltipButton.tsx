@@ -1,10 +1,6 @@
-import { Tooltip } from "radix-ui";
-import {
-	type ComponentProps,
-	type ReactElement,
-	type ReactNode,
-	useState,
-} from "react";
+import type { JSX } from "@solidjs/web";
+import { omit, Show } from "solid-js";
+import { Tooltip } from "#/components/ui/primitives.tsx";
 import { formatShortcut } from "#/components/viewer/shortcutModifier.ts";
 
 const tooltipClassName =
@@ -12,66 +8,50 @@ const tooltipClassName =
 
 type TooltipSide = "top" | "right" | "bottom" | "left";
 
-export function TooltipTrigger({
-	tooltip,
-	shortcut,
-	side = "top",
-	children,
-}: {
-	tooltip: ReactNode;
+export function TooltipTrigger(props: {
+	tooltip: JSX.Element;
 	shortcut?: string;
 	side?: TooltipSide;
-	children: ReactElement;
+	children: JSX.Element;
 }) {
-	const [open, setOpen] = useState(false);
 	return (
-		<Tooltip.Root
-			open={open}
-			onOpenChange={(next) => {
-				// Focus moved back here by code, not by the user: skip the tooltip.
-				if (
-					next &&
-					document.activeElement instanceof HTMLElement &&
-					document.activeElement.dataset.quietFocus === "true"
-				)
-					return;
-				setOpen(next);
-			}}
-		>
-			<Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
-			<Tooltip.Portal>
-				<Tooltip.Content
-					data-slot="toolbar-tooltip"
-					side={side}
-					sideOffset={8}
-					collisionPadding={12}
-					className={tooltipClassName}
-				>
-					<span className="flex items-center gap-2">
-						<span>{tooltip}</span>
-						{shortcut && (
-							<kbd className="ui-kbd">{formatShortcut(shortcut)}</kbd>
+		<Tooltip
+			data-slot="toolbar-tooltip"
+			side={props.side ?? "top"}
+			sideOffset={8}
+			collisionPadding={12}
+			class={tooltipClassName}
+			content={
+				<span class="flex items-center gap-2">
+					<span>{props.tooltip}</span>
+					<Show when={props.shortcut}>
+						{(shortcut) => (
+							<kbd class="ui-kbd">{formatShortcut(shortcut())}</kbd>
 						)}
-					</span>
-				</Tooltip.Content>
-			</Tooltip.Portal>
-		</Tooltip.Root>
+					</Show>
+				</span>
+			}
+		>
+			{props.children}
+		</Tooltip>
 	);
 }
 
-export function TooltipButton({
-	tooltip,
-	shortcut,
-	side,
-	...props
-}: Omit<ComponentProps<"button">, "title"> & {
-	tooltip: ReactNode;
-	shortcut?: string;
-	side?: TooltipSide;
-}) {
+export function TooltipButton(
+	props: Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "title"> & {
+		tooltip: JSX.Element;
+		shortcut?: string;
+		side?: TooltipSide;
+	},
+) {
+	const rest = omit(props, "tooltip", "shortcut", "side");
 	return (
-		<TooltipTrigger tooltip={tooltip} shortcut={shortcut} side={side}>
-			<button type="button" {...props} />
+		<TooltipTrigger
+			tooltip={props.tooltip}
+			shortcut={props.shortcut}
+			side={props.side}
+		>
+			<button type="button" {...rest} />
 		</TooltipTrigger>
 	);
 }

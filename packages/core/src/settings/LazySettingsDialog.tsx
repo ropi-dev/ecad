@@ -1,19 +1,18 @@
-import { type ComponentProps, lazy, Suspense, useState } from "react";
+import { type ComponentProps, createMemo, Loading, lazy, Show } from "solid-js";
 
-const SettingsDialog = lazy(() =>
-	import("#/settings/SettingsDialog.tsx").then((module) => ({
-		default: module.SettingsDialog,
-	})),
-);
+const SettingsDialog = lazy(() => import("#/settings/SettingsDialog.tsx"), {
+	export: "SettingsDialog",
+});
 
 export function LazySettingsDialog(
 	props: ComponentProps<typeof SettingsDialog>,
 ) {
-	const [loaded, setLoaded] = useState(props.open);
-	if (props.open && !loaded) setLoaded(true);
-	return loaded ? (
-		<Suspense fallback={null}>
-			<SettingsDialog {...props} />
-		</Suspense>
-	) : null;
+	const loaded = createMemo<boolean>((shown) => !!shown || props.open);
+	return (
+		<Show when={loaded()}>
+			<Loading fallback={null}>
+				<SettingsDialog {...props} />
+			</Loading>
+		</Show>
+	);
 }

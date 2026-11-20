@@ -9,7 +9,6 @@ import {
 	withFullRouting,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import { SCHEMATIC_STEP } from "@ecad/drawing-core/drawing/units.ts";
-import type { Dispatch, KeyboardEvent, SetStateAction } from "react";
 import {
 	canvasKeyCommand,
 	editorShortcut,
@@ -25,7 +24,7 @@ type Gestures = ReturnType<typeof useCanvasGestures>;
 
 /** Editor-wide shortcuts: undo, redo, rotation and cancelling a placement. */
 export function handleEditorShortcut(
-	event: KeyboardEvent<HTMLElement>,
+	event: KeyboardEvent,
 	{
 		dialogOpen,
 		ready,
@@ -48,7 +47,7 @@ export function handleEditorShortcut(
 		clearPlacementPreview: Gestures["clearPlacementPreview"];
 		finishWire: Gestures["finishWire"];
 		finishDrag: Gestures["finishDrag"];
-		setTool: Dispatch<SetStateAction<CanvasTool>>;
+		setTool: (tool: CanvasTool) => void;
 		rotateItems: (angle: number) => void;
 		undo: () => void;
 		redo: () => void;
@@ -76,7 +75,7 @@ export function handleEditorShortcut(
 
 /** Keys handled while the canvas has focus: nudging, deleting and escaping. */
 export function handleCanvasKeyDown(
-	event: KeyboardEvent<HTMLElement>,
+	event: KeyboardEvent,
 	{
 		session,
 		gestures: { getWire, getDrag, finishWire, finishDrag },
@@ -95,7 +94,7 @@ export function handleCanvasKeyDown(
 			Gestures,
 			"getWire" | "getDrag" | "finishWire" | "finishDrag"
 		>;
-		setTool: Dispatch<SetStateAction<CanvasTool>>;
+		setTool: (tool: CanvasTool) => void;
 		selected: EditorShape[];
 		selectedSymbol: EditorSymbol | undefined;
 		selectedChild: ReturnType<typeof symbolChildren>[number] | undefined;

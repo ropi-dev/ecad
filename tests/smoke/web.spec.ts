@@ -1,6 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import { openProjectFiles } from "../browser/project-files.ts";
 import { toolbarButton } from "../browser/toolbar.ts";
+import { createCircuit } from "./circuit.ts";
 
 // Runs against `vite build` output served by `vite preview`.
 
@@ -24,13 +25,14 @@ async function editorReady(page: Page) {
 	);
 }
 
-test("the built web app opens a drawing and keeps it across a reload", async ({
+test("the built web app opens a drawing and keeps it and the settings across a reload", async ({
 	page,
 }) => {
 	await page.goto("/?perf=1");
 	await expect(
 		page.getByLabel("Workspace instructions", { exact: true }),
 	).toBeVisible();
+	await createCircuit(page);
 	await (await openProjectFiles(page))
 		.getByRole("link", { name: /^Open .+\.ecaddraw$/ })
 		.first()
@@ -45,8 +47,10 @@ test("the built web app opens a drawing and keeps it across a reload", async ({
 	await page.mouse.up();
 	await expect.poll(() => saves(page)).toBeGreaterThan(before);
 
+	await page.keyboard.press("Control+Shift+D");
 	await page.reload();
 	await editorReady(page);
+	await expect(page.getByLabel("Debug stats", { exact: true })).toBeVisible();
 	await page.mouse.move(560, 260);
 	await page.mouse.down();
 	await page.mouse.move(760, 440, { steps: 4 });

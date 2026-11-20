@@ -1,5 +1,5 @@
-import { createRouter as createTanStackRouter } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import type { JSX } from "@solidjs/web";
+import { createRouter as createTanStackRouter } from "@tanstack/solid-router";
 import { AppProjects } from "#/projects/AppProjects.tsx";
 import { createRouterProjectLink } from "#/projects/RouterProjectLink.tsx";
 import { routeTree } from "#/routeTree.gen.ts";
@@ -11,7 +11,7 @@ export function getRouter() {
 		defaultPreload: "intent",
 		defaultPreloadStaleTime: 0,
 
-		Wrap: (props: { children: ReactNode }) => {
+		Wrap: (props: { children: JSX.Element }) => {
 			return (
 				<AppProjects LinkComponent={ProjectNavigationLink}>
 					{props.children}
@@ -27,7 +27,7 @@ export function getRouter() {
 	return router;
 }
 
-declare module "@tanstack/react-router" {
+declare module "@tanstack/solid-router" {
 	interface Register {
 		router: ReturnType<typeof getRouter>;
 	}

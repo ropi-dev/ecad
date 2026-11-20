@@ -1,9 +1,9 @@
-import { Layers } from "lucide-react";
-import { useMemo, useState } from "react";
+import { createMemo, createSignal, Show } from "solid-js";
 import { GerberHeader } from "#/components/gerber/GerberHeader.tsx";
 import { GerberViewer } from "#/components/gerber/GerberViewer.tsx";
 import { LayerPanel } from "#/components/gerber/LayerPanel.tsx";
 import { useGerberFile } from "#/components/gerber/useGerberFile.ts";
+import { Layers } from "#/components/ui/icons.tsx";
 import { DocumentBar } from "#/projects/DocumentBar.tsx";
 import {
 	useProjectActions,
@@ -13,67 +13,69 @@ import {
 export function GerberWorkspace() {
 	const project = useProjectActions();
 	// Project messages, such as assets a new project left out, show here too.
-	const projectError = useProjectSelection((value) => value.error) ?? "";
+	const projectError = useProjectSelection((value) => value.error);
 	const selectedAsset = useProjectSelection((value) => value.selectedAsset);
-	const gerberAsset = selectedAsset?.kind === "gerber" ? selectedAsset : null;
-	const {
-		layers,
-		loading,
-		messages: fileMessages,
-		openFile,
-		setLayers,
-	} = useGerberFile();
-	const [focusedLayerId, setFocusedLayerId] = useState<string>();
-	const focusedLayerIds = useMemo(
-		() => (focusedLayerId ? new Set([focusedLayerId]) : undefined),
-		[focusedLayerId],
+	const gerberAsset = () => {
+		const asset = selectedAsset();
+		return asset?.kind === "gerber" ? asset : null;
+	};
+	const gerber = useGerberFile();
+	const [focusedLayerId, setFocusedLayerId] = createSignal<string>();
+	const focusedLayerIds = createMemo(() => {
+		const id = focusedLayerId();
+		return id ? new Set([id]) : undefined;
+	});
+	const [rendererError, setRendererError] = createSignal("");
+	const message = createMemo(() =>
+		[projectError() ?? "", ...gerber.messages, rendererError()]
+			.filter(Boolean)
+			.join("\n"),
 	);
-	const [rendererError, setRendererError] = useState("");
-	const message = [projectError, ...fileMessages, rendererError]
-		.filter(Boolean)
-		.join("\n");
+	const clearFocus = (id: string) => {
+		if (focusedLayerId() === id) setFocusedLayerId(undefined);
+	};
 	return (
-		<main className="relative flex h-dvh flex-col overflow-hidden">
+		<main class="relative flex h-dvh flex-col overflow-hidden">
 			<DocumentBar
 				icon={Layers}
 				title={
-					gerberAsset?.name ??
-					(layers.length ? "All Gerber layers" : "Gerber viewer")
+					gerberAsset()?.name ??
+					(gerber.layers.length ? "All Gerber layers" : "Gerber viewer")
 				}
-				path={gerberAsset?.path ?? "gerber:all-layers"}
+				path={gerberAsset()?.path ?? "gerber:all-layers"}
 			/>
 			<GerberHeader
-				loading={loading}
+				loading={gerber.loading}
 				onOpenFile={(files) => {
 					setRendererError("");
-					void openFile(files);
+					void gerber.openFile(files);
 				}}
 			/>
-			{message && (
+			<Show when={message()}>
 				<output
 					data-testid="viewer-message"
-					className="ui-notice absolute top-[calc(var(--chrome-top)+var(--chrome-bar))] left-[var(--chrome-gap)] z-3 m-0 max-h-25 max-w-[min(560px,calc(100%-2*var(--chrome-gap)))] overflow-auto px-3 py-2 whitespace-pre-line"
+					class="ui-notice absolute top-[calc(var(--chrome-top)+var(--chrome-bar))] left-[var(--chrome-gap)] z-3 m-0 max-h-25 max-w-[min(560px,calc(100%-2*var(--chrome-gap)))] overflow-auto px-3 py-2 whitespace-pre-line"
 				>
-					{message}
+					{message()}
 				</output>
-			)}
-			<div className="relative flex min-h-0 flex-1">
-				{layers.length > 0 && (
+			</Show>
+			<div class="relative flex min-h-0 flex-1">
+				{gerber.layers.length > 0 && (
 					<LayerPanel
-						layers={layers}
-						focusedLayerId={focusedLayerId}
+						layers={gerber.layers}
+						focusedLayerId={focusedLayerId()}
 						onFocus={(id) => {
 							setFocusedLayerId(id);
 							if (id)
-								setLayers((current) =>
+								gerber.setLayers((current) =>
 									current.map((layer) =>
 										layer.id === id ? { ...layer, visible: true } : layer,
 									),
 								);
 						}}
 						onVisibility={(id) => {
-							if (focusedLayerId === id) setFocusedLayerId(undefined);
-							setLayers((current) =>
+							clearFocus(id);
+							gerber.setLayers((current) =>
 								current.map((layer) =>
 									layer.id === id
 										? { ...layer, visible: !layer.visible }
@@ -82,17 +84,17 @@ export function GerberWorkspace() {
 							);
 						}}
 						onRemove={
-							project
+							project()
 								? undefined
 								: (id) => {
-										if (focusedLayerId === id) setFocusedLayerId(undefined);
-										setLayers((current) =>
+										clearFocus(id);
+										gerber.setLayers((current) =>
 											current.filter((layer) => layer.id !== id),
 										);
 									}
 						}
 						onMove={(id, targetId, after) =>
-							setLayers((current) => {
+							gerber.setLayers((current) => {
 								if (id === targetId) return current;
 								const ordered = [...current].reverse();
 								const moving = ordered.find((layer) => layer.id === id);
@@ -107,10 +109,10 @@ export function GerberWorkspace() {
 						}
 					/>
 				)}
-				<div className="relative min-h-0 min-w-0 flex-1">
+				<div class="relative min-h-0 min-w-0 flex-1">
 					<GerberViewer
-						scene={layers}
-						focusedLayerIds={focusedLayerIds}
+						scene={gerber.layers}
+						focusedLayerIds={focusedLayerIds()}
 						onError={setRendererError}
 					/>
 				</div>

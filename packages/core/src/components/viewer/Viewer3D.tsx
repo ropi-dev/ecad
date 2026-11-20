@@ -1,4 +1,4 @@
-import { type Ref, useImperativeHandle, useRef } from "react";
+import { omit } from "solid-js";
 import {
 	SceneViewport,
 	type SceneViewportHandle,
@@ -10,19 +10,24 @@ import type { ViewerScene } from "#/engine/scene.ts";
 export interface Viewer3DProps
 	extends Omit<SceneViewportProps, "cameraMode" | "ref" | "onChange"> {
 	scene: ViewerScene;
-	ref?: Ref<Viewer3DHandle>;
+	ref?: (handle: Viewer3DHandle) => void;
 }
 
-export function Viewer3D({ ref, ...props }: Viewer3DProps) {
-	const viewer = useRef<SceneViewportHandle>(null);
-	useImperativeHandle(
-		ref,
-		() => ({
-			fit: () => viewer.current?.fit(),
-			zoom: (factor) => viewer.current?.zoom(factor),
-			view: (direction) => viewer.current?.view(direction),
-		}),
-		[],
+export function Viewer3D(props: Viewer3DProps) {
+	let viewer: SceneViewportHandle | undefined;
+	props.ref?.({
+		fit: () => viewer?.fit(),
+		zoom: (factor) => viewer?.zoom(factor),
+		view: (direction) => viewer?.view(direction),
+	});
+	const rest = omit(props, "ref");
+	return (
+		<SceneViewport
+			{...rest}
+			ref={(handle) => {
+				viewer = handle;
+			}}
+			cameraMode="orbit"
+		/>
 	);
-	return <SceneViewport {...props} ref={viewer} cameraMode="orbit" />;
 }

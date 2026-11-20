@@ -165,7 +165,7 @@ The main process listens on `127.0.0.1` only, on a port the system picks. Every 
 
 ## Desktop implementation
 
-The MCP server in Electron's main process validates tool arguments and sends each complete operation to the renderer over IPC. The renderer runs its Effect command with the same `DrawingStore` used by `Editor2D`, one at a time in arrival order, and replies over IPC. React subscriptions update the display and Three.js renderer.
+The MCP server in Electron's main process validates tool arguments and sends each complete operation to the renderer over IPC. The renderer runs its Effect command with the same `DrawingStore` used by `Editor2D`, one at a time in arrival order, and replies over IPC. Solid subscriptions update the display and Three.js renderer.
 
 ```mermaid
 sequenceDiagram

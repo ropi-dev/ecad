@@ -1,11 +1,5 @@
-import {
-	type KeyboardEvent as ReactKeyboardEvent,
-	type PointerEvent as ReactPointerEvent,
-	useEffect,
-	useLayoutEffect,
-	useRef,
-	useState,
-} from "react";
+import type { JSX } from "@solidjs/web";
+import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
 import type {
 	PerformanceData,
 	PerformanceSample,
@@ -86,7 +80,7 @@ const clampPosition = (
 	),
 });
 
-const sizeOf = (element: HTMLElement | null) => ({
+const sizeOf = (element: HTMLElement | undefined) => ({
 	width: element?.offsetWidth ?? 0,
 	height: element?.offsetHeight ?? 0,
 });
@@ -102,20 +96,20 @@ const count = (value: number | null) =>
 
 /** Mounted while the debug stats setting is on. */
 export default function DebugStats() {
-	const [stats, setStats] = useState<Stats | null>(null);
-	const frameTimes = useRef<number[]>([]);
-	const renderTimes = useRef<number[]>([]);
-	const frameDurations = useRef<number[]>([]);
-	const longTasks = useRef<{ at: number; duration: number }[]>([]);
-	const latest = useRef<{
+	const [stats, setStats] = createSignal<Stats | null>(null);
+	let frameTimes: number[] = [];
+	let renderTimes: number[] = [];
+	let frameDurations: number[] = [];
+	let longTasks: { at: number; duration: number }[] = [];
+	let latest: {
 		frame?: PerformanceData;
 		frameMs?: number;
 		shapes?: number;
 		sceneUpdateMs?: number;
-	}>({});
-	const subscribed = useRef(false);
+	} = {};
+	let subscribed = false;
 
-	useEffect(() => {
+	onSettled(() => {
 		const release = acquirePerformance();
 		const since = (times: number[], at: number, window: number) => {
 			while (times.length && times[0] < at - window) times.shift();
@@ -123,42 +117,34 @@ export default function DebugStats() {
 		const receive = (sample: PerformanceSample) => {
 			const at = sample.startTime + sample.duration;
 			if (sample.name === "renderer.frame") {
-				renderTimes.current.push(at);
-				since(renderTimes.current, at, WINDOW_MS);
-				const durations = frameDurations.current;
-				durations.push(sample.duration);
-				if (durations.length > FRAME_HISTORY) durations.shift();
-				latest.current.frame = sample.data;
-				latest.current.frameMs = sample.duration;
+				renderTimes.push(at);
+				since(renderTimes, at, WINDOW_MS);
+				frameDurations.push(sample.duration);
+				if (frameDurations.length > FRAME_HISTORY) frameDurations.shift();
+				latest.frame = sample.data;
+				latest.frameMs = sample.duration;
 			} else if (sample.name === "editor.scene-update") {
-				latest.current.shapes = number(sample.data?.shapes) ?? undefined;
-				latest.current.sceneUpdateMs = sample.duration;
+				latest.shapes = number(sample.data?.shapes) ?? undefined;
+				latest.sceneUpdateMs = sample.duration;
 			} else if (sample.name === "browser.long-task") {
-				const tasks = longTasks.current;
-				tasks.push({ at, duration: sample.duration });
-				while (tasks.length && tasks[0].at < at - LONG_TASK_WINDOW_MS)
-					tasks.shift();
+				longTasks.push({ at, duration: sample.duration });
+				while (longTasks.length && longTasks[0].at < at - LONG_TASK_WINDOW_MS)
+					longTasks.shift();
 			}
 		};
-		renderTimes.current = [];
-		frameDurations.current = [];
-		longTasks.current = [];
-		latest.current = {};
+		renderTimes = [];
+		frameDurations = [];
+		longTasks = [];
+		latest = {};
 		const recorder = getAppPerformance();
 		for (const sample of recorder?.snapshot().events ?? []) receive(sample);
 		const unsubscribe = recorder?.subscribe(receive);
-		subscribed.current = unsubscribe !== undefined;
-		return () => {
-			unsubscribe?.();
-			release();
-		};
-	}, []);
+		subscribed = unsubscribe !== undefined;
 
-	useEffect(() => {
-		frameTimes.current = [];
+		frameTimes = [];
 		const opened = performance.now();
 		let frame = requestAnimationFrame(function tick(now) {
-			frameTimes.current.push(now);
+			frameTimes.push(now);
 			frame = requestAnimationFrame(tick);
 		});
 		const update = () => {
@@ -168,12 +154,12 @@ export default function DebugStats() {
 				times.splice(0, first === -1 ? times.length : first);
 				return times.length;
 			};
-			longTasks.current = longTasks.current.filter(
+			longTasks = longTasks.filter(
 				(task) => task.at >= now - LONG_TASK_WINDOW_MS,
 			);
-			const sorted = [...frameDurations.current].sort((a, b) => a - b);
-			const { frame: data, frameMs, shapes, sceneUpdateMs } = latest.current;
-			const frames = prune(frameTimes.current);
+			const sorted = [...frameDurations].sort((a, b) => a - b);
+			const { frame: data, frameMs, shapes, sceneUpdateMs } = latest;
+			const frames = prune(frameTimes);
 			const elapsed = now - opened;
 			setStats({
 				fps:
@@ -182,7 +168,7 @@ export default function DebugStats() {
 						: elapsed >= 250
 							? Math.round((frames * WINDOW_MS) / elapsed)
 							: null,
-				renders: prune(renderTimes.current),
+				renders: prune(renderTimes),
 				frameMs: frameMs ?? null,
 				frameP95: sorted.length
 					? sorted[Math.ceil(sorted.length * 0.95) - 1]
@@ -193,96 +179,101 @@ export default function DebugStats() {
 				textures: number(data?.textures),
 				shapes: shapes ?? null,
 				sceneUpdateMs: sceneUpdateMs ?? null,
-				longTasks: longTasks.current.length,
-				longestTaskMs: Math.max(
-					0,
-					...longTasks.current.map((task) => task.duration),
-				),
+				longTasks: longTasks.length,
+				longestTaskMs: Math.max(0, ...longTasks.map((task) => task.duration)),
 				heapMb:
 					(performance as Performance & { memory?: { usedJSHeapSize: number } })
 						.memory?.usedJSHeapSize ?? null,
 				domNodes: document.getElementsByTagName("*").length,
-				recorder: subscribed.current,
+				recorder: subscribed,
 			});
 		};
 		const timer = setInterval(update, 500);
 		update();
 		return () => {
+			unsubscribe?.();
+			release();
 			cancelAnimationFrame(frame);
 			clearInterval(timer);
 		};
-	}, []);
+	});
 
-	if (!stats) return null;
-	return <StatsWindow stats={stats} onHide={() => setDebugStats(false)} />;
+	return (
+		<Show when={stats()}>
+			{(current) => (
+				<StatsWindow stats={current()} onHide={() => setDebugStats(false)} />
+			)}
+		</Show>
+	);
 }
 
 /**
  * A floating window that the header moves by dragging, or by the arrow keys
  * while the move handle has focus. It remembers its place between sessions.
  */
-function StatsWindow({ stats, onHide }: { stats: Stats; onHide: () => void }) {
-	const element = useRef<HTMLElement>(null);
-	const drag = useRef<{
+function StatsWindow(props: { stats: Stats; onHide: () => void }) {
+	let element!: HTMLElement;
+	let drag: {
 		pointerId: number;
 		dx: number;
 		dy: number;
 		/** The latest position, saved when the drag ends. */
 		at: Position;
-	} | null>(null);
-	const [position, setPosition] = useState<Position | null>(readPosition);
-	// The first time, open at the bottom left of the canvas, clear of the
-	// sidebar and the toolbar.
-	useLayoutEffect(() => {
-		const { width, height } = sizeOf(element.current);
+	} | null = null;
+	const [position, setPosition] = createSignal<Position | null>(readPosition());
+	onSettled(() => {
+		// The first time, open at the bottom left of the canvas, clear of the
+		// sidebar and the toolbar.
+		const { width, height } = sizeOf(element);
 		setPosition((current) =>
 			clampPosition(
 				current ?? { x: 272, y: window.innerHeight - height - 72 },
 				{ width, height },
 			),
 		);
-	}, []);
-	useEffect(() => {
 		const keepOnScreen = () =>
 			setPosition(
-				(current) => current && clampPosition(current, sizeOf(element.current)),
+				(current) => current && clampPosition(current, sizeOf(element)),
 			);
 		window.addEventListener("resize", keepOnScreen);
 		return () => window.removeEventListener("resize", keepOnScreen);
-	}, []);
+	});
 	const moveTo = (next: Position) => {
-		const clamped = clampPosition(next, sizeOf(element.current));
+		const clamped = clampPosition(next, sizeOf(element));
 		setPosition(clamped);
 		return clamped;
 	};
-	const onPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
-		if (event.button !== 0 || !position) return;
+	const onPointerDown: JSX.EventHandler<HTMLElement, PointerEvent> = (
+		event,
+	) => {
+		const current = position();
+		if (event.button !== 0 || !current) return;
 		if ((event.target as HTMLElement).closest("[data-no-drag]")) return;
 		event.preventDefault();
 		event.currentTarget.setPointerCapture(event.pointerId);
-		drag.current = {
+		drag = {
 			pointerId: event.pointerId,
-			dx: event.clientX - position.x,
-			dy: event.clientY - position.y,
-			at: position,
+			dx: event.clientX - current.x,
+			dy: event.clientY - current.y,
+			at: current,
 		};
 	};
-	const onPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
-		const current = drag.current;
-		if (!current || current.pointerId !== event.pointerId) return;
-		current.at = moveTo({
-			x: event.clientX - current.dx,
-			y: event.clientY - current.dy,
+	const onPointerMove = (event: PointerEvent) => {
+		if (!drag || drag.pointerId !== event.pointerId) return;
+		drag.at = moveTo({
+			x: event.clientX - drag.dx,
+			y: event.clientY - drag.dy,
 		});
 	};
-	const endDrag = (event: ReactPointerEvent<HTMLElement>) => {
-		const current = drag.current;
+	const endDrag = (event: PointerEvent) => {
+		const current = drag;
 		if (current?.pointerId !== event.pointerId) return;
-		drag.current = null;
+		drag = null;
 		storePosition(current.at);
 	};
-	const onKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
-		if (!position) return;
+	const onKeyDown = (event: KeyboardEvent) => {
+		const current = position();
+		if (!current) return;
 		const step = event.shiftKey ? KEY_STEP * 4 : KEY_STEP;
 		const offsets: Record<string, Position> = {
 			ArrowLeft: { x: -step, y: 0 },
@@ -294,51 +285,52 @@ function StatsWindow({ stats, onHide }: { stats: Stats; onHide: () => void }) {
 		if (!offset) return;
 		event.preventDefault();
 		event.stopPropagation();
-		storePosition(
-			moveTo({ x: position.x + offset.x, y: position.y + offset.y }),
-		);
+		storePosition(moveTo({ x: current.x + offset.x, y: current.y + offset.y }));
 	};
-	const rows: [string, string][] = [
-		["FPS", count(stats.fps)],
-		["Renders/s", stats.recorder ? String(stats.renders) : "–"],
-		["Frame", ms(stats.frameMs)],
-		["Frame p95", ms(stats.frameP95)],
-		["Draw calls", count(stats.drawCalls)],
-		["Triangles", count(stats.triangles)],
-		["Geometries", count(stats.geometries)],
-		["Textures", count(stats.textures)],
-		["Shapes", count(stats.shapes)],
-		["Scene update", ms(stats.sceneUpdateMs)],
-		[
-			"Long tasks 10s",
-			stats.longTasks
-				? `${stats.longTasks} (max ${Math.round(stats.longestTaskMs)} ms)`
-				: "0",
-		],
-		[
-			"JS heap",
-			stats.heapMb === null
-				? "–"
-				: `${(stats.heapMb / 1024 / 1024).toFixed(1)} MB`,
-		],
-		["DOM nodes", stats.domNodes.toLocaleString()],
-	];
+	const rows = createMemo((): [string, string][] => {
+		const stats = props.stats;
+		return [
+			["FPS", count(stats.fps)],
+			["Renders/s", stats.recorder ? String(stats.renders) : "–"],
+			["Frame", ms(stats.frameMs)],
+			["Frame p95", ms(stats.frameP95)],
+			["Draw calls", count(stats.drawCalls)],
+			["Triangles", count(stats.triangles)],
+			["Geometries", count(stats.geometries)],
+			["Textures", count(stats.textures)],
+			["Shapes", count(stats.shapes)],
+			["Scene update", ms(stats.sceneUpdateMs)],
+			[
+				"Long tasks 10s",
+				stats.longTasks
+					? `${stats.longTasks} (max ${Math.round(stats.longestTaskMs)} ms)`
+					: "0",
+			],
+			[
+				"JS heap",
+				stats.heapMb === null
+					? "–"
+					: `${(stats.heapMb / 1024 / 1024).toFixed(1)} MB`,
+			],
+			["DOM nodes", stats.domNodes.toLocaleString()],
+		];
+	});
 	return (
 		<section
 			ref={element}
 			aria-label="Debug stats"
 			data-shortcut-scope="none"
-			className="ui-panel fixed top-0 left-0 z-[90] min-w-48 font-mono text-2xs leading-4"
+			class="ui-panel fixed top-0 left-0 z-[90] min-w-48 font-mono text-2xs leading-4"
 			style={{
-				transform: position
-					? `translate(${position.x}px, ${position.y}px)`
+				transform: position()
+					? `translate(${position()?.x}px, ${position()?.y}px)`
 					: undefined,
-				visibility: position ? undefined : "hidden",
+				visibility: position() ? undefined : "hidden",
 			}}
 			onPointerDown={(event) => event.stopPropagation()}
 		>
 			<header
-				className="flex cursor-grab touch-none items-center justify-between gap-3 rounded-t-[inherit] border-b border-line-subtle bg-hover py-1 pr-1 pl-2.5 text-2xs tracking-wide text-fg-faint uppercase select-none active:cursor-grabbing"
+				class="flex cursor-grab touch-none items-center justify-between gap-3 rounded-t-[inherit] border-b border-line-subtle bg-hover py-1 pr-1 pl-2.5 text-2xs tracking-wide text-fg-faint uppercase select-none active:cursor-grabbing"
 				onPointerDown={onPointerDown}
 				onPointerMove={onPointerMove}
 				onPointerUp={endDrag}
@@ -348,7 +340,7 @@ function StatsWindow({ stats, onHide }: { stats: Stats; onHide: () => void }) {
 					type="button"
 					aria-label="Move debug stats with the arrow keys"
 					title="Drag to move. Arrow keys move it too."
-					className="cursor-grab rounded-sm px-0.5 text-left uppercase focus-visible:outline-1 focus-visible:outline-accent"
+					class="cursor-grab rounded-sm px-0.5 text-left uppercase focus-visible:outline-1 focus-visible:outline-accent"
 					onKeyDown={onKeyDown}
 				>
 					Debug stats · Ctrl+Shift+D
@@ -357,23 +349,25 @@ function StatsWindow({ stats, onHide }: { stats: Stats; onHide: () => void }) {
 					type="button"
 					data-no-drag
 					aria-label="Hide debug stats"
-					className="cursor-pointer rounded-sm px-1 text-fg-muted hover:bg-hover hover:text-fg"
-					onClick={onHide}
+					class="cursor-pointer rounded-sm px-1 text-fg-muted hover:bg-hover hover:text-fg"
+					onClick={() => props.onHide()}
 				>
 					×
 				</button>
 			</header>
-			<div className="px-2.5 pt-1 pb-2">
-				<dl className="grid grid-cols-[auto_auto] gap-x-4">
-					{rows.map(([label, value]) => (
-						<div key={label} className="contents">
-							<dt className="text-fg-muted">{label}</dt>
-							<dd className="m-0 text-right tabular-nums">{value}</dd>
-						</div>
-					))}
+			<div class="px-2.5 pt-1 pb-2">
+				<dl class="grid grid-cols-[auto_auto] gap-x-4">
+					<For each={rows()} keyed={false}>
+						{(row) => (
+							<div class="contents">
+								<dt class="text-fg-muted">{row()[0]}</dt>
+								<dd class="m-0 text-right tabular-nums">{row()[1]}</dd>
+							</div>
+						)}
+					</For>
 				</dl>
-				{!stats.recorder && (
-					<p className="m-0 mt-1 max-w-48 text-2xs text-warning">
+				{!props.stats.recorder && (
+					<p class="m-0 mt-1 max-w-48 text-2xs text-warning">
 						Recorder off (?perf=0), only FPS is live.
 					</p>
 				)}

@@ -133,9 +133,11 @@ test("page tabs show each page's shapes, and the page list edits pages with undo
 		});
 });
 
-test("double-clicking a tab renames the page", async ({ page }) => {
+test("double-clicking a tab opens its page and renames it", async ({
+	page,
+}) => {
 	const pages = page.getByRole("navigation", { name: "Schematic pages" });
-	await pages.getByRole("button", { name: "Main", exact: true }).dblclick();
+	await pages.getByRole("button", { name: "Power", exact: true }).dblclick();
 	const name = pages.getByRole("textbox", { name: "Page name" });
 	await name.fill("Inputs");
 	await name.press("Enter");

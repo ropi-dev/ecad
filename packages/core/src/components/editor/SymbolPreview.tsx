@@ -2,30 +2,31 @@ import { parseOverbars } from "@ecad/drawing-core/drawing/overbar.ts";
 import { pinBubbleRadius } from "@ecad/drawing-core/drawing/pin-types.ts";
 import { PIN_RADIUS, shapeBounds } from "@ecad/drawing-core/drawing/shapes.ts";
 import { textCenter } from "@ecad/drawing-core/drawing/text-alignment.ts";
-import { memo } from "react";
+import { createMemo } from "solid-js";
 import { schematicThemes, viewerThemes } from "#/drawing/schematic-theme.ts";
 import { createSymbol, type SymbolDefinition } from "#/drawing/symbols.ts";
 import { drawingFontStack } from "#/drawing/text.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 import { useTheme } from "#/settings/theme.ts";
 
-export default memo(function SymbolPreview({
-	definition,
-}: {
-	definition: SymbolDefinition;
-}) {
+export default function SymbolPreview(props: { definition: SymbolDefinition }) {
 	const theme = useTheme();
-	return measurePerformance(
-		"symbol.thumbnail",
-		() =>
-			buildSymbolPreview({
-				definition,
-				stroke: schematicThemes[theme].appearance.stroke,
-				thumbnailFill: viewerThemes[theme].thumbnailFill,
-			}),
-		{ shapes: definition.children.length },
-	);
-});
+	const preview = createMemo(() => {
+		const definition = props.definition;
+		const current = theme();
+		return measurePerformance(
+			"symbol.thumbnail",
+			() =>
+				buildSymbolPreview({
+					definition,
+					stroke: schematicThemes[current].appearance.stroke,
+					thumbnailFill: viewerThemes[current].thumbnailFill,
+				}),
+			{ shapes: definition.children.length },
+		);
+	});
+	return <>{preview()}</>;
+}
 
 function buildSymbolPreview({
 	definition,
@@ -39,7 +40,7 @@ function buildSymbolPreview({
 	if (!definition.children.length)
 		return (
 			<span
-				className="grid h-7 w-11 shrink-0 place-items-center text-2xs text-fg-faint"
+				class="grid h-7 w-11 shrink-0 place-items-center text-2xs text-fg-faint"
 				aria-hidden="true"
 			>
 				Empty
@@ -74,7 +75,7 @@ function buildSymbolPreview({
 	return (
 		<svg
 			viewBox={`${bounds.minX - padding} ${-bounds.maxY - padding} ${width + 2 * padding} ${height + 2 * padding}`}
-			className="h-7 w-11 shrink-0"
+			class="h-7 w-11 shrink-0"
 			style={{ color: stroke }}
 			aria-hidden="true"
 		>
@@ -83,9 +84,9 @@ function buildSymbolPreview({
 					d={lines}
 					fill="none"
 					stroke="currentColor"
-					strokeWidth="0.2"
-					strokeLinecap="round"
-					strokeLinejoin="round"
+					stroke-width="0.2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
 				/>
 			)}
 			{definition.children
@@ -97,7 +98,6 @@ function buildSymbolPreview({
 				})
 				.map((child) => (
 					<g
-						key={child.id}
 						transform={`translate(${child.kind === "text" ? textCenter(child).x : child.x} ${-(child.kind === "text" ? textCenter(child).y : child.y)}) rotate(${(-child.rotation * 180) / Math.PI})`}
 						fill={
 							child.kind !== "line" && "filled" in child && child.filled
@@ -105,15 +105,15 @@ function buildSymbolPreview({
 								: "none"
 						}
 						stroke="currentColor"
-						strokeWidth="0.2"
+						stroke-width="0.2"
 					>
 						{child.kind === "text" ? (
 							<text
 								fill="currentColor"
 								stroke="none"
-								fontFamily={drawingFontStack}
-								fontSize={child.fontSize}
-								textAnchor={
+								font-family={drawingFontStack}
+								font-size={String(child.fontSize)}
+								text-anchor={
 									child.horizontalAlign === "right"
 										? "end"
 										: child.horizontalAlign === "center"
@@ -127,10 +127,6 @@ function buildSymbolPreview({
 									.map((line) => parseOverbars(line).text)
 									.map((line, index) => (
 										<tspan
-											key={child.text
-												.split("\n")
-												.slice(0, index + 1)
-												.join("\n")}
 											x={
 												child.horizontalAlign === "right"
 													? child.width / 2

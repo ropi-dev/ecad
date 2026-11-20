@@ -6,7 +6,7 @@ import type { SymbolSource } from "#/symbol-library/config.ts";
 import type {
 	SymbolEditTarget,
 	SymbolLibraryStorage,
-} from "#/symbol-library/storage.tsx";
+} from "#/symbol-library/storage.ts";
 
 /** An edit keeps the winning library and original file, including its metadata. */
 export async function prepareSymbolEdit(

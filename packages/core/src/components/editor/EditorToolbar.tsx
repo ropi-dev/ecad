@@ -2,6 +2,28 @@ import { jumpHistoryEffect } from "@ecad/drawing-core/commands/drawing-commands.
 import type { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { LengthUnit } from "@ecad/drawing-core/drawing/units.ts";
+import type { JSX } from "@solidjs/web";
+import {
+	type ComponentProps,
+	createEffect,
+	createMemo,
+	createSignal,
+	For,
+	omit,
+	Show,
+} from "solid-js";
+import { DrawingExport } from "#/components/editor/DrawingExport.tsx";
+import { ErcButton } from "#/components/editor/ErcButton.tsx";
+import type {
+	createEditorSession,
+	DrawingCommand,
+} from "#/components/editor/editorSession.ts";
+import { HistoryControls } from "#/components/editor/HistoryControls.tsx";
+import { SymbolPicker } from "#/components/editor/SymbolPicker.tsx";
+import type {
+	CanvasTool as Tool,
+	useCanvasGestures,
+} from "#/components/editor/useCanvasGestures.ts";
 import {
 	Cable,
 	Circle,
@@ -39,28 +61,7 @@ import {
 	Type,
 	X,
 	Zap,
-} from "lucide-react";
-import {
-	type ComponentProps,
-	type Dispatch,
-	memo,
-	type Ref,
-	type SetStateAction,
-	useState,
-	useSyncExternalStore,
-} from "react";
-import { DrawingExport } from "#/components/editor/DrawingExport.tsx";
-import { ErcButton } from "#/components/editor/ErcButton.tsx";
-import type {
-	createEditorSession,
-	DrawingCommand,
-} from "#/components/editor/editorSession.ts";
-import { HistoryControls } from "#/components/editor/HistoryControls.tsx";
-import { SymbolPicker } from "#/components/editor/SymbolPicker.tsx";
-import type {
-	CanvasTool as Tool,
-	useCanvasGestures,
-} from "#/components/editor/useCanvasGestures.ts";
+} from "#/components/ui/icons.tsx";
 import {
 	ToolbarGroup,
 	ToolbarGroupButton,
@@ -73,6 +74,7 @@ import type { DrawingZoneFill } from "#/drawing/export.ts";
 import type { SelectionEdit } from "#/drawing/selection-edit.ts";
 import type { SymbolDefinition } from "#/drawing/symbols.ts";
 import type { SheetSize } from "#/drawing/worksheet.ts";
+import { fromExternalStore } from "#/lib/external-store.ts";
 
 const tools = [
 	{ group: "navigation", kind: "select", label: "Select", icon: MousePointer2 },
@@ -129,6 +131,23 @@ const footprintTools = tools.map((item) =>
 type ToolItem = (typeof tools)[number];
 type ToolGroup = "shapes" | "connections" | "pads" | "routing";
 
+const navigationTools = tools.filter(({ group }) => group === "navigation");
+const rotations = [
+	{
+		label: "Rotate counterclockwise",
+		shortcut: "R",
+		angle: Math.PI / 2,
+		icon: RotateCcw,
+	},
+	{
+		label: "Rotate clockwise",
+		shortcut: "Shift+R",
+		angle: -Math.PI / 2,
+		icon: RotateCw,
+	},
+];
+const pressed = (on: boolean) => (on ? "true" : "false");
+
 interface EditorToolbarProps {
 	shapes: EditorShape[];
 	sheet: SheetSize;
@@ -146,15 +165,15 @@ interface EditorToolbarProps {
 		flat: boolean;
 		available: boolean;
 		onToggleFlat: () => void;
-		toggle: Ref<HTMLButtonElement>;
+		toggle: (button: HTMLButtonElement) => void;
 		unit: LengthUnit;
 		onUnitChange: (unit: LengthUnit) => void;
 	};
 	symbolLibrary: ComponentProps<typeof SymbolPicker>["library"];
 	finishDrag: (cancel?: boolean) => void;
 	finishWire: () => void;
-	setSymbolDefinition: Dispatch<SetStateAction<SymbolDefinition | null>>;
-	setTool: Dispatch<SetStateAction<Tool>>;
+	setSymbolDefinition: (definition: SymbolDefinition) => void;
+	setTool: (tool: Tool) => void;
 	clearPlacementPreview: ReturnType<
 		typeof useCanvasGestures
 	>["clearPlacementPreview"];
@@ -170,9 +189,9 @@ interface EditorToolbarProps {
 	removeSelected: () => void;
 	ercOpen: boolean;
 	/** Toggles the electrical rules check. Symbol drawings have none. */
-	onErc?: () => void;
+	onErc?: (() => void) | undefined;
 	settingsOpen: boolean;
-	onSettings?: () => void;
+	onSettings?: (() => void) | undefined;
 	board?: {
 		onSync: () => void;
 		checksOpen: boolean;
@@ -189,337 +208,351 @@ interface EditorToolbarProps {
 	};
 }
 
-export const EditorToolbar = memo(function EditorToolbar({
-	shapes,
-	sheet,
-	drawingName,
-	ready,
-	history,
-	undo,
-	redo,
-	restoreHistory,
-	tool,
-	sheetless,
-	footprint,
-	symbolLibrary,
-	finishDrag,
-	finishWire,
-	setSymbolDefinition,
-	setTool,
-	clearPlacementPreview,
-	canRotatePlacement,
-	allowLocked,
-	session,
-	hasSelection,
-	rotateItems,
-	selectionLocked,
-	lockDisabled = false,
-	editSelection,
-	removeSelected,
-	ercOpen,
-	onErc,
-	settingsOpen,
-	onSettings,
-	board,
-}: EditorToolbarProps) {
-	const [exportOpen, setExportOpen] = useState(false);
+function Toggle(props: ComponentProps<typeof TooltipButton>) {
+	return (
+		<TooltipButton
+			type="button"
+			class={viewControlButtonClassName}
+			{...props}
+		/>
+	);
+}
+
+export function EditorToolbar(props: EditorToolbarProps) {
+	const [exportOpen, setExportOpen] = createSignal(false);
 	const viewExport = useViewExport();
+	const [footprintToggle, setFootprintToggle] =
+		createSignal<HTMLButtonElement>();
+	const registerFootprintToggle = createMemo(() => props.footprint?.toggle);
+	createEffect(
+		() => [footprintToggle(), registerFootprintToggle()] as const,
+		([button, register]) => {
+			if (button && register) register(button);
+		},
+	);
+	const ready = () => props.ready;
 	const chooseTool = (kind: ToolItem["kind"]) => {
-		finishWire();
-		clearPlacementPreview();
-		setTool(kind);
+		props.finishWire();
+		props.clearPlacementPreview();
+		props.setTool(kind);
 	};
-	const toolGroup = (group: ToolGroup) =>
-		(footprint && !board ? footprintTools : tools).filter(
-			(item) =>
-				item.group === group &&
-				!(sheetless && (item.kind === "net" || item.kind === "supply")),
-		);
 	const renderGroup = (
 		group: ToolGroup,
 		label: string,
 		fallback: ToolItem["icon"],
-	) => {
-		const items = toolGroup(group);
-		const current = items.find((item) => item.kind === tool);
+	): JSX.Element => {
+		const items = createMemo(() =>
+			(props.footprint && !props.board ? footprintTools : tools).filter(
+				(item) =>
+					item.group === group &&
+					!(props.sheetless && (item.kind === "net" || item.kind === "supply")),
+			),
+		);
+		const current = createMemo(() =>
+			items().find((item) => item.kind === props.tool),
+		);
 		return (
 			<ToolbarGroup
 				label={label}
-				icon={current?.icon ?? fallback}
-				activeLabel={current?.label}
-				disabled={!ready}
-				active={!!current}
+				icon={current()?.icon ?? fallback}
+				activeLabel={current()?.label}
+				disabled={!ready()}
+				active={!!current()}
 			>
-				{items.map(({ kind, label, icon }) => (
-					<ToolbarGroupButton
-						key={kind}
-						icon={icon}
-						label={label}
-						disabled={!ready}
-						aria-pressed={tool === kind}
-						onClick={() => chooseTool(kind)}
-					/>
-				))}
+				<For each={items()}>
+					{(item) => (
+						<ToolbarGroupButton
+							icon={item.icon}
+							label={item.label}
+							disabled={!ready()}
+							aria-pressed={pressed(props.tool === item.kind)}
+							onClick={() => chooseTool(item.kind)}
+						/>
+					)}
+				</For>
 			</ToolbarGroup>
 		);
 	};
-	const toggle = (
-		props: ComponentProps<typeof TooltipButton>,
-		key?: string,
-	) => (
-		<TooltipButton
-			key={key}
-			type="button"
-			className={viewControlButtonClassName}
-			{...props}
-		/>
-	);
 
 	return (
-		<fieldset aria-label="Drawing tools" className="contents">
+		<fieldset aria-label="Drawing tools" class="contents">
 			<HistoryControls
-				history={history}
-				disabled={!ready}
-				onUndo={undo}
-				onRedo={redo}
-				onRestore={(id) => restoreHistory(jumpHistoryEffect(id))}
+				history={props.history}
+				disabled={!ready()}
+				onUndo={() => props.undo()}
+				onRedo={() => props.redo()}
+				onRestore={(id) => props.restoreHistory(jumpHistoryEffect(id))}
 			/>
 			<ToolbarSeparator />
-			{tools
-				.filter(({ group }) => group === "navigation")
-				.map(({ kind, label, icon: Icon }) =>
-					toggle(
-						{
-							disabled: !ready,
-							"aria-label": label,
-							tooltip: label,
-							"aria-pressed": tool === kind,
-							onClick: () => chooseTool(kind),
-							children: <Icon size={18} aria-hidden="true" />,
-						},
-						kind,
-					),
+			<For each={navigationTools}>
+				{(item) => (
+					<Toggle
+						disabled={!ready()}
+						aria-label={item.label}
+						tooltip={item.label}
+						aria-pressed={pressed(props.tool === item.kind)}
+						onClick={() => chooseTool(item.kind)}
+					>
+						<item.icon size={18} aria-hidden="true" />
+					</Toggle>
 				)}
+			</For>
 			<ToolbarSeparator />
-			{board ? (
+			{props.board ? (
 				<>
 					{renderGroup("routing", "Routing", Spline)}
-					{toggle({
-						disabled: !ready,
-						"aria-label": "Update from schematic",
-						tooltip: "Update from schematic",
-						onClick: board.onSync,
-						children: <RefreshCw size={18} aria-hidden="true" />,
-					})}
+					<Toggle
+						disabled={!ready()}
+						aria-label="Update from schematic"
+						tooltip="Update from schematic"
+						onClick={() => props.board?.onSync()}
+					>
+						<RefreshCw size={18} aria-hidden="true" />
+					</Toggle>
 				</>
-			) : footprint ? (
-				renderGroup("pads", "Pads and vias", CircleDot)
 			) : (
-				<>
-					<SymbolPicker
-						library={symbolLibrary}
-						allowNetSymbols={!sheetless}
-						disabled={!ready}
-						active={tool === "symbol"}
-						onChoose={(definition) => {
-							if (sheetless && definition.netSymbol) return;
-							finishDrag();
-							finishWire();
-							setSymbolDefinition(definition);
-							setTool("symbol");
-						}}
-					/>
-					{renderGroup("connections", "Connections", Cable)}
-				</>
+				<Show
+					when={props.footprint}
+					fallback={
+						<>
+							<SymbolPicker
+								library={props.symbolLibrary}
+								allowNetSymbols={!props.sheetless}
+								disabled={!ready()}
+								active={props.tool === "symbol"}
+								onChoose={(definition) => {
+									if (props.sheetless && definition.netSymbol) return;
+									props.finishDrag();
+									props.finishWire();
+									props.setSymbolDefinition(definition);
+									props.setTool("symbol");
+								}}
+							/>
+							{renderGroup("connections", "Connections", Cable)}
+						</>
+					}
+				>
+					{renderGroup("pads", "Pads and vias", CircleDot)}
+				</Show>
 			)}
 			{renderGroup("shapes", "Shapes", Shapes)}
 			<ToolbarSeparator />
-			{[
-				{
-					label: "Rotate counterclockwise",
-					shortcut: "R",
-					angle: Math.PI / 2,
-					icon: RotateCcw,
-				},
-				{
-					label: "Rotate clockwise",
-					shortcut: "Shift+R",
-					angle: -Math.PI / 2,
-					icon: RotateCw,
-				},
-			].map(({ label, shortcut, angle, icon: Icon }) =>
-				toggle(
-					{
-						disabled: !ready || (!hasSelection && !canRotatePlacement),
-						"aria-label": label,
-						"aria-keyshortcuts": shortcut,
-						tooltip: `${label} 90°`,
-						shortcut,
-						onClick: () => rotateItems(angle),
-						children: <Icon size={18} aria-hidden="true" />,
-					},
-					label,
-				),
-			)}
-			{board &&
-				toggle({
-					disabled: !ready || !board.canFlip,
-					"aria-label": "Flip to the other side",
-					"aria-keyshortcuts": "F",
-					tooltip: "Flip to the other side",
-					shortcut: "F",
-					onClick: board.onFlip,
-					children: <FlipHorizontal2 size={18} aria-hidden="true" />,
-				})}
-			{toggle({
-				disabled: !ready || !hasSelection || lockDisabled,
-				"aria-label": selectionLocked ? "Unlock selection" : "Lock selection",
-				tooltip: lockDisabled
-					? "Pins are fixed to their symbol"
-					: selectionLocked
-						? "Unlock selection"
-						: "Lock selection",
-				onClick: () =>
-					editSelection({ kind: "lock", locked: !selectionLocked }),
-				children: selectionLocked ? (
-					<LockOpen size={18} aria-hidden="true" />
-				) : (
-					<Lock size={18} aria-hidden="true" />
-				),
-			})}
-			{toggle({
-				disabled: !hasSelection,
-				"aria-label": "Delete",
-				tooltip: "Delete selection",
-				shortcut: "Delete",
-				onClick: removeSelected,
-				children: <Trash2 size={18} aria-hidden="true" />,
-			})}
-			<ToolbarSeparator />
-			{toggle({
-				disabled: !ready,
-				"aria-label": "Select locked items",
-				"aria-pressed": allowLocked,
-				tooltip: "Select locked items",
-				onClick: () => {
-					finishDrag(true);
-					session.setAllowLocked(!allowLocked);
-				},
-				children: <SquareDashedMousePointer size={18} aria-hidden="true" />,
-			})}
-			<ToolbarSeparator />
-			{onErc && <ErcButton open={ercOpen} disabled={!ready} onClick={onErc} />}
-			{onSettings &&
-				toggle({
-					disabled: !ready,
-					"aria-label": "Schematic settings",
-					"aria-haspopup": "dialog",
-					"aria-expanded": settingsOpen,
-					tooltip: "Schematic settings",
-					onClick: onSettings,
-					children: <SlidersHorizontal size={18} aria-hidden="true" />,
-				})}
-			{(onErc || onSettings) && <ToolbarSeparator />}
-			{board && (
-				<>
-					{toggle({
-						disabled: !ready,
-						"aria-label": "Design rules check",
-						"aria-pressed": board.checksOpen,
-						tooltip: "Design rules check",
-						onClick: board.onChecks,
-						children: <ShieldCheck size={18} aria-hidden="true" />,
-					})}
-					{toggle({
-						disabled: !ready,
-						"aria-label": "Board setup",
-						"aria-pressed": board.setupOpen,
-						tooltip: "Board setup",
-						onClick: board.onSetup,
-						children: <Settings2 size={18} aria-hidden="true" />,
-					})}
-					<ToolbarSeparator />
-				</>
-			)}
-			{footprint && (
-				<>
-					{toggle({
-						ref: footprint.toggle,
-						className: `${viewControlButtonClassName} px-2.5`,
-						"aria-pressed": footprint.flat,
-						disabled: footprint.flat && (!ready || !footprint.available),
-						tooltip: footprint.flat
-							? "Show layers in 3D"
-							: "Show the flat top view",
-						onClick: footprint.onToggleFlat,
-						children: "2D",
-					})}
-					{toggle({
-						className: `${viewControlButtonClassName} w-11`,
-						"aria-label": `Units: ${footprint.unit}`,
-						tooltip:
-							footprint.unit === "mm"
-								? "Show lengths in mils"
-								: "Show lengths in millimetres",
-						onClick: () =>
-							footprint.onUnitChange(footprint.unit === "mm" ? "mil" : "mm"),
-						children: footprint.unit,
-					})}
-					<ToolbarSeparator />
-				</>
-			)}
-			<ToolbarGroup label="Export" icon={Download} disabled={!ready}>
-				{board && (
-					<ToolbarGroupButton
-						icon={FileArchive}
-						label="Export Gerber and drill files"
-						disabled={board.exporting}
-						aria-busy={board.exporting}
-						onClick={board.onExport}
-					/>
+			<For each={rotations}>
+				{(rotation) => (
+					<Toggle
+						disabled={
+							!ready() || (!props.hasSelection && !props.canRotatePlacement)
+						}
+						aria-label={rotation.label}
+						aria-keyshortcuts={rotation.shortcut}
+						tooltip={`${rotation.label} 90°`}
+						shortcut={rotation.shortcut}
+						onClick={() => props.rotateItems(rotation.angle)}
+					>
+						<rotation.icon size={18} aria-hidden="true" />
+					</Toggle>
 				)}
+			</For>
+			<Show when={props.board}>
+				{(board) => (
+					<Toggle
+						disabled={!ready() || !board().canFlip}
+						aria-label="Flip to the other side"
+						aria-keyshortcuts="F"
+						tooltip="Flip to the other side"
+						shortcut="F"
+						onClick={() => props.board?.onFlip()}
+					>
+						<FlipHorizontal2 size={18} aria-hidden="true" />
+					</Toggle>
+				)}
+			</Show>
+			<Toggle
+				disabled={
+					!ready() || !props.hasSelection || (props.lockDisabled ?? false)
+				}
+				aria-label={
+					props.selectionLocked ? "Unlock selection" : "Lock selection"
+				}
+				tooltip={
+					props.lockDisabled
+						? "Pins are fixed to their symbol"
+						: props.selectionLocked
+							? "Unlock selection"
+							: "Lock selection"
+				}
+				onClick={() =>
+					props.editSelection({ kind: "lock", locked: !props.selectionLocked })
+				}
+			>
+				<Show
+					when={props.selectionLocked}
+					fallback={<Lock size={18} aria-hidden="true" />}
+				>
+					<LockOpen size={18} aria-hidden="true" />
+				</Show>
+			</Toggle>
+			<Toggle
+				disabled={!props.hasSelection}
+				aria-label="Delete"
+				tooltip="Delete selection"
+				shortcut="Delete"
+				onClick={() => props.removeSelected()}
+			>
+				<Trash2 size={18} aria-hidden="true" />
+			</Toggle>
+			<ToolbarSeparator />
+			<Toggle
+				disabled={!ready()}
+				aria-label="Select locked items"
+				aria-pressed={pressed(props.allowLocked)}
+				tooltip="Select locked items"
+				onClick={() => {
+					props.finishDrag(true);
+					props.session.setAllowLocked(!props.allowLocked);
+				}}
+			>
+				<SquareDashedMousePointer size={18} aria-hidden="true" />
+			</Toggle>
+			<ToolbarSeparator />
+			{props.onErc && (
+				<ErcButton
+					open={props.ercOpen}
+					disabled={!ready()}
+					onClick={() => props.onErc?.()}
+				/>
+			)}
+			{props.onSettings && (
+				<Toggle
+					disabled={!ready()}
+					aria-label="Schematic settings"
+					aria-haspopup="dialog"
+					aria-expanded={pressed(props.settingsOpen)}
+					tooltip="Schematic settings"
+					onClick={() => props.onSettings?.()}
+				>
+					<SlidersHorizontal size={18} aria-hidden="true" />
+				</Toggle>
+			)}
+			{(props.onErc || props.onSettings) && <ToolbarSeparator />}
+			<Show when={props.board}>
+				{(board) => (
+					<>
+						<Toggle
+							disabled={!ready()}
+							aria-label="Design rules check"
+							aria-pressed={pressed(board().checksOpen)}
+							tooltip="Design rules check"
+							onClick={() => props.board?.onChecks()}
+						>
+							<ShieldCheck size={18} aria-hidden="true" />
+						</Toggle>
+						<Toggle
+							disabled={!ready()}
+							aria-label="Board setup"
+							aria-pressed={pressed(board().setupOpen)}
+							tooltip="Board setup"
+							onClick={() => props.board?.onSetup()}
+						>
+							<Settings2 size={18} aria-hidden="true" />
+						</Toggle>
+						<ToolbarSeparator />
+					</>
+				)}
+			</Show>
+			<Show when={props.footprint}>
+				{(footprint) => (
+					<>
+						<Toggle
+							ref={setFootprintToggle}
+							class={`${viewControlButtonClassName} px-2.5`}
+							aria-pressed={pressed(footprint().flat)}
+							disabled={
+								footprint().flat && (!ready() || !footprint().available)
+							}
+							tooltip={
+								footprint().flat
+									? "Show layers in 3D"
+									: "Show the flat top view"
+							}
+							onClick={() => props.footprint?.onToggleFlat()}
+						>
+							2D
+						</Toggle>
+						<Toggle
+							class={`${viewControlButtonClassName} w-11`}
+							aria-label={`Units: ${footprint().unit}`}
+							tooltip={
+								footprint().unit === "mm"
+									? "Show lengths in mils"
+									: "Show lengths in millimetres"
+							}
+							onClick={() => {
+								const current = props.footprint;
+								current?.onUnitChange(current.unit === "mm" ? "mil" : "mm");
+							}}
+						>
+							{footprint().unit}
+						</Toggle>
+						<ToolbarSeparator />
+					</>
+				)}
+			</Show>
+			<ToolbarGroup label="Export" icon={Download} disabled={!ready()}>
+				<Show when={props.board}>
+					{(board) => (
+						<ToolbarGroupButton
+							icon={FileArchive}
+							label="Export Gerber and drill files"
+							disabled={board().exporting}
+							aria-busy={pressed(board().exporting)}
+							onClick={() => props.board?.onExport()}
+						/>
+					)}
+				</Show>
 				<ToolbarGroupButton
 					icon={FileImage}
 					label="Export drawing"
 					onClick={() => setExportOpen(true)}
 				/>
-				{viewExport.exportPng && (
+				<Show when={viewExport.exportPng}>
 					<ToolbarGroupButton
 						icon={ImageDown}
 						label="Export PNG"
 						disabled={!viewExport.enabled || viewExport.exporting}
-						aria-busy={viewExport.exporting}
-						onClick={viewExport.exportPng}
+						aria-busy={pressed(viewExport.exporting)}
+						onClick={() => viewExport.exportPng?.()}
 					/>
-				)}
+				</Show>
 			</ToolbarGroup>
 			<LiveDrawingExport
-				session={session}
-				shapes={shapes}
-				sheet={sheet}
-				label={drawingName || "Schematic drawing"}
-				layered={footprint !== undefined}
-				zoneFills={board?.zoneFills}
-				maskMargin={board?.maskMargin}
-				copperLayers={board?.copperLayers}
-				open={exportOpen}
+				session={props.session}
+				shapes={props.shapes}
+				sheet={props.sheet}
+				label={props.drawingName || "Schematic drawing"}
+				layered={props.footprint !== undefined}
+				zoneFills={props.board?.zoneFills}
+				maskMargin={props.board?.maskMargin}
+				copperLayers={props.board?.copperLayers}
+				open={exportOpen()}
 				onClose={() => setExportOpen(false)}
 			/>
 		</fieldset>
 	);
-});
+}
 
-function LiveDrawingExport({
-	session,
-	shapes,
-	...props
-}: ComponentProps<typeof DrawingExport> & {
-	session: ReturnType<typeof createEditorSession>;
-}) {
-	const draft = useSyncExternalStore(
-		session.subscribe,
-		() => session.getState().draft,
-		() => session.getState().draft,
-	);
-	return <DrawingExport {...props} shapes={draft ?? shapes} />;
+function LiveDrawingExport(
+	props: ComponentProps<typeof DrawingExport> & {
+		session: ReturnType<typeof createEditorSession>;
+	},
+) {
+	const draftStore = createMemo(() => {
+		const session = props.session;
+		return fromExternalStore(
+			(listener) => session.subscribe(listener),
+			() => session.getState().draft,
+		);
+	});
+	const rest = omit(props, "session", "shapes");
+	return <DrawingExport {...rest} shapes={draftStore()() ?? props.shapes} />;
 }

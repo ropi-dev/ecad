@@ -49,7 +49,7 @@ test("built CLI and stdio MCP work outside the repository with networking and UI
 		guard,
 		`import { registerHooks } from "node:module";
 registerHooks({ resolve(specifier, context, next) {
-  if (/^(?:@ecad\\/|react(?:$|[/-])|three(?:$|\\/))/.test(specifier)) throw new Error("Unexpected app dependency: " + specifier);
+  if (/^(?:@ecad\\/|solid-js(?:$|\\/)|@solidjs\\/|three(?:$|\\/))/.test(specifier)) throw new Error("Unexpected app dependency: " + specifier);
   return next(specifier, context);
 } });
 globalThis.fetch = () => { throw new Error("Networking is unavailable"); };

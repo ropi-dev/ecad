@@ -1,14 +1,16 @@
 import type { ErcOptions } from "@ecad/drawing-core/erc/engine.ts";
-import { useMemo } from "react";
+import { type Accessor, createMemo } from "solid-js";
 import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
 import { useAppSettings } from "#/settings/store.ts";
 
-export function useErcSeverity(): ErcOptions["severity"] {
-	const global = useAppSettings().ercSeverity;
+export function useErcSeverity(): Accessor<ErcOptions["severity"]> {
+	const settings = useAppSettings();
 	const project = useProjectSelection(
 		(value) => value.project?.manifest.settings?.ercSeverity,
 	);
-	const merged = { ...global, ...project };
-	const key = JSON.stringify(merged, Object.keys(merged).sort());
-	return useMemo(() => JSON.parse(key), [key]);
+	const key = createMemo(() => {
+		const merged = { ...settings().ercSeverity, ...project() };
+		return JSON.stringify(merged, Object.keys(merged).sort());
+	});
+	return createMemo(() => JSON.parse(key()));
 }

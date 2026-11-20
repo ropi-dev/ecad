@@ -1,10 +1,11 @@
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
-import { type RefObject, useEffect, useState } from "react";
+import { type Accessor, createEffect, createSignal } from "solid-js";
 
-export function useCursorPoint(area: RefObject<HTMLElement | null>) {
-	const [point, setPoint] = useState<Point | null>(null);
-	useEffect(() => {
-		const element = area.current;
+export function useCursorPoint(
+	area: () => HTMLElement | null | undefined,
+): Accessor<Point | null> {
+	const [point, setPoint] = createSignal<Point | null>(null);
+	createEffect(area, (element) => {
 		if (!element) return;
 		let frame = 0;
 		let last: PointerEvent | null = null;
@@ -30,6 +31,6 @@ export function useCursorPoint(area: RefObject<HTMLElement | null>) {
 			element.removeEventListener("pointermove", move);
 			element.removeEventListener("pointerleave", leave);
 		};
-	}, [area]);
+	});
 	return point;
 }

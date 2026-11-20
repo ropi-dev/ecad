@@ -1,13 +1,7 @@
+import { Show } from "solid-js";
 import { AppDialog, dialogBodyClassName } from "#/components/ui/Dialog.tsx";
 
-export function OpenProjectDialog({
-	open,
-	busy,
-	error,
-	onCancel,
-	onSave,
-	onDiscard,
-}: {
+export function OpenProjectDialog(props: {
 	open: boolean;
 	busy: boolean;
 	error: string;
@@ -17,9 +11,9 @@ export function OpenProjectDialog({
 }) {
 	return (
 		<AppDialog
-			open={open}
+			open={props.open}
 			onOpenChange={(value) => {
-				if (!value && !busy) onCancel();
+				if (!value && !props.busy) props.onCancel();
 			}}
 			title="Save this project first?"
 			description="This untitled project is stored in memory. Save it before opening another project, or discard it."
@@ -27,46 +21,44 @@ export function OpenProjectDialog({
 				<>
 					<button
 						type="button"
-						className="ui-button"
+						class="ui-button"
 						data-variant="ghost"
 						data-size="md"
-						disabled={busy}
-						onClick={onCancel}
+						disabled={props.busy}
+						onClick={() => props.onCancel()}
 					>
 						Cancel
 					</button>
 					<button
 						type="button"
-						className="ui-button"
+						class="ui-button"
 						data-variant="secondary"
 						data-size="md"
-						disabled={busy}
-						onClick={onDiscard}
+						disabled={props.busy}
+						onClick={() => props.onDiscard()}
 					>
 						Discard and open
 					</button>
 					<button
 						type="button"
-						className="ui-button"
+						class="ui-button"
 						data-variant="primary"
 						data-size="md"
-						disabled={busy}
-						onClick={onSave}
+						disabled={props.busy}
+						onClick={() => props.onSave()}
 					>
 						Save and open
 					</button>
 				</>
 			}
 		>
-			{error ? (
-				<div className={dialogBodyClassName}>
-					<p role="alert" className="m-0 text-sm text-danger">
-						{error}
+			<Show when={props.error} fallback={<div class="h-3" />}>
+				<div class={dialogBodyClassName}>
+					<p role="alert" class="m-0 text-sm text-danger">
+						{props.error}
 					</p>
 				</div>
-			) : (
-				<div className="h-3" />
-			)}
+			</Show>
 		</AppDialog>
 	);
 }

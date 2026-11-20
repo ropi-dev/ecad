@@ -1,4 +1,4 @@
-import { createContext, type ReactNode, useContext, useMemo } from "react";
+import { type Accessor, createContext, useContext } from "solid-js";
 import type {
 	SymbolFile,
 	SymbolLibrary,
@@ -61,48 +61,18 @@ export interface SymbolLibraryStorage {
 	): Promise<void>;
 }
 
-const UpdatesContext = createContext<{
+export interface SymbolLibraryUpdates {
 	notify(): void;
 	subscribe(listener: () => void): () => void;
-} | null>(null);
+}
+
+export const UpdatesContext = createContext<SymbolLibraryUpdates | null>(null);
 export const useSymbolLibraryUpdates = () => useContext(UpdatesContext);
 
-const StorageContext = createContext<SymbolLibraryStorage | null>(null);
-const ProjectStorageContext = createContext<SymbolLibraryStorage | null>(null);
-
-export function SymbolLibraryProvider({
-	storage,
-	children,
-	projectStorage,
-}: {
-	storage: SymbolLibraryStorage;
-	children: ReactNode;
-	projectStorage?: SymbolLibraryStorage;
-}) {
-	const updates = useMemo(() => {
-		const listeners = new Set<() => void>();
-		return {
-			notify() {
-				for (const listener of listeners) listener();
-			},
-			subscribe(listener: () => void) {
-				listeners.add(listener);
-				return () => {
-					listeners.delete(listener);
-				};
-			},
-		};
-	}, []);
-	return (
-		<UpdatesContext.Provider value={updates}>
-			<StorageContext.Provider value={storage}>
-				<ProjectStorageContext.Provider value={projectStorage ?? null}>
-					{children}
-				</ProjectStorageContext.Provider>
-			</StorageContext.Provider>
-		</UpdatesContext.Provider>
-	);
-}
+export const StorageContext = createContext<SymbolLibraryStorage | null>(null);
+export const ProjectStorageContext = createContext<
+	Accessor<SymbolLibraryStorage | null>
+>(() => null);
 
 /** Standalone core consumers can use the editor without choosing a host. */
 export function createMemorySymbolLibraryStorage(): SymbolLibraryStorage {
@@ -159,7 +129,5 @@ export function useProjectSymbolLibraryStorage() {
 }
 
 export function useSymbolLibraryStorage() {
-	const storage = useContext(StorageContext);
-	const memory = useMemo(createMemorySymbolLibraryStorage, []);
-	return storage ?? memory;
+	return useContext(StorageContext) ?? createMemorySymbolLibraryStorage();
 }

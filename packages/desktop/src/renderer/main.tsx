@@ -11,8 +11,8 @@ import { WorkspaceStart } from "@ecad/core/projects/WorkspaceStart.tsx";
 import { setSettingsStorage } from "@ecad/core/settings/store.ts";
 import { setConsentStorage } from "@ecad/core/telemetry/consent.ts";
 import { startTelemetry } from "@ecad/core/telemetry/telemetry.ts";
-import { useEffect, useState } from "react";
-import { createRoot } from "react-dom/client";
+import { render } from "@solidjs/web";
+import { createSignal, Match, onSettled, Switch } from "solid-js";
 import { createDesktopMcpConnector } from "#/renderer/mcp.ts";
 import {
 	createDesktopConsentStorage,
@@ -30,8 +30,8 @@ const projects = createDesktopProjectStorage(window.ecadProjects);
 const mcp = createDesktopMcpConnector(window.ecadMcp);
 setDialogWindows(true);
 function App() {
-	const [workspace, setWorkspace] = useState<Workspace>("home");
-	useEffect(() => {
+	const [workspace, setWorkspace] = createSignal<Workspace>("home");
+	onSettled(() => {
 		const navigate = (event: MouseEvent) => {
 			const target = event.target;
 			if (!(target instanceof Element)) return;
@@ -52,7 +52,7 @@ function App() {
 		};
 		document.addEventListener("click", navigate);
 		return () => document.removeEventListener("click", navigate);
-	}, []);
+	});
 	return (
 		<ProjectProvider storage={projects} symbolStorage={storage}>
 			<ProjectShell
@@ -65,18 +65,20 @@ function App() {
 				}
 			>
 				<PerformanceBoundary
-					name={workspace}
-					path={workspace === "home" ? "/" : `/${workspace}`}
+					name={workspace()}
+					path={workspace() === "home" ? "/" : `/${workspace()}`}
 				>
-					{workspace === "home" ? (
-						<WorkspaceStart />
-					) : workspace === "editor" ? (
-						<Editor2D />
-					) : workspace === "gerber" ? (
-						<GerberWorkspace />
-					) : (
-						<StepWorkspace />
-					)}
+					<Switch fallback={<StepWorkspace />}>
+						<Match when={workspace() === "home"}>
+							<WorkspaceStart />
+						</Match>
+						<Match when={workspace() === "editor"}>
+							<Editor2D />
+						</Match>
+						<Match when={workspace() === "gerber"}>
+							<GerberWorkspace />
+						</Match>
+					</Switch>
 				</PerformanceBoundary>
 			</ProjectShell>
 		</ProjectProvider>
@@ -94,5 +96,5 @@ void Promise.all([
 		platform: "desktop",
 		transport: (batch, revision) => window.ecadTelemetry.send(batch, revision),
 	});
-	createRoot(root).render(<App />);
+	render(() => <App />, root);
 });

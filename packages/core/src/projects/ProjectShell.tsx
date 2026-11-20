@@ -1,4 +1,6 @@
-import { lazy, type ReactNode, Suspense } from "react";
+import type { JSX } from "@solidjs/web";
+import { children, Loading, lazy } from "solid-js";
+import { Keyed } from "#/components/ui/Keyed.tsx";
 import { Toaster } from "#/components/ui/Toaster.tsx";
 import { useButtonShortcuts } from "#/components/viewer/useButtonShortcuts.ts";
 import { useDebugStats } from "#/performance/useDebugStats.ts";
@@ -9,15 +11,11 @@ import "#/settings/theme.ts";
 
 const DebugStats = lazy(() => import("#/performance/DebugStats.tsx"));
 
-export function ProjectShell({
-	children,
-	onExit,
-	sidebar = <ProjectFilesSidebar onExit={onExit} />,
-}: {
-	children: ReactNode;
+export function ProjectShell(props: {
+	children: JSX.Element;
 	/** Quits the app. The sidebar shows an Exit button when it is given. */
 	onExit?: () => void;
-	sidebar?: ReactNode;
+	sidebar?: JSX.Element;
 }) {
 	useButtonShortcuts();
 	const debugStats = useDebugStats();
@@ -25,22 +23,31 @@ export function ProjectShell({
 		busy,
 		session,
 	}));
+	const sidebar = children(() => props.sidebar);
+	const busy = () => {
+		const value = project()?.busy;
+		return value === undefined ? undefined : value ? "true" : "false";
+	};
 	return (
 		<div
-			aria-busy={project?.busy}
-			inert={project?.busy}
-			className="relative flex h-dvh overflow-hidden bg-app text-fg"
+			aria-busy={busy()}
+			inert={project()?.busy}
+			class="relative flex h-dvh overflow-hidden bg-app text-fg"
 		>
-			{sidebar}
-			<div key={project?.session} className="min-w-0 flex-1 overflow-auto">
-				{children}
-			</div>
+			{sidebar() !== undefined ? (
+				sidebar()
+			) : (
+				<ProjectFilesSidebar onExit={props.onExit} />
+			)}
+			<Keyed key={project()?.session}>
+				<div class="min-w-0 flex-1 overflow-auto">{props.children}</div>
+			</Keyed>
 			<ProjectConflictNotice />
 			<Toaster />
-			{debugStats && (
-				<Suspense fallback={null}>
+			{debugStats() && (
+				<Loading fallback={null}>
 					<DebugStats />
-				</Suspense>
+				</Loading>
 			)}
 		</div>
 	);

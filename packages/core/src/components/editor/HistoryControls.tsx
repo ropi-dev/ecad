@@ -1,6 +1,14 @@
-import type { History } from "@ecad/drawing-core/drawing/history.ts";
-import { History as HistoryIcon, Redo2, Undo2, X } from "lucide-react";
-import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import type { History as DrawingHistory } from "@ecad/drawing-core/drawing/history.ts";
+import type { JSX } from "@solidjs/web";
+import {
+	createEffect,
+	createMemo,
+	createSignal,
+	createUniqueId,
+	For,
+	Show,
+} from "solid-js";
+import { History, Redo2, Undo2, X } from "#/components/ui/icons.tsx";
 import { quietFocus } from "#/components/viewer/ToolbarGroup.tsx";
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
 import {
@@ -8,36 +16,36 @@ import {
 	viewControlButtonClassName,
 } from "#/components/viewer/viewControlStyles.ts";
 
-export function HistoryControls({
-	history,
-	disabled = false,
-	onUndo,
-	onRedo,
-	onRestore,
-}: {
-	history: History<unknown>;
+export function HistoryControls(props: {
+	history: DrawingHistory<unknown>;
 	disabled?: boolean;
 	onUndo: () => void;
 	onRedo: () => void;
 	onRestore: (id: number) => void;
 }) {
-	const [open, setOpen] = useState(false);
-	const panelId = useId();
-	const toggle = useRef<HTMLButtonElement>(null);
-	const panel = useRef<HTMLElement>(null);
-	const current = history.nodes[history.currentId];
-	const roots = Object.values(history.nodes).filter(
-		(node) => node.parentId === null,
+	const [open, setOpen] = createSignal(false);
+	const panelId = createUniqueId();
+	let toggle: HTMLButtonElement | undefined;
+	let panel: HTMLElement | undefined;
+	const disabled = () => props.disabled ?? false;
+	const current = () => props.history.nodes[props.history.currentId];
+	const roots = createMemo(() =>
+		Object.values(props.history.nodes)
+			.filter((node) => node.parentId === null)
+			.map((node) => node.id),
 	);
-	const redoId = current.preferredChildId ?? current.childIds.at(-1);
-	const redo = redoId === undefined ? undefined : history.nodes[redoId];
-	useEffect(() => {
-		if (!open) return;
+	const canRedo = createMemo(() => {
+		const node = current();
+		const redoId = node.preferredChildId ?? node.childIds.at(-1);
+		return redoId !== undefined && !!props.history.nodes[redoId];
+	});
+	createEffect(open, (isOpen) => {
+		if (!isOpen) return;
 		const closeOutside = (event: PointerEvent) => {
 			if (
 				event.target instanceof Node &&
-				!panel.current?.contains(event.target) &&
-				!toggle.current?.contains(event.target)
+				!panel?.contains(event.target) &&
+				!toggle?.contains(event.target)
 			)
 				setOpen(false);
 		};
@@ -46,7 +54,7 @@ export function HistoryControls({
 			event.preventDefault();
 			event.stopPropagation();
 			setOpen(false);
-			quietFocus(toggle.current);
+			quietFocus(toggle ?? null);
 		};
 		document.addEventListener("pointerdown", closeOutside, true);
 		document.addEventListener("keydown", closeOnEscape, true);
@@ -54,118 +62,131 @@ export function HistoryControls({
 			document.removeEventListener("pointerdown", closeOutside, true);
 			document.removeEventListener("keydown", closeOnEscape, true);
 		};
-	}, [open]);
-	useEffect(() => {
-		if (open)
-			panel.current
-				?.querySelector(`[data-history-node-id="${history.currentId}"]`)
-				?.scrollIntoView({ block: "nearest", inline: "nearest" });
-	}, [open, history.currentId]);
-	const renderNode = (id: number): ReactNode => {
-		const node = history.nodes[id];
-		const isCurrent = id === history.currentId;
+	});
+	createEffect(
+		() => (open() ? props.history.currentId : undefined),
+		(id) => {
+			if (id !== undefined)
+				panel
+					?.querySelector(`[data-history-node-id="${id}"]`)
+					?.scrollIntoView({ block: "nearest", inline: "nearest" });
+		},
+	);
+	const renderNode = (id: number): JSX.Element => {
+		const node = () => props.history.nodes[id];
+		const isCurrent = () => id === props.history.currentId;
 		return (
-			<li key={id} className="list-none">
-				<button
-					type="button"
-					className="ui-toggle my-px flex h-7 w-full min-w-48 cursor-pointer items-center gap-2 rounded-sm px-2 text-left text-xs focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent disabled:cursor-default disabled:opacity-40 disabled:[--toggle-fg:var(--color-fg-muted)] aria-[current=step]:font-medium pointer-coarse:h-11"
-					disabled={disabled}
-					aria-label={`Restore #${id}: ${node.label}`}
-					aria-current={isCurrent ? "step" : undefined}
-					data-history-node-id={id}
-					title={
-						node.parentId === null
-							? node.label
-							: `${node.label}, follows #${node.parentId}`
-					}
-					onClick={() => onRestore(id)}
-				>
-					<span className="w-7 shrink-0 text-2xs tabular-nums opacity-70">
-						#{id}
-					</span>
-					<span className="whitespace-nowrap">{node.label}</span>
-					{isCurrent && <span className="ml-auto pl-3 text-2xs">Current</span>}
-				</button>
-				{node.childIds.length > 0 && (
-					<ol className="m-0 ml-3.5 border-l border-line p-0 pl-1.5">
-						{node.childIds.map(renderNode)}
-					</ol>
+			<Show when={node()}>
+				{(entry) => (
+					<li class="list-none">
+						<button
+							type="button"
+							class="ui-toggle my-px flex h-7 w-full min-w-48 cursor-pointer items-center gap-2 rounded-sm px-2 text-left text-xs focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent disabled:cursor-default disabled:opacity-40 disabled:[--toggle-fg:var(--color-fg-muted)] aria-[current=step]:font-medium pointer-coarse:h-11"
+							disabled={disabled()}
+							aria-label={`Restore #${id}: ${entry().label}`}
+							aria-current={isCurrent() ? "step" : undefined}
+							data-history-node-id={id}
+							title={
+								entry().parentId === null
+									? entry().label
+									: `${entry().label}, follows #${entry().parentId}`
+							}
+							onClick={() => props.onRestore(id)}
+						>
+							<span class="w-7 shrink-0 text-2xs tabular-nums opacity-70">
+								#{id}
+							</span>
+							<span class="whitespace-nowrap">{entry().label}</span>
+							{isCurrent() && (
+								<span class="ml-auto pl-3 text-2xs">Current</span>
+							)}
+						</button>
+						{entry().childIds.length > 0 && (
+							<ol class="m-0 ml-3.5 border-l border-line p-0 pl-1.5">
+								<For each={entry().childIds}>
+									{(child) => renderNode(child)}
+								</For>
+							</ol>
+						)}
+					</li>
 				)}
-			</li>
+			</Show>
 		);
 	};
 	return (
 		<>
 			<TooltipButton
 				type="button"
-				className={viewControlButtonClassName}
-				disabled={disabled || current.parentId === null}
+				class={viewControlButtonClassName}
+				disabled={disabled() || current().parentId === null}
 				aria-label="Undo"
 				data-shortcut-keeps-focus
 				tooltip="Undo"
 				shortcut="Ctrl/Cmd + Z"
-				onClick={onUndo}
+				onClick={() => props.onUndo()}
 			>
 				<Undo2 size={17} aria-hidden="true" />
 			</TooltipButton>
 			<TooltipButton
 				type="button"
-				className={viewControlButtonClassName}
-				disabled={disabled || !redo}
+				class={viewControlButtonClassName}
+				disabled={disabled() || !canRedo()}
 				aria-label="Redo"
 				data-shortcut-keeps-focus
 				tooltip="Redo"
 				shortcut="Ctrl/Cmd + Shift + Z"
-				onClick={onRedo}
+				onClick={() => props.onRedo()}
 			>
 				<Redo2 size={17} aria-hidden="true" />
 			</TooltipButton>
 			<TooltipButton
-				ref={toggle}
+				ref={(button: HTMLButtonElement) => {
+					toggle = button;
+				}}
 				type="button"
-				className={viewControlButtonClassName}
-				disabled={disabled}
+				class={viewControlButtonClassName}
+				disabled={disabled()}
 				aria-label="History"
-				aria-expanded={open}
+				aria-expanded={open() ? "true" : "false"}
 				aria-controls={panelId}
 				tooltip="Drawing history"
 				onClick={() => setOpen((value) => !value)}
 			>
-				<HistoryIcon size={17} aria-hidden="true" />
+				<History size={17} aria-hidden="true" />
 			</TooltipButton>
-			{open && (
+			<Show when={open()}>
 				<section
 					ref={panel}
 					id={panelId}
 					aria-label="Drawing history"
-					className="ui-popover absolute bottom-[calc(100%+0.5rem)] left-1/2 z-20 flex max-h-[min(28rem,calc(100dvh-10rem))] w-[min(360px,calc(100vw-1.5rem))] -translate-x-1/2 flex-col"
+					class="ui-popover absolute bottom-[calc(100%+0.5rem)] left-1/2 z-20 flex max-h-[min(28rem,calc(100dvh-10rem))] w-[min(360px,calc(100vw-1.5rem))] -translate-x-1/2 flex-col"
 				>
-					<header className="flex shrink-0 items-center justify-between gap-3 border-b border-line-subtle py-1.5 pr-1.5 pl-3">
-						<h2 className="m-0 text-sm font-semibold">History</h2>
+					<header class="flex shrink-0 items-center justify-between gap-3 border-b border-line-subtle py-1.5 pr-1.5 pl-3">
+						<h2 class="m-0 text-sm font-semibold">History</h2>
 						<button
 							type="button"
 							aria-label="Close drawing history"
-							className={panelIconButtonClassName}
+							class={panelIconButtonClassName}
 							onClick={() => {
 								setOpen(false);
-								quietFocus(toggle.current);
+								quietFocus(toggle ?? null);
 							}}
 						>
 							<X size={16} aria-hidden="true" />
 						</button>
 					</header>
-					<div className="min-h-0 overflow-auto overscroll-contain p-1.5">
-						<ol className="m-0 min-w-max list-none p-0">
-							{roots.map((node) => renderNode(node.id))}
+					<div class="min-h-0 overflow-auto overscroll-contain p-1.5">
+						<ol class="m-0 min-w-max list-none p-0">
+							<For each={roots()}>{(id) => renderNode(id)}</For>
 						</ol>
-						{Object.keys(history.nodes).length < 2 && (
-							<p className="m-0 px-2 pt-1 pb-1.5 text-xs text-fg-faint">
+						{Object.keys(props.history.nodes).length < 2 && (
+							<p class="m-0 px-2 pt-1 pb-1.5 text-xs text-fg-faint">
 								Each edit is listed here. Choose one to go back to it.
 							</p>
 						)}
 					</div>
 				</section>
-			)}
+			</Show>
 		</>
 	);
 }

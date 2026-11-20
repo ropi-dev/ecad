@@ -1,6 +1,16 @@
 import { expect, type Page } from "@playwright/test";
 import { required } from "../helpers/required.ts";
 
+async function viewportSize(page: Page) {
+	return (
+		page.viewportSize() ??
+		(await page.evaluate(() => ({
+			width: window.innerWidth,
+			height: window.innerHeight,
+		})))
+	);
+}
+
 export async function openProjectFiles(page: Page) {
 	const sidebar = page.getByRole("complementary", {
 		name: "Project files",
@@ -11,7 +21,7 @@ export async function openProjectFiles(page: Page) {
 		() => !document.querySelector('[aria-busy="true"]'),
 	);
 	// Resting the mouse on the rail reveals the sidebar beside it.
-	const y = required(page.viewportSize()).height / 2;
+	const y = (await viewportSize(page)).height / 2;
 	await page.mouse.move(200, y);
 	await page.mouse.move(24, y);
 	await expect(sidebar).toHaveAttribute("data-open", "true");
@@ -36,7 +46,7 @@ export async function closeProjectFiles(page: Page) {
 		.getByRole("button", { name: "Settings", exact: true })
 		.focus();
 	await page.keyboard.press("Escape");
-	await page.mouse.move(required(page.viewportSize()).width - 20, 100);
+	await page.mouse.move((await viewportSize(page)).width - 20, 100);
 	await expect(sidebar).toHaveAttribute("data-open", "false");
 	await sidebar.evaluate(async (element) => {
 		await Promise.all(

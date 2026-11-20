@@ -1,11 +1,4 @@
-import {
-	lazy,
-	Suspense,
-	startTransition,
-	useEffect,
-	useRef,
-	useState,
-} from "react";
+import { createSignal, Loading, lazy, onSettled, Show } from "solid-js";
 import type { SymbolDefinition } from "#/drawing/symbols.ts";
 
 const SymbolPreview = lazy(
@@ -56,32 +49,33 @@ function ThumbnailSkeleton() {
 		<span
 			aria-hidden="true"
 			data-thumbnail-skeleton=""
-			className="block h-7 w-11 shrink-0 animate-pulse rounded-sm bg-hover motion-reduce:animate-none"
+			class="block h-7 w-11 shrink-0 animate-pulse rounded-sm bg-hover motion-reduce:animate-none"
 		/>
 	);
 }
 
-export function SymbolThumbnail({
-	definition,
-}: {
-	definition: SymbolDefinition;
-}) {
-	const ref = useRef<HTMLSpanElement>(null);
-	const [ready, setReady] = useState(false);
-	useEffect(() => {
-		const element = ref.current;
-		if (!element || ready) return;
-		return observe(element, () => startTransition(() => setReady(true)));
-	}, [ready]);
+export function SymbolThumbnail(props: { definition: SymbolDefinition }) {
+	let element!: HTMLSpanElement;
+	const [ready, setReady] = createSignal(false);
+	onSettled(() => {
+		let stop: (() => void) | undefined;
+		const done = () => {
+			stop?.();
+			stop = undefined;
+		};
+		stop = observe(element, () => {
+			setReady(true);
+			done();
+		});
+		return done;
+	});
 	return (
-		<span ref={ref} className="block h-7 w-11 shrink-0" aria-hidden="true">
-			<Suspense fallback={<ThumbnailSkeleton />}>
-				{ready ? (
-					<SymbolPreview definition={definition} />
-				) : (
-					<ThumbnailSkeleton />
-				)}
-			</Suspense>
+		<span ref={element} class="block h-7 w-11 shrink-0" aria-hidden="true">
+			<Loading fallback={<ThumbnailSkeleton />}>
+				<Show when={ready()} fallback={<ThumbnailSkeleton />}>
+					<SymbolPreview definition={props.definition} />
+				</Show>
+			</Loading>
 		</span>
 	);
 }

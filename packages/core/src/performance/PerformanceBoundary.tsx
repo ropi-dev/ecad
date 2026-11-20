@@ -1,42 +1,17 @@
-import {
-	Profiler,
-	type ProfilerOnRenderCallback,
-	type ReactNode,
-	useEffect,
-} from "react";
+import type { JSX } from "@solidjs/web";
+import { createEffect } from "solid-js";
 import { getAppPerformance } from "#/performance/runtime.ts";
 
-const onRender: ProfilerOnRenderCallback = (
-	id,
-	phase,
-	actualDuration,
-	baseDuration,
-	startTime,
-) => {
-	getAppPerformance()?.record(
-		`react.${id}`,
-		actualDuration,
-		{ phase, baseDuration },
-		startTime,
-	);
-};
-
-export function PerformanceBoundary({
-	name,
-	path,
-	children,
-}: {
+export function PerformanceBoundary(props: {
 	name: string;
 	path: string;
-	children: ReactNode;
+	children: JSX.Element;
 }) {
-	useEffect(() => {
-		getAppPerformance()?.workspaceReady(path);
-	}, [path]);
-	if (!getAppPerformance()) return children;
-	return (
-		<Profiler id={name} onRender={onRender}>
-			{children}
-		</Profiler>
+	createEffect(
+		() => props.path,
+		(path) => {
+			getAppPerformance()?.workspaceReady(path);
+		},
 	);
+	return props.children;
 }

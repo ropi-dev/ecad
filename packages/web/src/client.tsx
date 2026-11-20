@@ -1,16 +1,10 @@
 import "@ecad/core/performance/initialize.ts";
 import { startTelemetry } from "@ecad/core/telemetry/telemetry.ts";
-import { StartClient } from "@tanstack/react-start/client";
-import { StrictMode, startTransition } from "react";
-import { hydrateRoot } from "react-dom/client";
+import { hydrate } from "@solidjs/web";
+import { hydrateStart, StartClient } from "@tanstack/solid-start/client";
 
 startTelemetry();
 
-startTransition(() => {
-	hydrateRoot(
-		document,
-		<StrictMode>
-			<StartClient />
-		</StrictMode>,
-	);
+void hydrateStart().then((router) => {
+	hydrate(() => <StartClient router={router} />, document);
 });

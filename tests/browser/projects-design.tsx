@@ -1,11 +1,11 @@
-import { createRoot } from "react-dom/client";
+import { render } from "@solidjs/web";
 import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
 import type { ProjectSnapshot } from "#/projects/format.ts";
 import { ProjectProvider } from "#/projects/ProjectProvider.tsx";
 import { ProjectShell } from "#/projects/ProjectShell.tsx";
 import type { ProjectStorage } from "#/projects/storage.ts";
 import { WorkspaceStart } from "#/projects/WorkspaceStart.tsx";
-import { createMemorySymbolLibraryStorage } from "#/symbol-library/storage.tsx";
+import { createMemorySymbolLibraryStorage } from "#/symbol-library/storage.ts";
 import "#/styles.css";
 
 const parameters = new URLSearchParams(location.search);
@@ -109,13 +109,16 @@ const storage: ProjectStorage = {
 	importAssets: async () => snapshot,
 	readAsset: async () => new Uint8Array(),
 };
-createRoot(document.getElementById("root") as HTMLElement).render(
-	<ProjectProvider
-		storage={storage}
-		symbolStorage={createMemorySymbolLibraryStorage()}
-	>
-		<ProjectShell>
-			<WorkspaceStart />
-		</ProjectShell>
-	</ProjectProvider>,
+render(
+	() => (
+		<ProjectProvider
+			storage={storage}
+			symbolStorage={createMemorySymbolLibraryStorage()}
+		>
+			<ProjectShell>
+				<WorkspaceStart />
+			</ProjectShell>
+		</ProjectProvider>
+	),
+	document.getElementById("root") as HTMLElement,
 );

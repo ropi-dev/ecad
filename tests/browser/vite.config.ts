@@ -1,3 +1,4 @@
+import solid from "@solidjs/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 
@@ -16,5 +17,5 @@ export default defineConfig({
 	optimizeDeps: { include: ["@ecad/core > fflate"] },
 	// Test and benchmark output must not reload pages during a run.
 	server: { watch: { ignored: ["**/perf-artifacts/**"] } },
-	plugins: [tailwindcss()],
+	plugins: [tailwindcss(), solid()],
 });

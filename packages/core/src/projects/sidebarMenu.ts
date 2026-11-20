@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { type Accessor, onSettled } from "solid-js";
 
 // Shared styles for the dropdown menus opened from the file sidebar.
 export const sidebarMenuContent =
@@ -12,11 +12,11 @@ export const sidebarMenuSeparator = "mx-1 my-1 h-px bg-line-subtle";
  * stays expanded meanwhile, because that content is portaled outside of it.
  */
 export function useReportActive(
-	active: boolean,
-	onActiveChange: ((active: boolean) => void) | undefined,
+	active: Accessor<boolean>,
+	register: ((active: Accessor<boolean> | undefined) => void) | undefined,
 ) {
-	useEffect(() => {
-		onActiveChange?.(active);
-	}, [active, onActiveChange]);
-	useEffect(() => () => onActiveChange?.(false), [onActiveChange]);
+	onSettled(() => {
+		register?.(active);
+		return () => register?.(undefined);
+	});
 }

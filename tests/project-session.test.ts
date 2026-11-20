@@ -25,7 +25,7 @@ import { primaryPcbId } from "#/projects/pcb.ts";
 import { projectIndex } from "#/projects/project-index.ts";
 import { assembleProjectSave } from "#/projects/save-assembly.ts";
 import type { ProjectStorage } from "#/projects/storage.ts";
-import type { SymbolLibraryStorage } from "#/symbol-library/storage.tsx";
+import type { SymbolLibraryStorage } from "#/symbol-library/storage.ts";
 import { installKiCadWorker } from "./helpers/kicad-worker.ts";
 import { required } from "./helpers/required.ts";
 

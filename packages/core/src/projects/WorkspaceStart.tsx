@@ -1,6 +1,6 @@
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
-import { House } from "lucide-react";
-import { useRef, useState } from "react";
+import { createSignal, For, Match, Switch } from "solid-js";
+import { House } from "#/components/ui/icons.tsx";
 import { toastManager } from "#/components/ui/toast.ts";
 import {
 	formatShortcut,
@@ -40,18 +40,20 @@ export function WorkspaceStart() {
 			openBoard,
 		}),
 	);
-	const sidebar = useWorkspaceControls()?.sidebar;
-	const [importing, setImporting] = useState(false);
-	const fileInput = useRef<HTMLInputElement>(null);
-	const viewerLinks = useRef<Record<string, HTMLAnchorElement | null>>({});
+	const controls = useWorkspaceControls();
+	const sidebar = () => controls?.sidebar;
+	const [importing, setImporting] = createSignal(false);
+	let fileInput!: HTMLInputElement;
+	const viewerLinks: Record<string, HTMLAnchorElement | undefined> = {};
 	const modifier = shortcutModifier().key;
 
 	async function openExample() {
-		if (!project) return;
+		const current = project();
+		if (!current) return;
 		setImporting(true);
 		try {
-			await project.openBoard(await project.importExample("rp2350a"));
-			viewerLinks.current["/editor"]?.click();
+			await current.openBoard(await current.importExample("rp2350a"));
+			viewerLinks["/editor"]?.click();
 		} catch (cause) {
 			if (!isProjectError(cause, "ProjectConflict"))
 				toastManager.add({
@@ -65,7 +67,8 @@ export function WorkspaceStart() {
 	}
 
 	async function importBoard(files: File[]) {
-		if (!project || !files.length) return;
+		const current = project();
+		if (!current || !files.length) return;
 		const step = files.filter((file) => /\.(step|stp)$/i.test(file.name));
 		const gerber = files.filter((file) => !step.includes(file));
 		setImporting(true);
@@ -80,15 +83,15 @@ export function WorkspaceStart() {
 			] as const)
 				if (group.length)
 					added[kind] = (
-						await addProjectFiles(project.importAssets, group, kind)
+						await addProjectFiles(current.importAssets, group, kind)
 					).assets;
 			const kind = added.gerber.length ? "gerber" : "step";
 			const assets = added[kind];
 			if (assets.length) {
-				project.selectAsset(assets.length === 1 ? assets[0] : null, {
+				current.selectAsset(assets.length === 1 ? assets[0] : null, {
 					reload: true,
 				});
-				viewerLinks.current[`/${kind}`]?.click();
+				viewerLinks[`/${kind}`]?.click();
 			}
 		} catch (cause) {
 			if (!isProjectError(cause, "ProjectConflict"))
@@ -103,123 +106,129 @@ export function WorkspaceStart() {
 	}
 
 	return (
-		<main className="workspace-start workspace-plain relative flex h-full min-h-dvh flex-col">
+		<main class="workspace-start workspace-plain relative flex h-full min-h-dvh flex-col">
 			<DocumentBar icon={House} />
-			<div className="workspace-start-message">
-				{project?.busy ? (
-					<output>Opening your workspace...</output>
-				) : project?.error ? (
-					<div role="alert">
-						<p className="m-0">{project.error}</p>
-						<button
-							type="button"
-							className="ui-button mt-3"
-							data-variant="secondary"
-							onClick={() => void project.reload()}
+			<div class="workspace-start-message">
+				<Switch
+					fallback={
+						<dl
+							class="workspace-start-instructions"
+							aria-label="Workspace instructions"
+							data-shortcut-scope="none"
 						>
-							Try again
-						</button>
-					</div>
-				) : (
-					<dl
-						className="workspace-start-instructions"
-						aria-label="Workspace instructions"
-						data-shortcut-scope="none"
-					>
-						<div data-keyboard>
-							<dt>Create a file</dt>
-							<dd>
-								<button
-									type="button"
-									aria-keyshortcuts={`${modifier}+Shift+N`}
-									disabled={!sidebar || !project?.ready}
-									className="workspace-start-action"
-									onClick={() => sidebar?.openAddMenu()}
-								>
-									{formatShortcut("Ctrl+Shift+N")}
-								</button>
-							</dd>
-						</div>
-						<div>
-							<dt>View a board</dt>
-							<dd>
-								<button
-									type="button"
-									disabled={!project?.ready || importing}
-									className="workspace-start-action"
-									onClick={() => fileInput.current?.click()}
-								>
-									{importing ? "Adding files..." : "Import Gerber or STEP"}
-								</button>
-								<input
-									ref={fileInput}
-									type="file"
-									multiple
-									hidden
-									tabIndex={-1}
-									onChange={(event) => {
-										const files = Array.from(event.target.files ?? []);
-										event.target.value = "";
-										void importBoard(files);
-									}}
-								/>
-							</dd>
-						</div>
-						<div>
-							<dt>Open an example</dt>
-							<dd>
-								<button
-									type="button"
-									disabled={!project?.ready || importing}
-									className="workspace-start-action"
-									onClick={() => void openExample()}
-								>
-									RP2350A reference design
-								</button>
-							</dd>
-						</div>
-						<div data-keyboard>
-							<dt>Open settings</dt>
-							<dd>
-								<button
-									type="button"
-									aria-keyshortcuts={`${modifier}+,`}
-									disabled={!sidebar}
-									className="workspace-start-action"
-									onClick={() => sidebar?.openSettings()}
-								>
-									{formatShortcut("Ctrl+,")}
-								</button>
-							</dd>
-						</div>
-						<div data-keyboard>
-							<dt>Show every shortcut</dt>
-							<dd>
-								<button
-									type="button"
-									className="workspace-start-action"
-									onClick={revealButtonShortcuts}
-								>
-									{formatShortcut("Hold Ctrl")}
-								</button>
-							</dd>
-						</div>
-					</dl>
-				)}
-			</div>
-			{(["/editor", "/gerber", "/step"] as const).map((href) => (
-				<ProjectLink
-					key={href}
-					href={href}
-					ref={(node) => {
-						viewerLinks.current[href] = node;
-					}}
-					hidden
-					tabIndex={-1}
+							<div data-keyboard>
+								<dt>Create a file</dt>
+								<dd>
+									<button
+										type="button"
+										aria-keyshortcuts={`${modifier}+Shift+N`}
+										disabled={!sidebar() || !project()?.ready}
+										class="workspace-start-action"
+										onClick={() => sidebar()?.openAddMenu()}
+									>
+										{formatShortcut("Ctrl+Shift+N")}
+									</button>
+								</dd>
+							</div>
+							<div>
+								<dt>View a board</dt>
+								<dd>
+									<button
+										type="button"
+										disabled={!project()?.ready || importing()}
+										class="workspace-start-action"
+										onClick={() => fileInput.click()}
+									>
+										{importing() ? "Adding files..." : "Import Gerber or STEP"}
+									</button>
+									<input
+										ref={fileInput}
+										type="file"
+										multiple
+										hidden
+										tabindex={-1}
+										onChange={(event) => {
+											const files = Array.from(event.currentTarget.files ?? []);
+											event.currentTarget.value = "";
+											void importBoard(files);
+										}}
+									/>
+								</dd>
+							</div>
+							<div>
+								<dt>Open an example</dt>
+								<dd>
+									<button
+										type="button"
+										disabled={!project()?.ready || importing()}
+										class="workspace-start-action"
+										onClick={() => void openExample()}
+									>
+										RP2350A reference design
+									</button>
+								</dd>
+							</div>
+							<div data-keyboard>
+								<dt>Open settings</dt>
+								<dd>
+									<button
+										type="button"
+										aria-keyshortcuts={`${modifier}+,`}
+										disabled={!sidebar()}
+										class="workspace-start-action"
+										onClick={() => sidebar()?.openSettings()}
+									>
+										{formatShortcut("Ctrl+,")}
+									</button>
+								</dd>
+							</div>
+							<div data-keyboard>
+								<dt>Show every shortcut</dt>
+								<dd>
+									<button
+										type="button"
+										class="workspace-start-action"
+										onClick={() => revealButtonShortcuts()}
+									>
+										{formatShortcut("Hold Ctrl")}
+									</button>
+								</dd>
+							</div>
+						</dl>
+					}
 				>
-					Open {href.slice(1)}
-				</ProjectLink>
-			))}
+					<Match when={project()?.busy}>
+						<output>Opening your workspace...</output>
+					</Match>
+					<Match when={project()?.error}>
+						<div role="alert">
+							<p class="m-0">{project()?.error}</p>
+							<button
+								type="button"
+								class="ui-button mt-3"
+								data-variant="secondary"
+								onClick={() => void project()?.reload()}
+							>
+								Try again
+							</button>
+						</div>
+					</Match>
+				</Switch>
+			</div>
+			<For each={["/editor", "/gerber", "/step"] as const}>
+				{(href) => (
+					<ProjectLink
+						href={href}
+						ref={(node) => {
+							viewerLinks[href] = node;
+						}}
+						hidden
+						tabindex={-1}
+					>
+						Open {href.slice(1)}
+					</ProjectLink>
+				)}
+			</For>
 		</main>
 	);
 }

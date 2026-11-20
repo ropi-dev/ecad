@@ -1,7 +1,12 @@
 import { replaceAndPlaceShapesEffect } from "@ecad/drawing-core/commands/drawing-commands.ts";
 import type { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
-import { useEffect, useState } from "react";
+import {
+	type Accessor,
+	createEffect,
+	createMemo,
+	createSignal,
+} from "solid-js";
 import type { EditorSession } from "#/components/editor/editorSession.ts";
 import { rerouteLegacyWires } from "#/drawing/diagonal-wires.ts";
 
@@ -12,36 +17,37 @@ const reroutedStores = new WeakSet<object>();
  * edit, and returns the notice to show while that edit is the current history
  * entry.
  */
-export function useLegacyWireReroute({
-	store,
-	session,
-	sheetless,
-	ready,
-	resolved,
-}: {
-	store: ReturnType<typeof createDrawingStore>;
-	session: EditorSession;
-	sheetless: boolean;
-	ready: boolean;
-	resolved: { shapes: EditorShape[]; errors: string[] };
-}) {
-	const [rerouteNotice, setRerouteNotice] = useState<{
+export function useLegacyWireReroute(
+	options: Accessor<{
+		store: ReturnType<typeof createDrawingStore>;
+		session: EditorSession;
+		sheetless: boolean;
+		ready: boolean;
+		resolved: { shapes: EditorShape[]; errors: string[] };
+	}>,
+) {
+	const [rerouteNotice, setRerouteNotice] = createSignal<{
 		text: string;
 		historyId: number;
 	} | null>(null);
-	useEffect(() => {
+	const pending = createMemo(() => {
+		const { store, session, sheetless, ready, resolved } = options();
 		if (
 			sheetless ||
 			!ready ||
 			resolved.errors.length ||
 			reroutedStores.has(store)
 		)
-			return;
-		reroutedStores.add(store);
-		const reroute = rerouteLegacyWires(resolved.shapes);
+			return null;
+		return { store, session, shapes: resolved.shapes };
+	});
+	createEffect(pending, (next) => {
+		if (!next || reroutedStores.has(next.store)) return;
+		reroutedStores.add(next.store);
+		const reroute = rerouteLegacyWires(next.shapes);
 		if (
 			reroute &&
-			session.execute(
+			next.session.execute(
 				replaceAndPlaceShapesEffect(
 					reroute.replacements,
 					reroute.additions,
@@ -51,7 +57,7 @@ export function useLegacyWireReroute({
 		)
 			setRerouteNotice({
 				text: reroute.notice,
-				historyId: store.getSnapshot().history.currentId,
+				historyId: next.store.getSnapshot().history.currentId,
 			});
 	});
 	return rerouteNotice;

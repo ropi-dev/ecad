@@ -1,93 +1,89 @@
-import { useId, useState } from "react";
+import { createSignal, createUniqueId, Show } from "solid-js";
 import { AppDialog, dialogBodyClassName } from "#/components/ui/Dialog.tsx";
 
-export function CreateFileDialog({
-	kind,
-	onClose,
-	onCreate,
-	description = kind === "symbol"
-		? "Name this symbol to add it to your Symbols list."
-		: `Name this ${kind} to add it to your project.`,
-}: {
+export function CreateFileDialog(props: {
 	kind: "symbol" | "footprint" | "circuit";
 	onClose: () => void;
 	onCreate: (name: string) => Promise<string | undefined>;
 	description?: string;
 }) {
-	const inputId = useId();
-	const formId = useId();
-	const [name, setName] = useState("");
-	const [error, setError] = useState("");
-	const [saving, setSaving] = useState(false);
+	const inputId = createUniqueId();
+	const formId = createUniqueId();
+	const [name, setName] = createSignal("");
+	const [error, setError] = createSignal("");
+	const [saving, setSaving] = createSignal(false);
 	return (
 		<AppDialog
 			open
 			onOpenChange={(open) => {
-				if (!open && !saving) onClose();
+				if (!open && !saving()) props.onClose();
 			}}
 			size="sm"
-			title={`Create ${kind}`}
-			description={description}
+			title={`Create ${props.kind}`}
+			description={
+				props.description ??
+				(props.kind === "symbol"
+					? "Name this symbol to add it to your Symbols list."
+					: `Name this ${props.kind} to add it to your project.`)
+			}
 			footer={
 				<>
 					<button
 						type="button"
-						disabled={saving}
-						className="ui-button"
+						disabled={saving()}
+						class="ui-button"
 						data-variant="ghost"
 						data-size="md"
-						onClick={onClose}
+						onClick={() => props.onClose()}
 					>
 						Cancel
 					</button>
 					<button
 						type="submit"
 						form={formId}
-						disabled={!name.trim() || saving}
-						className="ui-button"
+						disabled={!name().trim() || saving()}
+						class="ui-button"
 						data-variant="primary"
 						data-size="md"
 					>
-						{saving ? "Creating..." : `Create ${kind}`}
+						{saving() ? "Creating..." : `Create ${props.kind}`}
 					</button>
 				</>
 			}
 		>
 			<form
 				id={formId}
-				className={dialogBodyClassName}
+				class={dialogBodyClassName}
 				onSubmit={async (event) => {
 					event.preventDefault();
-					if (!name.trim() || saving) return;
+					const trimmed = name().trim();
+					if (!trimmed || saving()) return;
 					setSaving(true);
 					try {
-						setError((await onCreate(name.trim())) ?? "");
+						setError((await props.onCreate(trimmed)) ?? "");
 					} finally {
 						setSaving(false);
 					}
 				}}
 			>
-				<label
-					htmlFor={inputId}
-					className="block text-xs font-medium text-fg-muted"
-				>
-					{kind[0].toUpperCase() + kind.slice(1)} name
+				<label for={inputId} class="block text-xs font-medium text-fg-muted">
+					{props.kind[0].toUpperCase() + props.kind.slice(1)} name
 				</label>
 				<input
 					id={inputId}
-					value={name}
-					onChange={(event) => setName(event.currentTarget.value)}
-					maxLength={100}
+					value={name()}
+					onInput={(event) => setName(event.currentTarget.value)}
+					maxlength={100}
 					required
-					disabled={saving}
-					autoComplete="off"
-					className="ui-input mt-1.5 h-8 w-full text-sm"
+					disabled={saving()}
+					autocomplete="off"
+					class="ui-input mt-1.5 h-8 w-full text-sm"
 				/>
-				{error && (
-					<p role="alert" className="m-0 mt-3 text-sm text-danger">
-						{error}
+				<Show when={error()}>
+					<p role="alert" class="m-0 mt-3 text-sm text-danger">
+						{error()}
 					</p>
-				)}
+				</Show>
 			</form>
 		</AppDialog>
 	);

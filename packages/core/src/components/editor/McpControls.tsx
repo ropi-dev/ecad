@@ -1,7 +1,16 @@
 import type { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
-import { PlugZap } from "lucide-react";
-import { Popover } from "radix-ui";
-import { useEffect, useId, useRef, useState } from "react";
+import {
+	type Accessor,
+	createEffect,
+	createMemo,
+	createSignal,
+	createUniqueId,
+	Match,
+	Show,
+	Switch,
+} from "solid-js";
+import { PlugZap } from "#/components/ui/icons.tsx";
+import { Popover } from "#/components/ui/primitives.tsx";
 import { quietFocus } from "#/components/viewer/ToolbarGroup.tsx";
 import { TooltipTrigger } from "#/components/viewer/TooltipButton.tsx";
 import type {
@@ -11,57 +20,66 @@ import type {
 } from "#/mcp/editor-connection.ts";
 import { useReportActive } from "#/projects/sidebarMenu.ts";
 
-export function McpControls({
-	store,
-	connect,
-	autoEnable = false,
-	onActiveChange,
-}: {
+const fieldClassName = "ui-input w-full font-mono text-2xs";
+const fieldLabel = "text-xs font-medium text-fg-muted";
+
+export function McpControls(props: {
 	store: ReturnType<typeof createDrawingStore>;
 	connect: EditorMcpConnector;
 	autoEnable?: boolean;
-	onActiveChange?: (active: boolean) => void;
+	registerActive?: (active: Accessor<boolean> | undefined) => void;
 }) {
-	const fieldId = useId();
-	const [enabled, setEnabled] = useState(autoEnable);
-	const [panelOpen, setPanelOpen] = useState(autoEnable);
-	const trigger = useRef<HTMLButtonElement>(null);
-	useReportActive(panelOpen, onActiveChange);
-	const [connection, setConnection] = useState<EditorMcpState | null>(null);
-	const [copyMessage, setCopyMessage] = useState("");
-	const currentStore = useRef(store);
-	currentStore.current = store;
-	const activeConnection = useRef<EditorMcpConnection | null>(null);
-	useEffect(() => {
-		if (!enabled) return;
-		let mounted = true;
-		const connection = connect({
-			getStore: () => currentStore.current,
-			onState: (state) => {
-				if (!mounted) return;
-				setConnection(state);
-				if (state.status === "error") {
-					setEnabled(false);
-					setPanelOpen(true);
-				}
-			},
-		});
-		activeConnection.current = connection;
-		return () => {
-			mounted = false;
-			connection.disconnect();
-			if (activeConnection.current === connection)
-				activeConnection.current = null;
-		};
-	}, [enabled, connect]);
-	const configuration =
-		connection?.status === "connected"
+	const fieldId = createUniqueId();
+	const [enabled, setEnabled] = createSignal(() => props.autoEnable ?? false);
+	const [panelOpen, setPanelOpen] = createSignal(
+		() => props.autoEnable ?? false,
+	);
+	let trigger: HTMLButtonElement | undefined;
+	useReportActive(panelOpen, (active) => props.registerActive?.(active));
+	const [connection, setConnection] = createSignal<EditorMcpState | null>(null);
+	const [copyMessage, setCopyMessage] = createSignal("");
+	let activeConnection: EditorMcpConnection | null = null;
+	createEffect(
+		() => (enabled() ? props.connect : undefined),
+		(connect) => {
+			if (!connect) return;
+			let mounted = true;
+			const opened = connect({
+				getStore: () => props.store,
+				onState: (state) => {
+					if (!mounted) return;
+					setConnection(state);
+					if (state.status === "error") {
+						setEnabled(false);
+						setPanelOpen(true);
+					}
+				},
+			});
+			activeConnection = opened;
+			return () => {
+				mounted = false;
+				opened.disconnect();
+				if (activeConnection === opened) activeConnection = null;
+			};
+		},
+	);
+	const connected = createMemo(() => {
+		const state = connection();
+		return state?.status === "connected" ? state : null;
+	});
+	const failure = createMemo(() => {
+		const state = connection();
+		return state?.status === "error" ? state : null;
+	});
+	const configuration = createMemo(() => {
+		const state = connected();
+		return state
 			? JSON.stringify(
 					{
 						mcpServers: {
 							ecad: {
-								url: connection.url,
-								headers: { Authorization: `Bearer ${connection.token}` },
+								url: state.url,
+								headers: { Authorization: `Bearer ${state.token}` },
 							},
 						},
 					},
@@ -69,28 +87,33 @@ export function McpControls({
 					2,
 				)
 			: "";
-	const fieldClassName = "ui-input w-full font-mono text-2xs";
-	const fieldLabel = "text-xs font-medium text-fg-muted";
-	const label = enabled
-		? connection?.status === "connected"
-			? "MCP connected"
-			: "MCP connecting..."
-		: "Enable MCP";
+	});
+	const label = () =>
+		enabled()
+			? connection()?.status === "connected"
+				? "MCP connected"
+				: "MCP connecting..."
+			: "Enable MCP";
 	return (
-		<Popover.Root open={panelOpen} onOpenChange={setPanelOpen}>
-			<TooltipTrigger tooltip={label} side="right">
-				<Popover.Trigger asChild>
+		<Popover.Root
+			open={panelOpen()}
+			onOpenChange={(open: boolean) => setPanelOpen(open)}
+		>
+			<TooltipTrigger tooltip={label()} side="right">
+				<Popover.Trigger>
 					<button
-						ref={trigger}
+						ref={(button) => {
+							trigger = button;
+						}}
 						type="button"
-						aria-label={label}
-						aria-pressed={enabled}
-						aria-expanded={panelOpen}
+						aria-label={label()}
+						aria-pressed={enabled() ? "true" : "false"}
+						aria-expanded={panelOpen() ? "true" : "false"}
 						aria-controls={`${fieldId}-panel`}
 						data-icon
-						className="ui-button ui-toggle size-9"
+						class="ui-button ui-toggle size-9"
 						onClick={() => {
-							if (enabled) return;
+							if (enabled()) return;
 							setConnection(null);
 							setCopyMessage("");
 							setEnabled(true);
@@ -100,113 +123,112 @@ export function McpControls({
 					</button>
 				</Popover.Trigger>
 			</TooltipTrigger>
-			{panelOpen && connection && connection.status !== "disconnected" && (
-				<Popover.Portal>
-					<Popover.Content
-						asChild
-						role="region"
-						side="right"
-						align="start"
-						sideOffset={12}
-						collisionPadding={12}
-						onCloseAutoFocus={(event) => {
-							event.preventDefault();
-							quietFocus(trigger.current);
-						}}
-					>
-						<section
-							id={`${fieldId}-panel`}
-							aria-label="MCP connection"
-							className="ui-popover z-30 grid max-h-[min(var(--radix-popover-content-available-height),calc(100dvh-1.5rem))] w-[min(360px,calc(100vw-1.5rem))] max-w-[var(--radix-popover-content-available-width)] gap-3 overflow-auto p-3 text-xs"
-						>
-							<header className="flex items-center justify-between gap-3">
-								<h2 className="m-0 text-sm font-semibold">MCP connection</h2>
-								{enabled && (
-									<button
-										type="button"
-										className="ui-button"
-										data-variant="danger"
-										onClick={() => {
-											activeConnection.current?.disconnect();
-											setEnabled(false);
-											setPanelOpen(false);
-											setConnection(null);
-											setCopyMessage("");
-										}}
-									>
-										Disable MCP
-									</button>
-								)}
-							</header>
-							{connection.status === "connecting" && (
-								<output className="text-fg-muted">
-									Starting the MCP server...
-								</output>
-							)}
-							{connection.status === "error" && (
-								<p role="alert" className="m-0 text-danger">
-									{connection.message}
+			<Show
+				when={
+					panelOpen() && connection() && connection()?.status !== "disconnected"
+				}
+			>
+				<Popover.Content
+					id={`${fieldId}-panel`}
+					role="region"
+					aria-label="MCP connection"
+					side="right"
+					align="start"
+					sideOffset={12}
+					collisionPadding={12}
+					onCloseAutoFocus={(event: Event) => {
+						event.preventDefault();
+						quietFocus(trigger ?? null);
+					}}
+					class="ui-popover z-30 grid max-h-[min(var(--radix-popover-content-available-height),calc(100dvh-1.5rem))] w-[min(360px,calc(100vw-1.5rem))] max-w-[var(--radix-popover-content-available-width)] gap-3 overflow-auto p-3 text-xs"
+				>
+					<header class="flex items-center justify-between gap-3">
+						<h2 class="m-0 text-sm font-semibold">MCP connection</h2>
+						{enabled() && (
+							<button
+								type="button"
+								class="ui-button"
+								data-variant="danger"
+								onClick={() => {
+									activeConnection?.disconnect();
+									setEnabled(false);
+									setPanelOpen(false);
+									setConnection(null);
+									setCopyMessage("");
+								}}
+							>
+								Disable MCP
+							</button>
+						)}
+					</header>
+					<Switch>
+						<Match when={connection()?.status === "connecting"}>
+							<output class="text-fg-muted">Starting the MCP server...</output>
+						</Match>
+						<Match when={failure()}>
+							{(error) => (
+								<p role="alert" class="m-0 text-danger">
+									{error().message}
 								</p>
 							)}
-							{connection.status === "connected" && (
+						</Match>
+						<Match when={connected()}>
+							{(live) => (
 								<>
-									<output className="flex items-center gap-2 font-medium text-success">
+									<output class="flex items-center gap-2 font-medium text-success">
 										<span
 											aria-hidden="true"
-											className="size-1.5 rounded-full bg-success"
+											class="size-1.5 rounded-full bg-success"
 										/>
 										Connected to the open drawing
 									</output>
-									<p className="m-0 text-fg-muted">
+									<p class="m-0 text-fg-muted">
 										MCP tools can read and edit the drawing open in the editor.
 										Keep ECAD open. Disable MCP to disconnect.
 									</p>
-									<div className="grid gap-1.5">
-										<label htmlFor={`${fieldId}-url`} className={fieldLabel}>
+									<div class="grid gap-1.5">
+										<label for={`${fieldId}-url`} class={fieldLabel}>
 											MCP URL
 										</label>
 										<input
 											id={`${fieldId}-url`}
-											className={fieldClassName}
-											readOnly
-											value={connection.url}
+											class={fieldClassName}
+											readonly
+											value={live().url}
 										/>
 									</div>
-									<div className="grid gap-1.5">
-										<label htmlFor={`${fieldId}-token`} className={fieldLabel}>
+									<div class="grid gap-1.5">
+										<label for={`${fieldId}-token`} class={fieldLabel}>
 											MCP bearer token
 										</label>
 										<input
 											id={`${fieldId}-token`}
-											className={fieldClassName}
-											readOnly
+											class={fieldClassName}
+											readonly
 											type="password"
-											value={connection.token}
+											value={live().token}
 										/>
 									</div>
-									<div className="grid gap-1.5">
-										<label
-											htmlFor={`${fieldId}-configuration`}
-											className={fieldLabel}
-										>
+									<div class="grid gap-1.5">
+										<label for={`${fieldId}-configuration`} class={fieldLabel}>
 											MCP configuration
 										</label>
 										<textarea
 											id={`${fieldId}-configuration`}
-											className={fieldClassName}
-											readOnly
+											class={fieldClassName}
+											readonly
 											rows={9}
-											value={configuration}
+											value={configuration()}
 										/>
 									</div>
 									<button
 										type="button"
-										className="ui-button"
+										class="ui-button"
 										data-variant="primary"
 										data-size="md"
 										onClick={async () => {
 											try {
-												await navigator.clipboard.writeText(configuration);
+												await navigator.clipboard.writeText(configuration());
 												setCopyMessage("Configuration copied.");
 											} catch {
 												setCopyMessage(
@@ -217,15 +239,15 @@ export function McpControls({
 									>
 										Copy configuration
 									</button>
-									{copyMessage && (
-										<output className="text-fg-muted">{copyMessage}</output>
-									)}
+									<Show when={copyMessage()}>
+										<output class="text-fg-muted">{copyMessage()}</output>
+									</Show>
 								</>
 							)}
-						</section>
-					</Popover.Content>
-				</Popover.Portal>
-			)}
+						</Match>
+					</Switch>
+				</Popover.Content>
+			</Show>
 		</Popover.Root>
 	);
 }

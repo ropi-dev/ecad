@@ -8,16 +8,17 @@ import type {
 	CircuitNet,
 	CircuitPin,
 } from "@ecad/drawing-core/circuit/model.ts";
-import { memo } from "react";
+import { createMemo, For, Show } from "solid-js";
 import { CircuitComponentNode } from "#/components/circuit/CircuitComponentNode.tsx";
 import { CircuitConnection } from "#/components/circuit/CircuitConnection.tsx";
 import { CircuitNetNode } from "#/components/circuit/CircuitNetNode.tsx";
 import type { CircuitTool } from "#/components/circuit/CircuitToolbar.tsx";
-import type {
-	CircuitGraph,
-	CircuitGraphActions,
-	CircuitSelection,
-	ConnectionDrag,
+import {
+	type CircuitGraph,
+	type CircuitGraphActions,
+	type CircuitSelection,
+	type ConnectionDrag,
+	createIdFlags,
 } from "#/components/circuit/circuitEditorState.ts";
 import type { SymbolDefinition } from "#/drawing/symbols.ts";
 
@@ -25,24 +26,7 @@ import type { SymbolDefinition } from "#/drawing/symbols.ts";
  * The circuit graph's SVG content: connections, components, nets, the
  * connection being dragged and the placement preview.
  */
-export const CircuitGraphLayer = memo(function CircuitGraphLayer({
-	graph,
-	pins,
-	pinNets,
-	noConnectPinIds,
-	tool,
-	gridStep,
-	selection,
-	selectedNetId,
-	checkedPins,
-	editing,
-	pendingPin,
-	connectionDrag,
-	placement,
-	placementPoint,
-	placementPinCount,
-	actions,
-}: {
+export function CircuitGraphLayer(props: {
 	graph: CircuitGraph;
 	pins: ReadonlyMap<string, CircuitPin & { component: CircuitComponent }>;
 	pinNets: ReadonlyMap<string, CircuitNet>;
@@ -60,125 +44,161 @@ export const CircuitGraphLayer = memo(function CircuitGraphLayer({
 	placementPinCount: number;
 	actions: CircuitGraphActions;
 }) {
-	const connectionStart = connectionDrag?.active
-		? graph.pinNodes.get(connectionDrag.pinId)
-		: undefined;
-	const targetNet =
-		connectionDrag?.target?.kind === "net"
-			? graph.nets.find((item) => item.net.id === connectionDrag.target?.id)
-			: undefined;
-	const connectionTarget = connectionDrag?.target
-		? connectionDrag.target.kind === "pin"
-			? graph.pinNodes.get(connectionDrag.target.id)
-			: targetNet
-				? { x: targetNet.x, y: targetNet.y, side: "left" as const }
-				: undefined
-		: undefined;
-	const connectionEnd = connectionTarget ?? connectionDrag?.point;
-	const targetId = connectionDrag?.active ? connectionDrag.target : null;
-	const pinOf = (componentId: string, pinId: string | null | undefined) =>
-		pinId && graph.pinNodes.get(pinId)?.componentId === componentId
-			? pinId
-			: null;
+	const connectionStart = createMemo(() =>
+		props.connectionDrag?.active
+			? props.graph.pinNodes.get(props.connectionDrag.pinId)
+			: undefined,
+	);
+	const target = createMemo(() =>
+		props.connectionDrag?.active ? props.connectionDrag.target : null,
+	);
+	const connectionTarget = createMemo(() => {
+		const dragTarget = props.connectionDrag?.target;
+		if (!dragTarget) return undefined;
+		if (dragTarget.kind === "pin")
+			return props.graph.pinNodes.get(dragTarget.id);
+		const net = props.graph.nets.find((item) => item.net.id === dragTarget.id);
+		return net ? { x: net.x, y: net.y, side: "left" as const } : undefined;
+	});
+	const connectionPath = createMemo(() => {
+		const start = connectionStart();
+		const end = connectionTarget() ?? props.connectionDrag?.point;
+		if (!start || !end) return undefined;
+		return `M ${start.x} ${start.y} C ${start.x + (start.side === "left" ? -connectionCurveOffset : connectionCurveOffset)} ${start.y}, ${end.x + (connectionTarget()?.side === "right" ? connectionCurveOffset : -connectionCurveOffset)} ${end.y}, ${end.x} ${end.y}`;
+	});
+	const checked = createIdFlags(() => props.checkedPins);
+	const selectedNet = createIdFlags(() => [props.selectedNetId]);
+	const selected = createIdFlags(() => [props.selection?.id]);
+	const highlightedPins = createIdFlags(() => [
+		props.selection?.id,
+		props.pendingPin,
+		connectionStart() ? props.connectionDrag?.pinId : null,
+	]);
+	const targetPins = createIdFlags(() => {
+		const current = target();
+		return [current?.kind === "pin" ? current.id : null];
+	});
+	const targetNets = createIdFlags(() => {
+		const current = target();
+		return [current?.kind === "net" ? current.id : null];
+	});
 	return (
 		<>
-			{graph.edges.map((edge) => (
-				<CircuitConnection
-					key={`${edge.netId}:${edge.pinId}`}
-					pinId={edge.pinId}
-					pinX={edge.pin.x}
-					pinY={edge.pin.y}
-					side={edge.pin.side}
-					netX={edge.net.x}
-					netY={edge.net.y}
-					label={`Connection ${pins.get(edge.pinId)?.component.reference}.${pins.get(edge.pinId)?.number}`}
-					selected={checkedPins.includes(edge.pinId)}
-					highlighted={selectedNetId === edge.netId}
-					actions={actions}
-				/>
-			))}
-			{graph.components.map((node) => (
-				<CircuitComponentNode
-					key={node.id}
-					component={node.component}
-					x={node.x}
-					y={node.y}
-					height={node.height}
-					collapsed={node.collapsed}
-					connectsLeft={node.connectionSides.includes("left")}
-					connectsRight={node.connectionSides.includes("right")}
-					pinSides={node.component.pins
-						.map((pin) =>
-							graph.pinNodes.get(pin.id)?.side === "left" ? "l" : "r",
-						)
-						.join("")}
-					pinNets={pinNets}
-					noConnectPinIds={noConnectPinIds}
-					tool={tool}
-					gridStep={gridStep}
-					selected={selection?.id === node.id}
-					isEditing={editing?.kind === "component" && editing.id === node.id}
-					selectedPinId={pinOf(node.id, selection?.id)}
-					pendingPinId={pinOf(node.id, pendingPin)}
-					dragSourcePinId={
-						connectionStart ? pinOf(node.id, connectionDrag?.pinId) : null
-					}
-					targetPinId={
-						targetId?.kind === "pin" ? pinOf(node.id, targetId.id) : null
-					}
-					actions={actions}
-				/>
-			))}
-			{graph.nets.map((node) => (
-				<CircuitNetNode
-					key={node.id}
-					net={node.net}
-					x={node.x}
-					y={node.y}
-					label={node.label}
-					tool={tool}
-					gridStep={gridStep}
-					selected={selectedNetId === node.id}
-					isEditing={editing?.kind === "net" && editing.id === node.id}
-					isTarget={targetId?.kind === "net" && targetId.id === node.id}
-					actions={actions}
-				/>
-			))}
-			{connectionStart && connectionEnd && (
-				<path
-					data-connection-preview=""
-					className="circuit-connection-preview"
-					d={`M ${connectionStart.x} ${connectionStart.y} C ${connectionStart.x + (connectionStart.side === "left" ? -connectionCurveOffset : connectionCurveOffset)} ${connectionStart.y}, ${connectionEnd.x + (connectionTarget?.side === "right" ? connectionCurveOffset : -connectionCurveOffset)} ${connectionEnd.y}, ${connectionEnd.x} ${connectionEnd.y}`}
-				/>
-			)}
-			{tool === "component" && placement && placementPoint && (
+			<For
+				each={props.graph.edges}
+				keyed={(edge) => `${edge.netId}:${edge.pinId}`}
+			>
+				{(edge) => (
+					<CircuitConnection
+						pinId={edge().pinId}
+						pinX={edge().pin.x}
+						pinY={edge().pin.y}
+						side={edge().pin.side}
+						netX={edge().net.x}
+						netY={edge().net.y}
+						label={`Connection ${props.pins.get(edge().pinId)?.component.reference}.${props.pins.get(edge().pinId)?.number}`}
+						selected={checked[edge().pinId] === true}
+						highlighted={selectedNet[edge().netId] === true}
+						actions={props.actions}
+					/>
+				)}
+			</For>
+			<For each={props.graph.components} keyed={(node) => node.id}>
+				{(node) => {
+					const pinSides = createMemo(() =>
+						node()
+							.component.pins.map((pin) =>
+								props.graph.pinNodes.get(pin.id)?.side === "left" ? "l" : "r",
+							)
+							.join(""),
+					);
+					return (
+						<CircuitComponentNode
+							component={node().component}
+							x={node().x}
+							y={node().y}
+							height={node().height}
+							collapsed={node().collapsed}
+							connectsLeft={node().connectionSides.includes("left")}
+							connectsRight={node().connectionSides.includes("right")}
+							pinSides={pinSides()}
+							pinNets={props.pinNets}
+							noConnectPinIds={props.noConnectPinIds}
+							tool={props.tool}
+							gridStep={props.gridStep}
+							selected={selected[node().id] === true}
+							isEditing={
+								props.editing?.kind === "component" &&
+								props.editing.id === node().id
+							}
+							highlightedPins={highlightedPins}
+							targetPins={targetPins}
+							actions={props.actions}
+						/>
+					);
+				}}
+			</For>
+			<For each={props.graph.nets} keyed={(node) => node.id}>
+				{(node) => (
+					<CircuitNetNode
+						net={node().net}
+						x={node().x}
+						y={node().y}
+						label={node().label}
+						tool={props.tool}
+						gridStep={props.gridStep}
+						selected={selectedNet[node().id] === true}
+						isEditing={
+							props.editing?.kind === "net" && props.editing.id === node().id
+						}
+						isTarget={targetNets[node().id] === true}
+						actions={props.actions}
+					/>
+				)}
+			</For>
+			<Show when={connectionPath()}>
+				{(path) => (
+					<path
+						data-connection-preview=""
+						class="circuit-connection-preview"
+						d={path()}
+					/>
+				)}
+			</Show>
+			<Show
+				when={
+					props.tool === "component" && props.placement && props.placementPoint
+				}
+			>
 				<g
 					data-component-preview=""
-					className="circuit-placement-preview"
-					transform={`translate(${placementPoint.x},${placementPoint.y})`}
+					class="circuit-placement-preview"
+					transform={`translate(${props.placementPoint?.x},${props.placementPoint?.y})`}
 				>
 					<rect
 						width={componentWidth}
-						height={componentHeight(placementPinCount)}
+						height={componentHeight(props.placementPinCount)}
 						rx={10}
 					/>
 					<text x={18} y={28}>
-						{placement.name}
+						{props.placement?.name}
 					</text>
 				</g>
-			)}
-			{tool === "net" && placementPoint && (
-				<g
-					data-net-preview=""
-					className="circuit-net circuit-placement-preview"
-					transform={`translate(${placementPoint.x},${placementPoint.y})`}
-				>
-					<circle r={10} />
-					<text y={-23} textAnchor="middle">
-						Net
-					</text>
-				</g>
-			)}
+			</Show>
+			<Show when={props.tool === "net" && props.placementPoint}>
+				{(point) => (
+					<g
+						data-net-preview=""
+						class="circuit-net circuit-placement-preview"
+						transform={`translate(${point().x},${point().y})`}
+					>
+						<circle r={10} />
+						<text y={-23} text-anchor="middle">
+							Net
+						</text>
+					</g>
+				)}
+			</Show>
 		</>
 	);
-});
+}

@@ -2,7 +2,7 @@ import type { DefaultModel } from "@ecad/default-models";
 import { isBoardFootprint } from "@ecad/drawing-core/board/footprints.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { ModelReference } from "@ecad/drawing-core/footprint/model.ts";
-import { useEffect, useState } from "react";
+import { createEffect, createSignal } from "solid-js";
 import type { BuiltinFootprintLibrary } from "#/footprint/library.ts";
 
 export interface BuiltinModelLibrary {
@@ -33,25 +33,38 @@ export function loadBuiltinModels(): Promise<BuiltinModelLibrary> {
 	return loading;
 }
 
-export function useBuiltinModels() {
-	const [library, setLibrary] = useState(loaded);
-	const [failed, setFailed] = useState(false);
-	useEffect(() => {
-		if (library) return;
-		let current = true;
-		loadBuiltinModels().then(
-			(next) => {
-				if (current) setLibrary(next);
-			},
-			() => {
-				if (current) setFailed(true);
-			},
-		);
-		return () => {
-			current = false;
-		};
-	}, [library]);
-	return { library, failed };
+export function useBuiltinModels(): {
+	readonly library: BuiltinModelLibrary | undefined;
+	readonly failed: boolean;
+} {
+	const [library, setLibrary] = createSignal(loaded);
+	const [failed, setFailed] = createSignal(false);
+	createEffect(
+		() => !library(),
+		(load) => {
+			if (!load) return;
+			let current = true;
+			loadBuiltinModels().then(
+				(next) => {
+					if (current) setLibrary(next);
+				},
+				() => {
+					if (current) setFailed(true);
+				},
+			);
+			return () => {
+				current = false;
+			};
+		},
+	);
+	return {
+		get library() {
+			return library();
+		},
+		get failed() {
+			return failed();
+		},
+	};
 }
 
 export interface ModelPlacement {
