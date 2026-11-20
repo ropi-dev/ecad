@@ -1,0 +1,404 @@
+import type { CopperItem, CopperLayer } from "#/board/connectivity.ts";
+import {
+	type Hull,
+	hullDistance,
+	pointHullDistance,
+} from "#/board/geometry.ts";
+import type { Bounds, Point } from "#/drawing/types.ts";
+
+export type TrackPosture = "straight-first" | "diagonal-first";
+
+/**
+ * The corner points of a track from `start` to `end` using horizontal,
+ * vertical and 45 degree segments: one straight run and one diagonal.
+ */
+export function trackPath(
+	start: Point,
+	end: Point,
+	posture: TrackPosture = "straight-first",
+): Point[] {
+	const dx = end.x - start.x;
+	const dy = end.y - start.y;
+	const ax = Math.abs(dx);
+	const ay = Math.abs(dy);
+	if (ax < 1e-9 || ay < 1e-9 || Math.abs(ax - ay) < 1e-9) return [start, end];
+	const diagonal = Math.min(ax, ay);
+	const straight =
+		ax > ay
+			? { x: Math.sign(dx) * (ax - diagonal), y: 0 }
+			: { x: 0, y: Math.sign(dy) * (ay - diagonal) };
+	const corner =
+		posture === "straight-first"
+			? { x: start.x + straight.x, y: start.y + straight.y }
+			: { x: end.x - straight.x, y: end.y - straight.y };
+	return [start, corner, end];
+}
+
+const directions = [
+	[1, 0],
+	[1, 1],
+	[0, 1],
+	[-1, 1],
+	[-1, 0],
+	[-1, -1],
+	[0, -1],
+	[1, -1],
+] as const;
+
+export function octant(vector: Point): number {
+	const turn = Math.round(Math.atan2(vector.y, vector.x) / (Math.PI / 4));
+	return (turn + 8) % 8;
+}
+
+export function octantDelta(delta: Point, gridStep: number): Point {
+	const length = Math.hypot(delta.x, delta.y);
+	if (length < 1e-12) return { x: 0, y: 0 };
+	const [dx, dy] = directions[octant(delta)];
+	const along = (delta.x * dx + delta.y * dy) / Math.hypot(dx, dy);
+	let step = along / Math.hypot(dx, dy);
+	if (gridStep > 0) step = Math.round(step / gridStep) * gridStep;
+	return { x: dx * step || 0, y: dy * step || 0 };
+}
+
+export interface TrackRouting {
+	readonly items: readonly CopperItem[];
+	readonly clearance: number;
+}
+
+export interface TrackRoute {
+	readonly from: Point;
+	readonly to: Point;
+	readonly layer: string;
+	readonly width: number;
+	readonly net?: string;
+	readonly prefer?: Point;
+	readonly ignore: ReadonlySet<number>;
+}
+
+interface Obstacle {
+	readonly hull: Hull;
+	readonly bounds: Bounds;
+}
+
+const pitch = 0.1;
+const bucket = 1;
+const bend = pitch * 3;
+const windows = [1, 3, 8];
+const budget = 12_000;
+
+function obstaclesFor(
+	route: TrackRoute,
+	routing: TrackRouting,
+	area: Bounds,
+): Obstacle[] {
+	const reach = route.width / 2 + routing.clearance;
+	const obstacles: Obstacle[] = [];
+	for (const item of routing.items) {
+		if (item.kind === "zone" || item.kind === "hole") continue;
+		if (route.ignore.has(item.shapeId)) continue;
+		if (!item.layers.includes(route.layer as CopperLayer)) continue;
+		if (route.net !== undefined && item.net === route.net) continue;
+		const { bounds } = item;
+		if (
+			bounds.maxX < area.minX - reach ||
+			bounds.minX > area.maxX + reach ||
+			bounds.maxY < area.minY - reach ||
+			bounds.minY > area.maxY + reach
+		)
+			continue;
+		for (const hull of item.hulls) {
+			if (
+				pointHullDistance(hull, route.from) < reach ||
+				pointHullDistance(hull, route.to) < reach
+			)
+				continue;
+			obstacles.push({
+				hull,
+				bounds: {
+					minX: bounds.minX - reach,
+					minY: bounds.minY - reach,
+					maxX: bounds.maxX + reach,
+					maxY: bounds.maxY + reach,
+				},
+			});
+		}
+	}
+	return obstacles;
+}
+
+function pathClear(
+	path: readonly Point[],
+	obstacles: readonly Obstacle[],
+	width: number,
+	clearance: number,
+) {
+	for (let index = 1; index < path.length; index++) {
+		const segment = {
+			points: [path[index - 1], path[index]],
+			radius: width / 2,
+		};
+		for (const { hull } of obstacles)
+			if (hullDistance(segment, hull) < clearance - 1e-9) return false;
+	}
+	return true;
+}
+
+function simplify(path: readonly Point[]): Point[] {
+	const points: Point[] = [];
+	for (const point of path) {
+		const previous = points.at(-1);
+		if (
+			previous &&
+			Math.abs(previous.x - point.x) < 1e-9 &&
+			Math.abs(previous.y - point.y) < 1e-9
+		)
+			continue;
+		const before = points.at(-2);
+		if (
+			before &&
+			previous &&
+			Math.abs(
+				(previous.x - before.x) * (point.y - previous.y) -
+					(previous.y - before.y) * (point.x - previous.x),
+			) < 1e-9 &&
+			(previous.x - before.x) * (point.x - previous.x) +
+				(previous.y - before.y) * (point.y - previous.y) >
+				0
+		)
+			points[points.length - 1] = point;
+		else points.push(point);
+	}
+	return points;
+}
+
+export function routeTrack(
+	route: TrackRoute,
+	routing: TrackRouting | undefined,
+): Point[] {
+	const { from, to } = route;
+	const preferred = route.prefer && octant(route.prefer);
+	const first = (path: readonly Point[]) =>
+		path.length > 1
+			? octant({ x: path[1].x - from.x, y: path[1].y - from.y })
+			: preferred;
+	const candidates = (["straight-first", "diagonal-first"] as const)
+		.map((posture) => trackPath(from, to, posture))
+		.sort(
+			(a, b) => Number(first(a) !== preferred) - Number(first(b) !== preferred),
+		);
+	if (!routing) return simplify(candidates[0]);
+	const span = {
+		minX: Math.min(from.x, to.x),
+		minY: Math.min(from.y, to.y),
+		maxX: Math.max(from.x, to.x),
+		maxY: Math.max(from.y, to.y),
+	};
+	for (const pad of windows) {
+		const area = {
+			minX: span.minX - pad,
+			minY: span.minY - pad,
+			maxX: span.maxX + pad,
+			maxY: span.maxY + pad,
+		};
+		const obstacles = obstaclesFor(route, routing, area);
+		if (pad === windows[0]) {
+			const clear = candidates.find((path) =>
+				pathClear(path, obstacles, route.width, routing.clearance),
+			);
+			if (clear) return simplify(clear);
+		}
+		const found = search(route, routing.clearance, obstacles, area, preferred);
+		if (found) return simplify(found);
+	}
+	return simplify(candidates[0]);
+}
+
+function search(
+	route: TrackRoute,
+	clearance: number,
+	obstacles: readonly Obstacle[],
+	area: Bounds,
+	preferred: number | undefined,
+): Point[] | undefined {
+	const { from, to, width } = route;
+	const reach = width / 2 + clearance;
+	const buckets = new Map<string, Obstacle[]>();
+	for (const obstacle of obstacles) {
+		const { bounds } = obstacle;
+		for (
+			let x = Math.floor(bounds.minX / bucket);
+			x <= Math.floor(bounds.maxX / bucket);
+			x++
+		)
+			for (
+				let y = Math.floor(bounds.minY / bucket);
+				y <= Math.floor(bounds.maxY / bucket);
+				y++
+			) {
+				const key = `${x},${y}`;
+				const list = buckets.get(key);
+				if (list) list.push(obstacle);
+				else buckets.set(key, [obstacle]);
+			}
+	}
+	const minColumn = Math.floor((area.minX - from.x) / pitch);
+	const maxColumn = Math.ceil((area.maxX - from.x) / pitch);
+	const minRow = Math.floor((area.minY - from.y) / pitch);
+	const maxRow = Math.ceil((area.maxY - from.y) / pitch);
+	const columns = maxColumn - minColumn + 1;
+	const rows = maxRow - minRow + 1;
+	const cellOf = (column: number, row: number) =>
+		(row - minRow) * columns + (column - minColumn);
+	const pointOf = (column: number, row: number): Point => ({
+		x: from.x + column * pitch,
+		y: from.y + row * pitch,
+	});
+	const blocked = new Uint8Array(columns * rows);
+	const open = (column: number, row: number) => {
+		if (column < minColumn || column > maxColumn) return false;
+		if (row < minRow || row > maxRow) return false;
+		const cell = cellOf(column, row);
+		if (blocked[cell]) return blocked[cell] === 1;
+		const point = pointOf(column, row);
+		const nearby =
+			buckets.get(
+				`${Math.floor(point.x / bucket)},${Math.floor(point.y / bucket)}`,
+			) ?? [];
+		const free = nearby.every(
+			({ hull, bounds }) =>
+				point.x < bounds.minX ||
+				point.x > bounds.maxX ||
+				point.y < bounds.minY ||
+				point.y > bounds.maxY ||
+				pointHullDistance(hull, point) >= reach - 1e-9,
+		);
+		blocked[cell] = free ? 1 : 2;
+		return free;
+	};
+	const estimate = (column: number, row: number) => {
+		const point = pointOf(column, row);
+		const dx = Math.abs(to.x - point.x);
+		const dy = Math.abs(to.y - point.y);
+		return Math.max(dx, dy) + (Math.SQRT2 - 1) * Math.min(dx, dy);
+	};
+	const goalColumn = Math.round((to.x - from.x) / pitch);
+	const goalRow = Math.round((to.y - from.y) / pitch);
+	const finish = (column: number, row: number, heading: number) => {
+		if (Math.abs(column - goalColumn) > 2 || Math.abs(row - goalRow) > 2)
+			return undefined;
+		const point = pointOf(column, row);
+		let best: { tail: Point[]; cost: number } | undefined;
+		for (const posture of ["straight-first", "diagonal-first"] as const) {
+			const tail = simplify(trackPath(point, to, posture));
+			if (!pathClear(tail, obstacles, width, clearance)) continue;
+			let cost = 0;
+			let previous = heading === 8 ? undefined : heading;
+			for (let index = 1; index < tail.length; index++) {
+				const step = {
+					x: tail[index].x - tail[index - 1].x,
+					y: tail[index].y - tail[index - 1].y,
+				};
+				const direction = octant(step);
+				cost += Math.hypot(step.x, step.y);
+				if (previous !== undefined && direction !== previous) cost += bend;
+				previous = direction;
+			}
+			if (!best || cost < best.cost) best = { tail, cost };
+		}
+		return best;
+	};
+	const tails = new Map<number, Point[]>();
+	const scores = new Float64Array(columns * rows).fill(
+		Number.POSITIVE_INFINITY,
+	);
+	const parents = new Int32Array(columns * rows).fill(-1);
+	const headings = new Uint8Array(columns * rows).fill(8);
+	const closed = new Uint8Array(columns * rows);
+	const heap: [number, number][] = [];
+	const push = (id: number, key: number) => {
+		heap.push([key, id]);
+		let index = heap.length - 1;
+		while (index > 0) {
+			const parent = (index - 1) >> 1;
+			if (heap[parent][0] <= key) break;
+			[heap[parent], heap[index]] = [heap[index], heap[parent]];
+			index = parent;
+		}
+	};
+	const pop = () => {
+		const top = heap[0];
+		const last = heap.pop() as [number, number];
+		if (heap.length) {
+			heap[0] = last;
+			let index = 0;
+			for (;;) {
+				const left = index * 2 + 1;
+				const right = left + 1;
+				let best = index;
+				if (left < heap.length && heap[left][0] < heap[best][0]) best = left;
+				if (right < heap.length && heap[right][0] < heap[best][0]) best = right;
+				if (best === index) break;
+				[heap[best], heap[index]] = [heap[index], heap[best]];
+				index = best;
+			}
+		}
+		return top[1];
+	};
+	const start = cellOf(0, 0);
+	scores[start] = 0;
+	push(start, estimate(0, 0));
+	let expanded = 0;
+	while (heap.length && expanded < budget) {
+		const id = pop();
+		const tail = tails.get(id);
+		if (tail) {
+			const path: Point[] = [...tail.slice(1).reverse()];
+			for (let at = -id - 1; at >= 0; at = parents[at])
+				path.push(
+					pointOf(
+						(at % columns) + minColumn,
+						Math.floor(at / columns) + minRow,
+					),
+				);
+			return path.reverse();
+		}
+		if (closed[id]) continue;
+		closed[id] = 1;
+		expanded++;
+		const heading = headings[id];
+		const column = (id % columns) + minColumn;
+		const row = Math.floor(id / columns) + minRow;
+		const score = scores[id];
+		const ending = finish(column, row, heading);
+		if (ending) {
+			tails.set(-id - 1, ending.tail);
+			push(-id - 1, score + ending.cost);
+		}
+		for (let next = 0; next < 8; next++) {
+			if (heading !== 8) {
+				const turn = Math.abs(next - heading) % 8;
+				if (Math.min(turn, 8 - turn) > 2) continue;
+			}
+			const [dx, dy] = directions[next];
+			const nextColumn = column + dx;
+			const nextRow = row + dy;
+			if (!open(nextColumn, nextRow)) continue;
+			if (dx && dy && (!open(column + dx, row) || !open(column, row + dy)))
+				continue;
+			const nextId = cellOf(nextColumn, nextRow);
+			if (closed[nextId]) continue;
+			const turned =
+				heading === 8
+					? preferred !== undefined && next !== preferred
+					: next !== heading;
+			const total =
+				score + pitch * (dx && dy ? Math.SQRT2 : 1) + (turned ? bend : 0);
+			if (total >= scores[nextId]) continue;
+			scores[nextId] = total;
+			parents[nextId] = id;
+			headings[nextId] = next;
+			push(nextId, total + estimate(nextColumn, nextRow));
+		}
+	}
+	return undefined;
+}

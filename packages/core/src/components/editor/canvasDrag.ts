@@ -1,4 +1,9 @@
 import {
+	dragTrackEnd,
+	isBoardTrack,
+} from "@ecad/drawing-core/board/track-drag.ts";
+import type { TrackRouting } from "@ecad/drawing-core/board/track-router.ts";
+import {
 	drawShape,
 	type EditorShape,
 	moveShapes,
@@ -39,6 +44,7 @@ export interface CanvasDrag {
 	pressed?: ReadonlySet<number>;
 	/** The latest move preview would route a wire through another net. */
 	unsafe?: boolean;
+	routing?: TrackRouting | null;
 }
 
 export interface CanvasMarquee {
@@ -83,6 +89,7 @@ export function canvasDragStep(
 		allowLocked: boolean;
 		cameraScale(): number;
 		nextId(): number;
+		routing?(): TrackRouting | undefined;
 		inScreenBox(
 			shape: EditorShape,
 			box: Bounds,
@@ -170,11 +177,20 @@ export function canvasDragStep(
 		});
 	}
 	if (drag.mode === "resize" && drag.handle) {
+		const original = drag.originals[0];
 		return result({
 			kind: "preview",
-			replacements: [
-				resizeShape(drag.originals[0], drag.handle, delta, drag.gridStep),
-			],
+			replacements: isBoardTrack(original)
+				? dragTrackEnd(
+						original,
+						drag.handle.xDirection > 0 ? 1 : 0,
+						{ x: drag.handle.x + delta.x, y: drag.handle.y + delta.y },
+						drag.initialShapes,
+						context.nextId(),
+						drag.gridStep,
+						context.routing?.(),
+					)
+				: [resizeShape(original, drag.handle, delta, drag.gridStep)],
 			base: drag.initialShapes,
 		});
 	}
@@ -234,6 +250,7 @@ export function canvasDragStep(
 				drag.initialShapes,
 				context.nextId(),
 				context.allowLocked,
+				context.routing?.(),
 			),
 			base: drag.initialShapes,
 		});

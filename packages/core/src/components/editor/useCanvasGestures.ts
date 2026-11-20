@@ -5,6 +5,11 @@ import type {
 import { outlineEncloses } from "@ecad/drawing-core/board/geometry.ts";
 import { ruleVia } from "@ecad/drawing-core/board/routing-grid.ts";
 import type { BoardRules } from "@ecad/drawing-core/board/rules.ts";
+import { isBoardTrack } from "@ecad/drawing-core/board/track-drag.ts";
+import {
+	type TrackPosture,
+	trackPath,
+} from "@ecad/drawing-core/board/track-router.ts";
 import { isNetLabel } from "@ecad/drawing-core/drawing/named-nets.ts";
 import {
 	canInspectSymbolChild,
@@ -57,9 +62,7 @@ import { freeze } from "@ecad/drawing-core/lib/freeze.ts";
 import { createEffect, createMemo, createSignal, onSettled } from "solid-js";
 import {
 	otherCopperLayer,
-	type TrackPosture,
 	trackAnchor,
-	trackPath,
 	trackSegments,
 } from "#/board/routing.ts";
 import {
@@ -454,6 +457,13 @@ export function useCanvasGestures(getOptions: () => CanvasGesturesOptions) {
 			allowLocked: options.allowLocked,
 			cameraScale: () => options.cameraView.getProjection()?.scale ?? 1,
 			nextId: options.session.nextId,
+			routing: () => {
+				const { board } = options;
+				active.routing ??= board
+					? { items: board.items(), clearance: board.rules.clearance }
+					: null;
+				return active.routing ?? undefined;
+			},
 			inScreenBox: (shape, box, mode) =>
 				options.cameraView.getProjection()?.inScreenBox(shape, box, mode) ??
 				false,
@@ -586,10 +596,13 @@ export function useCanvasGestures(getOptions: () => CanvasGesturesOptions) {
 			const changed = options.session
 				.shapes()
 				.filter((shape) => shape !== initial.get(shape.id));
+			const collapsed = changed.flatMap((shape) =>
+				isBoardTrack(shape) && shape.width <= 1e-6 ? [shape.id] : [],
+			);
 			if (!changed.length) options.session.preview(null);
 			else
 				options.session.replace(
-					changed.map(freeze),
+					changed.filter((shape) => !collapsed.includes(shape.id)).map(freeze),
 					active.mode === "symbol-child"
 						? active.handle
 							? "Resize symbol child"
@@ -599,6 +612,7 @@ export function useCanvasGestures(getOptions: () => CanvasGesturesOptions) {
 							: active.handle?.corner !== undefined
 								? "Edit zone outline"
 								: `Resize ${active.originals[0].kind}`,
+					collapsed,
 				);
 		}
 		if (active.canvas.hasPointerCapture(active.pointerId))

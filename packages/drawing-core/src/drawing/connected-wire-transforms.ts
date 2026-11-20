@@ -1,4 +1,5 @@
 import { dragTracks, isBoardTrack } from "#/board/track-drag.ts";
+import { octantDelta, type TrackRouting } from "#/board/track-router.ts";
 import { connectionTolerance } from "#/drawing/connection-geometry.ts";
 import type { EditorShape } from "#/drawing/schema.ts";
 import {
@@ -56,17 +57,21 @@ export function moveShapes(
 		0,
 	) + 1,
 	allowLocked = false,
+	routing?: TrackRouting,
 ): EditorShape[] {
 	if (!allowLocked && shapes.some((shape) => shape.locked)) return shapes;
-	delta = snappedMoveDelta(anchorShape, delta, gridStep);
+	const tracks = shapes.some(isBoardTrack);
+	delta = tracks
+		? octantDelta(delta, gridStep)
+		: snappedMoveDelta(anchorShape, delta, gridStep);
 	const moved = shapes.map((shape) => ({
 		...shape,
 		x: shape.x + delta.x,
 		y: shape.y + delta.y,
 	}));
 	if (delta.x === 0 && delta.y === 0) return moved;
-	if (shapes.some((shape) => isBoardTrack(shape) || isVia(shape)))
-		return dragTracks(shapes, moved, allShapes, delta, nextShapeId);
+	if (tracks || shapes.some(isVia))
+		return dragTracks(shapes, moved, allShapes, delta, nextShapeId, routing);
 	return connectTransformedTerminals(shapes, moved, allShapes, nextShapeId, {
 		pitch: gridStep,
 		delta,

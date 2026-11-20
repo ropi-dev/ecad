@@ -264,9 +264,14 @@ export function createEditorSession(
 			else preview(null);
 		},
 
-		replace(replacements: EditorShape[], label: string) {
+		replace(
+			replacements: EditorShape[],
+			label: string,
+			removeIds: readonly number[] = [],
+		) {
 			const previous = store.getSnapshot();
 			const existing = new Set(previous.shapes.map((shape) => shape.id));
+			const removed = new Set(removeIds);
 			const result = execute(
 				replaceAndPlaceShapesEffect(
 					replacements.filter((shape) => existing.has(shape.id)),
@@ -274,7 +279,8 @@ export function createEditorSession(
 						replacements.filter((shape) => !existing.has(shape.id)),
 					),
 					label,
-					[...state.selection],
+					[...state.selection].filter((id) => !removed.has(id)),
+					removeIds.filter((id) => existing.has(id)),
 				),
 			);
 			if (result) acceptEdit(result, previous.history.currentId);

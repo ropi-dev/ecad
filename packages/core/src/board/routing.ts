@@ -12,34 +12,6 @@ import {
 import type { LineShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 
-export type TrackPosture = "straight-first" | "diagonal-first";
-
-/**
- * The corner points of a track from `start` to `end` using horizontal,
- * vertical and 45 degree segments: one straight run and one diagonal.
- */
-export function trackPath(
-	start: Point,
-	end: Point,
-	posture: TrackPosture = "straight-first",
-): Point[] {
-	const dx = end.x - start.x;
-	const dy = end.y - start.y;
-	const ax = Math.abs(dx);
-	const ay = Math.abs(dy);
-	if (ax < 1e-9 || ay < 1e-9 || Math.abs(ax - ay) < 1e-9) return [start, end];
-	const diagonal = Math.min(ax, ay);
-	const straight =
-		ax > ay
-			? { x: Math.sign(dx) * (ax - diagonal), y: 0 }
-			: { x: 0, y: Math.sign(dy) * (ay - diagonal) };
-	const corner =
-		posture === "straight-first"
-			? { x: start.x + straight.x, y: start.y + straight.y }
-			: { x: end.x - straight.x, y: end.y - straight.y };
-	return [start, corner, end];
-}
-
 export function trackSegments(
 	firstId: number,
 	points: readonly Point[],
