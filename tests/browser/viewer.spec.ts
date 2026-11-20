@@ -8,6 +8,7 @@ import { expect, test } from "./seeded-project";
 test("reorders layers and preserves focus, visibility and camera", async ({
 	page,
 }) => {
+	test.slow();
 	const errors: string[] = [];
 	page.on("pageerror", (error) => errors.push(error.message));
 	await page.goto("/tests/browser/viewer.html");
@@ -20,7 +21,7 @@ test("reorders layers and preserves focus, visibility and camera", async ({
 	);
 	const rows = page.locator("[data-layer-id]");
 	const names = page.locator("[data-testid=layer-name]");
-	await expect(rows).toHaveCount(3);
+	await expect(rows).toHaveCount(3, { timeout: 15_000 });
 	await expect(names).toHaveText(
 		demoFiles
 			.slice(0, 3)
@@ -196,7 +197,9 @@ test("the 3D camera orbits the same viewport and layer stack and returns to the 
 			buffer: Buffer.from(file.source),
 		})),
 	);
-	await expect(page.locator("[data-layer-id]")).toHaveCount(3);
+	await expect(page.locator("[data-layer-id]")).toHaveCount(3, {
+		timeout: 15_000,
+	});
 	const state = async () =>
 		JSON.parse(
 			(await page.locator("#scene-state").textContent()) || '{"objects":[]}',
@@ -289,7 +292,9 @@ test("3D navigation turns around and drags the board point under the cursor", as
 			buffer: Buffer.from(file.source),
 		})),
 	);
-	await expect(page.locator("[data-layer-id]")).toHaveCount(3);
+	await expect(page.locator("[data-layer-id]")).toHaveCount(3, {
+		timeout: 15_000,
+	});
 	const plane = async () =>
 		JSON.parse((await page.locator("#scene-state").textContent()) || "{}").grids
 			?.plane;

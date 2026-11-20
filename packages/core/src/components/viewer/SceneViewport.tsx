@@ -290,7 +290,7 @@ export function SceneViewport(props: SceneViewportProps) {
 								? `${options.ariaLabel}. ${options.interactionHint}`
 								: options.cameraMode === "top"
 									? `${options.ariaLabel}. Top view locked. Drag or swipe to pan; pinch or Ctrl + scroll to zoom. Arrow keys pan, plus or minus zooms, and F6 fits the scene.`
-									: `${options.ariaLabel}. Shift + left-drag to orbit and Ctrl + left-drag to pan. Two-finger swipe to pan, Shift + two-finger swipe to orbit, pinch or Ctrl + scroll to zoom toward the pointer. Middle-drag to pan and Shift + middle-drag to orbit with a mouse. Double-click the middle button or press F6 to fit. Arrow keys pan, plus or minus zooms. On touchscreens, drag to orbit and use two fingers to pan or pinch to zoom.`,
+									: `${options.ariaLabel}. Middle-drag or two-finger scroll to pan, Shift + middle-drag or Shift + two-finger scroll to orbit, and mouse wheel or pinch to zoom toward the pointer. Shift + left-drag also orbits and Ctrl + left-drag also pans. Double-click the middle button or press F6 to fit. Arrow keys pan, plus or minus zooms. On touchscreens, drag to orbit and use two fingers to pan or pinch to zoom.`,
 						),
 						canvasClassName:
 							"block h-full w-full touch-none focus-visible:outline-2 focus-visible:outline-accent",

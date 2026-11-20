@@ -410,7 +410,7 @@ export function GerberViewer(props: GerberViewerProps) {
 	return (
 		<Viewer2D
 			ariaLabel="Gerber drawing"
-			interactionHint="Drag or swipe to pan, and Shift + drag or Shift + swipe to orbit in 3D. Pinch or Ctrl + scroll to zoom. Arrow keys pan, plus or minus zooms, and F6 fits the scene."
+			interactionHint="Drag, middle-drag or two-finger scroll to pan, and Shift + drag, Shift + middle-drag or Shift + two-finger scroll to orbit in 3D. Mouse wheel in 3D, pinch or Ctrl + scroll zooms. Arrow keys pan, plus or minus zooms, and F6 fits the scene."
 			hoverHighlight={false}
 			selectionPosition="top-left"
 			scrollableControls={!suppliedControls()}

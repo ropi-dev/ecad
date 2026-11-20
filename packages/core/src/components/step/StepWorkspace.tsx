@@ -192,7 +192,7 @@ export function StepWorkspace() {
 				<p class="pointer-events-none absolute bottom-[calc(var(--chrome-dock)+env(safe-area-inset-bottom))] left-0 m-0 flex w-full justify-center px-4">
 					<span class="rounded-md border border-line-subtle bg-panel px-2.5 py-1 text-center text-2xs text-fg-muted">
 						{formatShortcut(
-							"Shift + left-drag to orbit · Ctrl + left-drag to pan · Pinch to zoom · F6 to fit",
+							"Scroll or middle-drag to pan · Shift + scroll or drag to orbit · Wheel or pinch to zoom · F6 to fit",
 						)}
 					</span>
 				</p>
