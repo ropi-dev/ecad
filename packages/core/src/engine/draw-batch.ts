@@ -524,6 +524,7 @@ export function createDrawBatcher() {
 	const items = new WeakMap<Object3D, Item>();
 	let stamps = 0;
 	const itemOf = (node: Object3D, groupOrder: number): Item | "skip" | null => {
+		if (node.userData.planarObject) return null;
 		if (!(node instanceof Mesh || node instanceof Line))
 			return node.type === "Group" || node.type === "Object3D" ? "skip" : null;
 		const { geometry, material } = node;

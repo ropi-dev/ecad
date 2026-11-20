@@ -42,7 +42,7 @@ Pasting from schematics/symbols accepts rectangles, circles, triangles, lines, a
 
 ## 3D view and realistic mode
 
-Press **2D** in the toolbar or `Alt+Shift+drag` (or `Alt+Shift` + two-finger trackpad swipe) to orbit into 3D; once in 3D, `Shift+drag` orbits and pressing **2D** animates back to the flat view.
+Press **2D** in the toolbar—or use `Shift+middle-drag`, `Shift` + two-finger trackpad scroll, or `Alt+Shift+left-drag` in the flat view—to orbit into 3D (`Shift+left-drag` keeps adding to selection in 2D). Once in 3D, `Shift+drag`, `Shift+middle-drag`, and `Shift` + two-finger scroll orbit, middle-drag and two-finger scroll pan, mouse wheel or pinch zooms toward the pointer, and pressing **2D** animates back to the flat view.
 
 - **Editing in 3D** — Selecting, dragging, resizing, placing, arrow nudging, `R`, `Delete`, `Alt+drag`, copy/paste, undo, and Attributes all work directly in 3D. Pointers raycast onto each item's physical layer surface; clicks pick the nearest surface, and marquee boxes test projected screen outlines. Views nearly edge-on (grazing slope `< 0.02`) disable placement and clear the coordinate readout.
 - **Realistic view & 3D models** — Click the sparkle button in the Layers header for manufactured appearance (green mask with `0.05 mm` pad openings, gold copper, white silkscreen) and the cube button to show/hide the footprint's linked 3D model. Link a model from the document bar's **3D model** dropdown (62 built-in models from [packages/default-models/README.md](../packages/default-models/README.md); read-only, no external model import yet).
