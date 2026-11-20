@@ -83,6 +83,12 @@ test("the sidebar keeps an icon rail beside the workspace and slides out beside 
 		await page.screenshot({ path: "perf-artifacts/sidebar-rail-menu.png" });
 	await page.keyboard.press("Escape");
 	await expect(menu).toHaveCount(0);
+	const tooltip = page.getByRole("tooltip");
+	await expect(tooltip).toHaveCount(0);
+	await rail.getByRole("button", { name: "Open project", exact: true }).hover();
+	await page.waitForTimeout(150);
+	await expect(tooltip).toHaveCount(0);
+	await expect(tooltip).toHaveText("Open project");
 	// A file created from the rail opens without the sidebar.
 	await rail.getByRole("button", { name: "Add file", exact: true }).click();
 	await page
