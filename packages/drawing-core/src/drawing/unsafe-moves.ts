@@ -9,10 +9,5 @@ export function markUnsafeMove(result: readonly EditorShape[]) {
 	unsafeMoves.add(result);
 }
 
-/**
- * Whether a move result routes a wire or track through another net because
- * no safe route was found. Previews may show it; committing it would join the
- * nets.
- */
 export const isUnsafeMove = (result: readonly EditorShape[]) =>
 	unsafeMoves.has(result);

@@ -1,17 +1,15 @@
 import type { CopperItem, CopperLayer } from "#/board/connectivity.ts";
 import {
 	type Hull,
+	hullBounds,
 	hullDistance,
 	pointHullDistance,
 } from "#/board/geometry.ts";
+import { mergeBounds } from "#/drawing/shape-geometry.ts";
 import type { Bounds, Point } from "#/drawing/types.ts";
 
 export type TrackPosture = "straight-first" | "diagonal-first";
 
-/**
- * The corner points of a track from `start` to `end` using horizontal,
- * vertical and 45 degree segments: one straight run and one diagonal.
- */
 export function trackPath(
 	start: Point,
 	end: Point,
@@ -133,13 +131,19 @@ function itemIndex(items: readonly CopperItem[]) {
 	return index;
 }
 
+const foreign = (item: CopperItem, net: string | undefined) =>
+	net !== undefined &&
+	item.net !== net &&
+	(item.net !== undefined || (item.kind !== "track" && item.kind !== "via"));
+
 function obstaclesFor(
 	route: TrackRoute,
 	routing: TrackRouting,
 	area: Bounds,
+	relax = true,
 ): Obstacle[] {
 	const half = route.width / 2;
-	const reach = half + routing.clearance;
+	const reach = half + routing.clearance + pitch + margin;
 	const index = itemIndex(routing.items);
 	const seen = new Set<CopperItem>();
 	const obstacles: Obstacle[] = [];
@@ -156,17 +160,14 @@ function obstaclesFor(
 				seen.add(item);
 				if (route.ignore.has(item.shapeId)) continue;
 				if (!item.layers.includes(route.layer as CopperLayer)) continue;
-				if (
-					route.net === undefined ||
-					item.net === undefined ||
-					item.net === route.net
-				)
-					continue;
+				if (!foreign(item, route.net)) continue;
 				for (const hull of item.hulls) {
-					const gap = Math.min(
-						routing.clearance,
-						pointHullDistance(hull, route.from) - half,
-					);
+					const gap = relax
+						? Math.min(
+								routing.clearance,
+								pointHullDistance(hull, route.from) - half,
+							)
+						: routing.clearance;
 					const grow = Math.max(0, half + gap + margin);
 					const { bounds } = item;
 					obstacles.push({
@@ -184,6 +185,48 @@ function obstaclesFor(
 		},
 	);
 	return obstacles;
+}
+
+export function copperClear(
+	copper: {
+		readonly hulls: readonly Hull[];
+		readonly layers: readonly string[];
+		readonly net?: string;
+	},
+	ignore: ReadonlySet<number>,
+	routing: TrackRouting | undefined,
+) {
+	if (!routing || !copper.hulls.length) return true;
+	const index = itemIndex(routing.items);
+	const area = mergeBounds(copper.hulls.map(hullBounds));
+	const reach = routing.clearance;
+	const seen = new Set<CopperItem>();
+	let clear = true;
+	forBuckets(
+		{
+			minX: area.minX - reach,
+			minY: area.minY - reach,
+			maxX: area.maxX + reach,
+			maxY: area.maxY + reach,
+		},
+		(key) => {
+			if (!clear) return;
+			for (const item of index.get(key) ?? []) {
+				if (seen.has(item)) continue;
+				seen.add(item);
+				if (ignore.has(item.shapeId) || !foreign(item, copper.net)) continue;
+				if (!item.layers.some((layer) => copper.layers.includes(layer)))
+					continue;
+				for (const own of copper.hulls)
+					for (const hull of item.hulls)
+						if (hullDistance(own, hull) < routing.clearance - 1e-9) {
+							clear = false;
+							return;
+						}
+			}
+		},
+	);
+	return clear;
 }
 
 function pathClear(
@@ -241,11 +284,12 @@ export function trackClear(
 	route: TrackRoute,
 	path: readonly Point[],
 	routing: TrackRouting | undefined,
+	relax = true,
 ) {
 	if (!routing) return true;
 	return pathClear(
 		path,
-		obstaclesFor(route, routing, spanOf(path, 0)),
+		obstaclesFor(route, routing, spanOf(path, 0), relax),
 		route.width,
 	);
 }
@@ -270,6 +314,13 @@ export function routeTrack(
 	for (const pad of windows) {
 		const area = spanOf([from, to], pad);
 		const obstacles = obstaclesFor(route, routing, area);
+		if (
+			obstacles.some(
+				({ hull, gap }) =>
+					pointHullDistance(hull, to) < route.width / 2 + gap - 1e-9,
+			)
+		)
+			break;
 		if (pad === windows[0]) {
 			const clear = candidates.find((path) =>
 				pathClear(path, obstacles, route.width),
@@ -318,27 +369,45 @@ function search(
 		x: from.x + column * pitch,
 		y: from.y + row * pitch,
 	});
-	const blocked = new Map<number, boolean>();
-	const open = (column: number, row: number) => {
-		if (column < minColumn || column > maxColumn) return false;
-		if (row < minRow || row > maxRow) return false;
+	const states = new Map<number, number>();
+	const nearbyOf = (point: Point) =>
+		buckets.get(bucketKey(Math.floor(point.x), Math.floor(point.y))) ?? [];
+	const state = (column: number, row: number) => {
+		if (column < minColumn || column > maxColumn) return 0;
+		if (row < minRow || row > maxRow) return 0;
 		const cell = cellOf(column, row);
-		const known = blocked.get(cell);
-		if (known !== undefined) return !known;
+		const known = states.get(cell);
+		if (known !== undefined) return known;
 		const point = pointOf(column, row);
-		const nearby =
-			buckets.get(bucketKey(Math.floor(point.x), Math.floor(point.y))) ?? [];
-		const free = nearby.every(
-			({ hull, gap, bounds }) =>
+		let result = 2;
+		for (const { hull, gap, bounds } of nearbyOf(point)) {
+			if (
 				point.x < bounds.minX ||
 				point.x > bounds.maxX ||
 				point.y < bounds.minY ||
-				point.y > bounds.maxY ||
-				pointHullDistance(hull, point) >=
-					half + gap + (gap > 0 ? margin : 0) - 1e-9,
+				point.y > bounds.maxY
+			)
+				continue;
+			const distance = pointHullDistance(hull, point);
+			if (distance < half + gap - 1e-9) {
+				result = 0;
+				break;
+			}
+			if (distance < half + gap + margin) result = 1;
+		}
+		states.set(cell, result);
+		return result;
+	};
+	const open = (column: number, row: number) => state(column, row) > 0;
+	const stepClear = (column: number, row: number, dx: number, dy: number) => {
+		if (state(column, row) === 2 && state(column + dx, row + dy) === 2)
+			return true;
+		const a = pointOf(column, row);
+		const b = pointOf(column + dx, row + dy);
+		const segment = { points: [a, b], radius: half };
+		return [...new Set([...nearbyOf(a), ...nearbyOf(b)])].every(
+			({ hull, gap }) => hullDistance(segment, hull) >= gap - 1e-9,
 		);
-		blocked.set(cell, !free);
-		return free;
 	};
 	const estimate = (column: number, row: number) => {
 		const point = pointOf(column, row);
@@ -451,8 +520,7 @@ function search(
 			const nextColumn = column + dx;
 			const nextRow = row + dy;
 			if (!open(nextColumn, nextRow)) continue;
-			if (dx && dy && (!open(column + dx, row) || !open(column, row + dy)))
-				continue;
+			if (!stepClear(column, row, dx, dy)) continue;
 			const nextId = cellOf(nextColumn, nextRow);
 			if (closed.has(nextId)) continue;
 			const turned =

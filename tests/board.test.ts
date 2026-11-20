@@ -273,6 +273,26 @@ const trackRouting = (
 const onOctant = (shape: EditorShape) =>
 	Math.abs(Math.sin(4 * shape.rotation)) < 1e-6;
 
+function touching(tracks: readonly EditorShape[]) {
+	const reached = new Set([tracks[0]]);
+	for (let grown = true; grown; ) {
+		grown = false;
+		for (const track of tracks)
+			if (
+				!reached.has(track) &&
+				[...reached].some((other) =>
+					shapeHulls(track).some((own) =>
+						shapeHulls(other).some((hull) => hullDistance(own, hull) <= 1e-6),
+					),
+				)
+			) {
+				reached.add(track);
+				grown = true;
+			}
+	}
+	return reached.size === tracks.length;
+}
+
 function joins(tracks: readonly EditorShape[], from: Point, to: Point) {
 	const key = (point: Point) =>
 		`${Math.round(point.x * 1000)},${Math.round(point.y * 1000)}`;
@@ -553,7 +573,7 @@ describe("routing and the ratsnest", () => {
 			);
 	});
 
-	test("dropping a track's end on another net's copper is refused", () => {
+	test("dropping a track's end, a track or a via on another net's copper is refused", () => {
 		const track = trackSegment(
 			1,
 			{ x: 0, y: 0 },
@@ -570,17 +590,51 @@ describe("routing and the ratsnest", () => {
 			0.25,
 			"b",
 		);
-		const shapes = [track, wall];
-		const result = dragTrackEnd(
-			track,
-			1,
-			{ x: 5, y: 1 },
-			shapes,
-			3,
-			0.1,
-			trackRouting(shapes),
+		const via = { ...createVia(3, { x: 2, y: -2 }), net: "a" };
+		const shapes = [track, wall, via];
+		const routing = trackRouting(shapes);
+		const move = (shape: EditorShape, delta: Point) =>
+			moveShapes([shape], delta, 0, shape, shapes, 4, false, routing);
+		assert.ok(
+			isUnsafeMove(
+				dragTrackEnd(track, 1, { x: 5, y: 1 }, shapes, 4, 0.1, routing),
+			),
 		);
-		assert.ok(isUnsafeMove(result));
+		assert.ok(isUnsafeMove(move(track, { x: 3, y: 0 })));
+		assert.ok(isUnsafeMove(move(via, { x: 3, y: 0 })));
+		assert.ok(!isUnsafeMove(move(via, { x: 1, y: 0 })));
+	});
+
+	test("a track ending on another track's middle stays joined when either one moves", () => {
+		const trunk = trackSegment(
+			1,
+			{ x: 0, y: 0 },
+			{ x: 4, y: 0 },
+			"F.Cu",
+			0.25,
+			"a",
+		);
+		const branch = trackSegment(
+			2,
+			{ x: 2, y: 0 },
+			{ x: 2, y: 3 },
+			"F.Cu",
+			0.25,
+			"a",
+		);
+		const shapes = [trunk, branch];
+		const routing = trackRouting(shapes);
+		for (const [shape, delta] of [
+			[trunk, { x: 0, y: -1 }],
+			[branch, { x: 1, y: 0 }],
+		] as const) {
+			const moved = applyMove(
+				shapes,
+				moveShapes([shape], delta, 0, shape, shapes, 3, false, routing),
+			).filter((item) => item.width > 0);
+			assert.ok(moved.every(onOctant));
+			assert.ok(touching(moved));
+		}
 	});
 
 	test("tracks that end up in one straight line after a drag merge into one", () => {

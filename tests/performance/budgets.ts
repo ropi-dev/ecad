@@ -12,6 +12,11 @@ export const budgets = {
 		scriptBytes: 3_500_000,
 		frameP95Ms: 500,
 	},
+	"pcb-track-drag": {
+		interactionP95Ms: 3000,
+		domNodes: 1500,
+		scriptBytes: 3_500_000,
+	},
 	"pcb-pan": {
 		interactionP95Ms: 8000,
 		panFrameP50Ms: 50,
