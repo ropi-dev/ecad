@@ -96,14 +96,14 @@ export function CanvasOverlay(props: CanvasOverlayProps) {
 							// Handles and guides follow the camera on every frame.
 							data-shortcut-mutations="ignore"
 						>
-							<Show when={!turned()}>
+							{!turned() && (
 								<RulerPositionGuide
 									view={frame().view}
 									guideCenter={props.guideCenter}
 									canvasArea={props.canvasArea}
 								/>
-							</Show>
-							<Show when={turned() || props.layered}>
+							)}
+							{(turned() || props.layered) && (
 								<svg
 									class="absolute inset-0 size-full overflow-visible"
 									data-testid="board-outlines"
@@ -137,7 +137,7 @@ export function CanvasOverlay(props: CanvasOverlayProps) {
 										)}
 									</For>
 								</svg>
-							</Show>
+							)}
 							<Show when={connection()}>
 								{(point) => (
 									<span
@@ -161,9 +161,9 @@ export function CanvasOverlay(props: CanvasOverlayProps) {
 									/>
 								)}
 							</Show>
-							<Show when={!turned()}>
+							{!turned() && (
 								<SymbolAnchors view={frame().view} shapes={props.shapes} />
-							</Show>
+							)}
 							<For each={textAnchors()} keyed={(anchor) => anchor.key}>
 								{(anchor) => {
 									const point = createMemo(() => {

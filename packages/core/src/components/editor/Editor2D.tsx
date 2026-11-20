@@ -1098,10 +1098,7 @@ function EditorCanvas(props: EditorCanvasProps) {
 						? `${editorKind()} editor · ${props.board?.file.name ?? props.footprintName ?? props.symbolName}`
 						: `Schematic editor · ${props.drawingName ? `${props.drawingName} · ` : ""}${pages().length > 1 ? `${page().name} (page ${pageIndex() + 1} of ${pages().length}) · ` : ""}${sheet().name ? `${sheet().name} · ` : ""}${formatInches(sheet().width)} × ${formatInches(sheet().height)} in`}
 				</h1>
-				<Show
-					when={registerEditor}
-					fallback={<EditorHeader headerControls={props.headerControls} />}
-				>
+				{registerEditor ? (
 					<DocumentBar
 						icon={
 							isBoard()
@@ -1125,7 +1122,9 @@ function EditorCanvas(props: EditorCanvasProps) {
 					>
 						{props.headerControls ?? props.viewSwitch}
 					</DocumentBar>
-				</Show>
+				) : (
+					<EditorHeader headerControls={props.headerControls} />
+				)}
 				<div class="relative flex min-h-0 flex-1">
 					<div
 						ref={[
@@ -1151,7 +1150,7 @@ function EditorCanvas(props: EditorCanvasProps) {
 								: undefined
 						}
 					>
-						<Show when={isFootprint()}>
+						{isFootprint() && (
 							<Keyed key={boardMount()}>
 								<FootprintBoardView
 									shapes={boardShapes()}
@@ -1184,8 +1183,8 @@ function EditorCanvas(props: EditorCanvasProps) {
 									interactionHint={footprintInteractionHint}
 								/>
 							</Keyed>
-						</Show>
-						<Show when={!isFootprint()}>
+						)}
+						{!isFootprint() && (
 							<Viewer2D
 								projection="orthographic"
 								lockProjection
@@ -1208,7 +1207,7 @@ function EditorCanvas(props: EditorCanvasProps) {
 								ariaLabel={`${editorKind()} editor`}
 								interactionHint={editorInteractionHint}
 							/>
-						</Show>
+						)}
 						<CanvasOverlay
 							cameraView={cameraView}
 							tool={tool()}
@@ -1228,7 +1227,7 @@ function EditorCanvas(props: EditorCanvasProps) {
 							{...messages}
 							besidePanel={isFootprint() || (ercOpen() && !sheetless())}
 						/>
-						<Show when={isFootprint()}>
+						{isFootprint() && (
 							<FootprintLayerPanel
 								layers={layers.layers}
 								active={layers.active}
@@ -1246,15 +1245,15 @@ function EditorCanvas(props: EditorCanvasProps) {
 									onToggle: () => setModelsShown((shown) => !shown),
 								}}
 							/>
-						</Show>
-						<Show when={isBoard() && boardEditor.rules}>
+						)}
+						{isBoard() && boardEditor.rules && (
 							<BoardStatus
 								unrouted={boardEditor.unrouted}
 								failed={boardEditor.analysisError !== ""}
 								layer={layers.active}
 							/>
-						</Show>
-						<Show when={isBoard() && boardPanel() === "checks"}>
+						)}
+						{isBoard() && boardPanel() === "checks" && (
 							<BoardChecksPanel
 								revision={committedShapes()}
 								unit={unit()}
@@ -1266,7 +1265,7 @@ function EditorCanvas(props: EditorCanvasProps) {
 									session.reveal(new Set(finding.shapeIds));
 								}}
 							/>
-						</Show>
+						)}
 						<Show
 							when={
 								isBoard() &&
@@ -1286,7 +1285,7 @@ function EditorCanvas(props: EditorCanvasProps) {
 							)}
 						</Show>
 						{registerEditor ? undefined : pageBar(true)}
-						<Show when={ercOpen() && !sheetless()}>
+						{ercOpen() && !sheetless() && (
 							<Loading
 								fallback={
 									<FloatingPanel
@@ -1324,7 +1323,7 @@ function EditorCanvas(props: EditorCanvasProps) {
 									}}
 								/>
 							</Loading>
-						</Show>
+						)}
 						<CursorReadout
 							ready={ready()}
 							cameraView={cameraView}
@@ -1334,7 +1333,7 @@ function EditorCanvas(props: EditorCanvasProps) {
 							besideAxes={boardView() !== "closed"}
 						/>
 					</div>
-					<Show when={attributesShown()}>
+					{attributesShown() && (
 						<SelectionAttributes
 							shapes={attributeShapes()}
 							isSymbolChild={selection.selectedChild !== undefined}
@@ -1365,21 +1364,21 @@ function EditorCanvas(props: EditorCanvasProps) {
 							textFocusId={textFocusId()}
 							onTextFocus={() => setTextFocusId(null)}
 						/>
-					</Show>
+					)}
 				</div>
-				<Show when={settingsOpen() && !sheetless()}>
+				{settingsOpen() && !sheetless() && (
 					<SchematicSettingsDialog
 						sheet={sheetSettings()}
 						onSave={saveSheet}
 						onClose={() => setSettingsOpen(false)}
 					/>
-				</Show>
-				<Show when={creatingSymbol()}>
+				)}
+				{creatingSymbol() && (
 					<CreateSymbolDialog
 						onClose={() => setCreatingSymbol(false)}
 						onCreate={commands.createSelectionSymbol}
 					/>
-				</Show>
+				)}
 			</main>
 		);
 	};

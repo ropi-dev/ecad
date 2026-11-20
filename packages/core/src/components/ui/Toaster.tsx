@@ -1,6 +1,5 @@
 import { Dynamic, type JSX, Portal } from "@solidjs/web";
 import {
-	createContext,
 	createEffect,
 	createMemo,
 	createSignal,
@@ -9,7 +8,6 @@ import {
 	onSettled,
 	Show,
 	Switch,
-	useContext,
 } from "solid-js";
 import {
 	CircleAlert,
@@ -57,13 +55,6 @@ export function PinnedNotice(props: {
 		</Switch>
 	);
 }
-
-interface ToasterValue {
-	paused: () => boolean;
-	close: (notification: ToastNotification, element: HTMLElement) => void;
-}
-
-const ToasterContext = createContext<ToasterValue>();
 
 export function Toaster() {
 	let region!: HTMLElement;
@@ -114,12 +105,9 @@ export function Toaster() {
 				previousFocus.focus();
 		},
 	);
-	const value: ToasterValue = {
-		paused,
-		close(notification, element) {
-			if (element.contains(document.activeElement)) viewport.focus();
-			toastManager.close(notification.id);
-		},
+	const close = (notification: ToastNotification, element: HTMLElement) => {
+		if (element.contains(document.activeElement)) viewport.focus();
+		toastManager.close(notification.id);
 	};
 	const candidates = (forward: boolean) => {
 		const toasts = [
@@ -134,66 +122,73 @@ export function Toaster() {
 		return forward ? list : list.reverse();
 	};
 	return (
-		<ToasterContext value={value}>
-			<div class="app-notices">
-				<div id={pinnedHostId} class="app-notices-pinned" />
-				<section
-					ref={region}
-					aria-label="Notifications, press F8 to focus"
-					tabindex="-1"
-					style={{
-						"pointer-events": notifications().length ? undefined : "none",
-					}}
-					onPointerMove={() => setHovered(true)}
-					onPointerLeave={() => setHovered(false)}
-					onFocusIn={() => setFocused(true)}
-					onFocusOut={(event) => {
-						if (!region.contains(event.relatedTarget as Node | null))
-							setFocused(false);
-					}}
-					onKeyDown={(event) => {
-						if (
-							event.key !== "Tab" ||
-							event.altKey ||
-							event.ctrlKey ||
-							event.metaKey
-						)
-							return;
-						const list = candidates(!event.shiftKey);
-						const active = document.activeElement as HTMLElement | null;
-						if (active === viewport) {
-							if (event.shiftKey) return;
-							const first = list[0];
-							if (!first) return;
-							event.preventDefault();
-							first.focus();
-							return;
-						}
-						const index = list.indexOf(active as HTMLElement);
-						if (index < 0) return;
-						const next = list[index + 1];
-						if (!next) return;
+		<div class="app-notices">
+			<div id={pinnedHostId} class="app-notices-pinned" />
+			<section
+				ref={region}
+				aria-label="Notifications, press F8 to focus"
+				tabindex="-1"
+				style={{
+					"pointer-events": notifications().length ? undefined : "none",
+				}}
+				onPointerMove={() => setHovered(true)}
+				onPointerLeave={() => setHovered(false)}
+				onFocusIn={() => setFocused(true)}
+				onFocusOut={(event) => {
+					if (!region.contains(event.relatedTarget as Node | null))
+						setFocused(false);
+				}}
+				onKeyDown={(event) => {
+					if (
+						event.key !== "Tab" ||
+						event.altKey ||
+						event.ctrlKey ||
+						event.metaKey
+					)
+						return;
+					const list = candidates(!event.shiftKey);
+					const active = document.activeElement as HTMLElement | null;
+					if (active === viewport) {
+						if (event.shiftKey) return;
+						const first = list[0];
+						if (!first) return;
 						event.preventDefault();
-						next.focus();
-					}}
-				>
-					<ol ref={viewport} tabindex="-1" class="app-toast-viewport">
-						<For each={notifications()}>
-							{(notification) => <Toast notification={notification} />}
-						</For>
-					</ol>
-				</section>
-			</div>
-		</ToasterContext>
+						first.focus();
+						return;
+					}
+					const index = list.indexOf(active as HTMLElement);
+					if (index < 0) return;
+					const next = list[index + 1];
+					if (!next) return;
+					event.preventDefault();
+					next.focus();
+				}}
+			>
+				<ol ref={viewport} tabindex="-1" class="app-toast-viewport">
+					<For each={notifications()}>
+						{(notification) => (
+							<Toast
+								notification={notification}
+								paused={paused()}
+								onClose={(element) => close(notification, element)}
+							/>
+						)}
+					</For>
+				</ol>
+			</section>
+		</div>
 	);
 }
 
-function Toast(props: { notification: ToastNotification }) {
-	const toaster = useContext(ToasterContext);
+function Toast(props: {
+	notification: ToastNotification;
+	paused: boolean;
+	onClose: (element: HTMLElement) => void;
+}) {
 	let element!: HTMLLIElement;
 	const [announced, setAnnounced] = createSignal("");
 	const [announcing, setAnnouncing] = createSignal(true);
-	const close = () => toaster.close(props.notification, element);
+	const close = () => props.onClose(element);
 	let swipe: { id: number; x: number; y: number } | undefined;
 	const finishSwipe = (pointer: number, x?: number) => {
 		if (swipe?.id !== pointer) return;
@@ -215,7 +210,7 @@ function Toast(props: { notification: ToastNotification }) {
 	let started = 0;
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	createEffect(
-		() => ({ paused: toaster.paused(), duration: duration() }),
+		() => ({ paused: props.paused, duration: duration() }),
 		({ paused, duration }) => {
 			remaining ??= duration;
 			if (!Number.isFinite(remaining)) return;
@@ -304,7 +299,7 @@ function Toast(props: { notification: ToastNotification }) {
 			>
 				<X size={14} aria-hidden="true" />
 			</button>
-			<Show when={announcing()}>
+			{announcing() && (
 				<Portal>
 					<output
 						aria-live={
@@ -316,7 +311,7 @@ function Toast(props: { notification: ToastNotification }) {
 						<Show when={announced()}>Notification {announced()}</Show>
 					</output>
 				</Portal>
-			</Show>
+			)}
 		</li>
 	);
 }

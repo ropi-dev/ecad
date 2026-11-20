@@ -67,7 +67,6 @@ export function OpenProjectButton(props: {
 					<Match when={current().mode === "web"}>
 						<DropdownMenu.Root
 							open={menuOpen()}
-							modal={false}
 							onOpenChange={(open) => {
 								setMenuOpen(open);
 								if (!open) return;
@@ -95,70 +94,63 @@ export function OpenProjectButton(props: {
 									</button>
 								</DropdownMenu.Trigger>,
 							)}
-							<DropdownMenu.Portal>
-								<DropdownMenu.Content
-									aria-label="Open project"
-									side="right"
-									onCloseAutoFocus={(event) => props.onCloseAutoFocus?.(event)}
-									align="start"
-									sideOffset={12}
-									collisionPadding={12}
-									class={`${sidebarMenuContent} max-h-80`}
+							<DropdownMenu.Content
+								aria-label="Open project"
+								side="right"
+								onCloseAutoFocus={(event) => props.onCloseAutoFocus?.(event)}
+								align="start"
+								sideOffset={12}
+								collisionPadding={12}
+								class={`${sidebarMenuContent} max-h-80`}
+							>
+								<div class={sidebarMenuLabel}>Open project</div>
+								<Show
+									when={projects()}
+									fallback={
+										<output class="block px-2 py-1.5 text-xs text-fg-muted">
+											Loading projects...
+										</output>
+									}
 								>
-									<DropdownMenu.Label class={sidebarMenuLabel}>
-										Open project
-									</DropdownMenu.Label>
-									<Show
-										when={projects()}
-										fallback={
-											<output class="block px-2 py-1.5 text-xs text-fg-muted">
-												Loading projects...
-											</output>
-										}
-									>
-										{(names) => (
-											<For each={names()}>
-												{(name) => (
-													<DropdownMenu.Item
-														class={sidebarMenuItem}
-														aria-current={
-															name === current().current ? "true" : undefined
+									{(names) => (
+										<For each={names()}>
+											{(name) => (
+												<DropdownMenu.Item
+													class={sidebarMenuItem}
+													aria-current={
+														name === current().current ? "true" : undefined
+													}
+													onSelect={() => {
+														if (name !== current().current)
+															void current().open(name);
+													}}
+												>
+													<Check
+														size={14}
+														aria-hidden="true"
+														class={
+															name === current().current
+																? "text-accent"
+																: "invisible"
 														}
-														onSelect={() => {
-															if (name !== current().current)
-																void current().open(name);
-														}}
-													>
-														<Check
-															size={14}
-															aria-hidden="true"
-															class={
-																name === current().current
-																	? "text-accent"
-																	: "invisible"
-															}
-														/>
-														<span class="truncate">{projectLabel(name)}</span>
-													</DropdownMenu.Item>
-												)}
-											</For>
-										)}
-									</Show>
-									<Show when={projects()?.length === 0 && !listError()}>
-										<p class="m-0 px-2 py-1.5 text-xs text-fg-muted">
-											No saved projects
-										</p>
-									</Show>
-									<Show when={listError()}>
-										<p
-											role="alert"
-											class="m-0 px-2 py-1.5 text-xs text-warning"
-										>
-											{listError()}
-										</p>
-									</Show>
-								</DropdownMenu.Content>
-							</DropdownMenu.Portal>
+													/>
+													<span class="truncate">{projectLabel(name)}</span>
+												</DropdownMenu.Item>
+											)}
+										</For>
+									)}
+								</Show>
+								<Show when={projects()?.length === 0 && !listError()}>
+									<p class="m-0 px-2 py-1.5 text-xs text-fg-muted">
+										No saved projects
+									</p>
+								</Show>
+								<Show when={listError()}>
+									<p role="alert" class="m-0 px-2 py-1.5 text-xs text-warning">
+										{listError()}
+									</p>
+								</Show>
+							</DropdownMenu.Content>
 						</DropdownMenu.Root>
 					</Match>
 					<Match when={current().mode !== "web"}>

@@ -598,7 +598,7 @@ export function CircuitEditor(props: {
 				id={circuit().id}
 				active={active()}
 			/>
-			<Show when={circuitMessages().length > 0}>
+			{circuitMessages().length > 0 && (
 				<div
 					role="alert"
 					data-beside-panel={ercOpen() ? "true" : "false"}
@@ -606,7 +606,7 @@ export function CircuitEditor(props: {
 				>
 					<For each={circuitMessages()}>{(message) => <p>{message}</p>}</For>
 				</div>
-			</Show>
+			)}
 			<div class="circuit-workspace">
 				<div
 					class={[
@@ -649,7 +649,7 @@ export function CircuitEditor(props: {
 						onLostPointerCapture={svgHandlers.onLostPointerCapture}
 					>
 						<title>Components, pins, and shared electrical nets</title>
-						<Show when={active()}>
+						{active() && (
 							<CircuitGraphLayer
 								graph={graph()}
 								pins={pins()}
@@ -668,7 +668,7 @@ export function CircuitEditor(props: {
 								placementPinCount={placementPinCount()}
 								actions={graphActions}
 							/>
-						</Show>
+						)}
 					</svg>
 					<Show when={menu()}>
 						{(current) => (
@@ -685,7 +685,7 @@ export function CircuitEditor(props: {
 					</Show>
 				</div>
 			</div>
-			<Show when={ercOpen()}>
+			{ercOpen() && (
 				<Loading
 					fallback={
 						<FloatingPanel
@@ -717,7 +717,7 @@ export function CircuitEditor(props: {
 						}
 					/>
 				</Loading>
-			</Show>
+			)}
 			<CircuitToolbar
 				ercOpen={ercOpen()}
 				tool={tool()}
@@ -736,7 +736,7 @@ export function CircuitEditor(props: {
 				onUndo={() => store().undo()}
 				onRedo={() => store().redo()}
 			/>
-			<Show when={connecting()}>
+			{connecting() && (
 				<footer class="circuit-status">
 					<output class="circuit-connection-status">
 						<Show when={pendingPin()} fallback="Select pin">
@@ -746,7 +746,7 @@ export function CircuitEditor(props: {
 						</Show>
 					</output>
 				</footer>
-			</Show>
+			)}
 		</section>
 	);
 }

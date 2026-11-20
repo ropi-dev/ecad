@@ -23,7 +23,7 @@ export function GerberHeader(props: {
 				<ProjectLink href="/" {...link}>
 					Workspace
 				</ProjectLink>
-				<Show when={!project()}>
+				{!project() && (
 					<label
 						class={`${workspaceLinkClassName} relative focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent`}
 						data-variant="primary"
@@ -43,7 +43,7 @@ export function GerberHeader(props: {
 							}}
 						/>
 					</label>
-				</Show>
+				)}
 				<ProjectLink href="/step" {...link}>
 					STEP viewer
 				</ProjectLink>

@@ -159,7 +159,7 @@ export function CircuitComponentNode(props: {
 					</Show>
 				</GraphButton>
 			</g>
-			<Show when={props.collapsed}>
+			{props.collapsed && (
 				<For each={collapsedSides()}>
 					{(side) => (
 						<circle
@@ -171,8 +171,8 @@ export function CircuitComponentNode(props: {
 						/>
 					)}
 				</For>
-			</Show>
-			<Show when={props.isEditing}>
+			)}
+			{props.isEditing && (
 				<CircuitInlineFields
 					x={8}
 					y={4}
@@ -208,7 +208,7 @@ export function CircuitComponentNode(props: {
 						return false;
 					}}
 				/>
-			</Show>
+			)}
 			<For each={visiblePins()} keyed={(pin) => pin.id}>
 				{(pin, index) => {
 					const left = () => props.pinSides[index()] === "l";

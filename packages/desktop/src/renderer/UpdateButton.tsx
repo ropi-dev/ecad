@@ -140,9 +140,9 @@ function Changelog(props: { state: DesktopUpdateState }) {
 						{(change) => <li>{change()}</li>}
 					</For>
 				</ul>
-				<Show when={hidden() > 0}>
+				{hidden() > 0 && (
 					<span class="mt-1 block text-fg-muted">and {hidden()} more</span>
-				</Show>
+				)}
 			</span>
 		</Show>
 	);

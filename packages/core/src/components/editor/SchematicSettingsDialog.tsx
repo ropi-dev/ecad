@@ -203,7 +203,7 @@ export function SchematicSettingsDialog(props: {
 							</select>
 						</label>
 					</div>
-					<Show when={custom()}>
+					{custom() && (
 						<div class="grid grid-cols-2 gap-3">
 							<DimensionField
 								label="Width in mm"
@@ -216,7 +216,7 @@ export function SchematicSettingsDialog(props: {
 								onValue={setHeight}
 							/>
 						</div>
-					</Show>
+					)}
 				</fieldset>
 				<fieldset class="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
 					<legend class="mb-2 p-0 text-sm font-semibold text-fg">

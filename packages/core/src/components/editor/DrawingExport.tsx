@@ -188,46 +188,7 @@ export function DrawingExport(props: {
 						</select>
 					</label>
 				</div>
-				<Show
-					when={format() === "pdf"}
-					fallback={
-						<>
-							<div class="grid grid-cols-2 gap-3">
-								<label class={fieldLabel}>
-									Width in pixels
-									<input
-										class="ui-input h-8 w-full"
-										type="number"
-										min="1"
-										max="16384"
-										required
-										value={width()}
-										onInput={(e) =>
-											setNumber(setWidth, e.currentTarget.valueAsNumber)
-										}
-									/>
-								</label>
-								<label class={fieldLabel}>
-									Height in pixels
-									<input
-										class="ui-input h-8 w-full"
-										type="number"
-										min="1"
-										max="16384"
-										required
-										value={height()}
-										onInput={(e) =>
-											setNumber(setHeight, e.currentTarget.valueAsNumber)
-										}
-									/>
-								</label>
-							</div>
-							<p class="m-0 text-xs text-fg-faint">
-								SVG text stays sharp at any zoom.
-							</p>
-						</>
-					}
-				>
+				{format() === "pdf" ? (
 					<p class="m-0 text-xs text-fg-faint">
 						{layered() ? "Each layer gets its own page. " : ""}
 						{area() === "sheet"
@@ -235,7 +196,43 @@ export function DrawingExport(props: {
 							: `${layered() ? "Pages fit" : "The page fits"} the drawing at 1:1 scale in millimetres.`}{" "}
 						Text can be searched and copied.
 					</p>
-				</Show>
+				) : (
+					<>
+						<div class="grid grid-cols-2 gap-3">
+							<label class={fieldLabel}>
+								Width in pixels
+								<input
+									class="ui-input h-8 w-full"
+									type="number"
+									min="1"
+									max="16384"
+									required
+									value={width()}
+									onInput={(e) =>
+										setNumber(setWidth, e.currentTarget.valueAsNumber)
+									}
+								/>
+							</label>
+							<label class={fieldLabel}>
+								Height in pixels
+								<input
+									class="ui-input h-8 w-full"
+									type="number"
+									min="1"
+									max="16384"
+									required
+									value={height()}
+									onInput={(e) =>
+										setNumber(setHeight, e.currentTarget.valueAsNumber)
+									}
+								/>
+							</label>
+						</div>
+						<p class="m-0 text-xs text-fg-faint">
+							SVG text stays sharp at any zoom.
+						</p>
+					</>
+				)}
 				<Show when={error()}>
 					<p role="alert" class="m-0 text-sm text-danger">
 						{error()}

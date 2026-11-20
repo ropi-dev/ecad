@@ -155,7 +155,7 @@ export function SymbolFootprintField(props: {
 						</option>
 					)}
 				</Show>
-				<Show when={props.choices.project.length > 0}>
+				{props.choices.project.length > 0 && (
 					<optgroup label="Project footprints">
 						<For each={props.choices.project}>
 							{(footprint) => (
@@ -165,7 +165,7 @@ export function SymbolFootprintField(props: {
 							)}
 						</For>
 					</optgroup>
-				</Show>
+				)}
 				<For each={builtin.library?.categories}>
 					{(category) => (
 						<optgroup label={category}>
@@ -195,17 +195,13 @@ export function SymbolFootprintField(props: {
 			>
 				{status()}
 			</p>
-			<Show when={builtin.failed && !waiting()}>
+			{builtin.failed && !waiting() && (
 				<p class="m-0 text-xs text-warning">
 					The built-in footprints could not be loaded. Reload the page to try
 					again.
 				</p>
-			</Show>
-			<Show
-				when={
-					file() && current()?.library === "project" && props.choices.onOpen
-				}
-			>
+			)}
+			{file() && current()?.library === "project" && props.choices.onOpen && (
 				<button
 					type="button"
 					class="ui-button w-full"
@@ -217,12 +213,8 @@ export function SymbolFootprintField(props: {
 				>
 					Open footprint
 				</button>
-			</Show>
-			<Show
-				when={
-					file() && current()?.library === "builtin" && props.choices.onCopy
-				}
-			>
+			)}
+			{file() && current()?.library === "builtin" && props.choices.onCopy && (
 				<button
 					type="button"
 					class="ui-button w-full"
@@ -233,7 +225,7 @@ export function SymbolFootprintField(props: {
 				>
 					{copying() ? "Copying..." : "Copy to project"}
 				</button>
-			</Show>
+			)}
 			<Show when={copyError()}>
 				<p role="alert" class="m-0 text-xs text-danger">
 					{copyError()}

@@ -78,12 +78,12 @@ export function StepWorkspace() {
 						: undefined
 				}
 			/>
-			<Show when={!workspaceControls}>
+			{!workspaceControls && (
 				<header class="absolute top-[var(--chrome-top)] left-[var(--chrome-gap)] z-20 flex max-w-[calc(100%-2*var(--chrome-gap))] flex-wrap gap-2">
 					<ProjectLink href="/" {...link}>
 						Workspace
 					</ProjectLink>
-					<Show when={!project()}>
+					{!project() && (
 						<label
 							class={`${workspaceLinkClassName} relative focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent`}
 							data-variant="primary"
@@ -103,7 +103,7 @@ export function StepWorkspace() {
 								}}
 							/>
 						</label>
-					</Show>
+					)}
 					<ProjectLink href="/gerber" {...link}>
 						Gerber viewer
 					</ProjectLink>
@@ -111,15 +111,15 @@ export function StepWorkspace() {
 						Schematic editor
 					</ProjectLink>
 				</header>
-			</Show>
-			<Show when={notices().length > 0}>
+			)}
+			{notices().length > 0 && (
 				<div
 					role="alert"
 					class="ui-notice absolute top-[calc(var(--chrome-top)+var(--chrome-bar))] left-[var(--chrome-gap)] z-20 max-h-28 max-w-[calc(100%-2*var(--chrome-gap))] overflow-auto px-3 py-2 sm:max-w-sm"
 				>
 					<For each={notices()}>{(notice) => <p class="m-0">{notice}</p>}</For>
 				</div>
-			</Show>
+			)}
 			<Show
 				when={step.model}
 				fallback={
@@ -175,7 +175,7 @@ export function StepWorkspace() {
 					</>
 				)}
 			</Show>
-			<Show when={step.loading}>
+			{step.loading && (
 				<output class="ui-panel absolute top-1/2 left-1/2 z-20 flex -translate-x-1/2 -translate-y-1/2 items-center gap-4 py-3 pr-3 pl-4 text-sm shadow-pop">
 					<span>Reading STEP file...</span>
 					<button
@@ -187,8 +187,8 @@ export function StepWorkspace() {
 						Cancel
 					</button>
 				</output>
-			</Show>
-			<Show when={step.model}>
+			)}
+			{step.model && (
 				<p class="pointer-events-none absolute bottom-[calc(var(--chrome-dock)+env(safe-area-inset-bottom))] left-0 m-0 flex w-full justify-center px-4">
 					<span class="rounded-md border border-line-subtle bg-panel px-2.5 py-1 text-center text-2xs text-fg-muted">
 						{formatShortcut(
@@ -196,12 +196,12 @@ export function StepWorkspace() {
 						)}
 					</span>
 				</p>
-			</Show>
-			<Show when={dragging()}>
+			)}
+			{dragging() && (
 				<div class="pointer-events-none absolute inset-2 z-30 grid place-items-center rounded-2xl border-2 border-dashed border-accent bg-scrim text-lg font-medium text-accent">
 					Drop a STEP file to open it
 				</div>
-			</Show>
+			)}
 		</main>
 	);
 }

@@ -1,5 +1,6 @@
 import { createSignal, For, Show, untrack } from "solid-js";
 import type { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
+import { keepChecked } from "#/components/ui/checkbox.ts";
 import {
 	FolderOpen,
 	FolderUp,
@@ -33,14 +34,14 @@ export function SymbolLibraryControls(props: {
 				libraries={props.library.userLibraries}
 				library={props.library}
 			/>
-			<Show when={props.library.hasProject}>
+			{props.library.hasProject && (
 				<LibraryList
 					title="Project libraries"
 					scope="project"
 					libraries={props.library.projectLibraries}
 					library={props.library}
 				/>
-			</Show>
+			)}
 			<section class="flex flex-col gap-3 border-t border-line-subtle pt-4">
 				<h3 class="ui-section-label m-0">Add a library</h3>
 				<div class="grid grid-cols-2 gap-3 max-[420px]:grid-cols-1">
@@ -56,9 +57,9 @@ export function SymbolLibraryControls(props: {
 							class="ui-select h-8 w-full"
 						>
 							<option value="user">User libraries</option>
-							<Show when={props.library.hasProject}>
+							{props.library.hasProject && (
 								<option value="project">Project libraries</option>
-							</Show>
+							)}
 						</select>
 					</label>
 					<label class="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-fg-muted">
@@ -129,7 +130,7 @@ export function SymbolLibraryControls(props: {
 						<FolderUp size={14} aria-hidden="true" />
 						Upload library directory
 					</button>
-					<Show when={props.library.canOpenDirectory}>
+					{props.library.canOpenDirectory && (
 						<button
 							type="button"
 							disabled={props.library.loading}
@@ -140,7 +141,7 @@ export function SymbolLibraryControls(props: {
 							<FolderOpen size={14} aria-hidden="true" />
 							Add library directory
 						</button>
-					</Show>
+					)}
 					<button
 						type="button"
 						disabled={props.library.loading}
@@ -189,9 +190,9 @@ function LibraryList(props: {
 	return (
 		<fieldset aria-label={props.title} class="m-0 min-w-0 border-0 p-0">
 			<legend class="ui-section-label mb-1.5 p-0">{props.title}</legend>
-			<Show when={!props.libraries.length}>
+			{!props.libraries.length && (
 				<p class="m-0 text-xs text-fg-faint">No libraries configured.</p>
-			</Show>
+			)}
 			<For each={props.libraries} keyed={(entry) => entry.id}>
 				{(entry) => (
 					<div class="-mx-1.5 flex min-h-8 items-center gap-2 rounded-md px-1.5 hover:bg-hover">
@@ -201,32 +202,28 @@ function LibraryList(props: {
 								class="ui-checkbox"
 								checked={entry().enabled}
 								disabled={props.library.loading}
-								onChange={(event) => {
-									const next = event.currentTarget.checked;
-									event.currentTarget.checked = !next;
-									void props.library.toggle(entry().id, props.scope);
-								}}
+								onChange={keepChecked(
+									() => void props.library.toggle(entry().id, props.scope),
+								)}
 							/>
 							<span class="break-words">{entry().name}</span>
 						</label>
-						<Show
-							when={
-								entry().source.kind !== "builtin" &&
-								!(props.scope === "project" && entry().id === "project-symbols")
-							}
-						>
-							<button
-								type="button"
-								aria-label={`Remove ${entry().name}`}
-								disabled={props.library.loading}
-								onClick={() =>
-									void props.library.remove(entry().id, props.scope)
-								}
-								class={[panelIconButtonClassName, "hover:text-danger"]}
-							>
-								<Trash2 size={14} aria-hidden="true" />
-							</button>
-						</Show>
+						{entry().source.kind !== "builtin" &&
+							!(
+								props.scope === "project" && entry().id === "project-symbols"
+							) && (
+								<button
+									type="button"
+									aria-label={`Remove ${entry().name}`}
+									disabled={props.library.loading}
+									onClick={() =>
+										void props.library.remove(entry().id, props.scope)
+									}
+									class={[panelIconButtonClassName, "hover:text-danger"]}
+								>
+									<Trash2 size={14} aria-hidden="true" />
+								</button>
+							)}
 					</div>
 				)}
 			</For>

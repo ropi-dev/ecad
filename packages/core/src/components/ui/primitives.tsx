@@ -21,28 +21,16 @@ interface PlacementProps {
 	side?: Side;
 	align?: Align;
 	sideOffset?: number;
-	alignOffset?: number;
 	collisionPadding?: number;
 }
 
-type OutsideEvent<E extends Event> = CustomEvent<{ originalEvent: E }>;
-
-interface DismissProps {
-	onEscapeKeyDown?: (event: KeyboardEvent) => void;
-	onPointerDownOutside?: (event: OutsideEvent<PointerEvent>) => void;
-	onFocusOutside?: (event: OutsideEvent<FocusEvent>) => void;
-	onInteractOutside?: (
-		event: OutsideEvent<PointerEvent> | OutsideEvent<FocusEvent>,
-	) => void;
-}
-
 interface FocusProps {
+	onFocusOutside?: (event: CustomEvent<{ originalEvent: FocusEvent }>) => void;
 	onOpenAutoFocus?: (event: Event) => void;
 	onCloseAutoFocus?: (event: Event) => void;
 }
 
 type ContentProps = PlacementProps &
-	DismissProps &
 	FocusProps &
 	Omit<JSX.HTMLAttributes<HTMLDivElement>, "ref" | "onKeyDown"> & {
 		ref?: JSX.Ref<HTMLDivElement>;
@@ -50,8 +38,7 @@ type ContentProps = PlacementProps &
 	};
 
 interface OpenProps {
-	open?: boolean;
-	defaultOpen?: boolean;
+	open: boolean;
 	onOpenChange?: (open: boolean) => void;
 }
 
@@ -60,7 +47,6 @@ const isNode = (value: unknown): value is Node =>
 const isElement = (value: unknown): value is HTMLElement =>
 	isNode(value) && value.nodeType === 1;
 
-/** Open menus, popovers, tooltips, dialogs and toasts, in the order they opened. */
 export interface Layer {
 	element?: HTMLElement;
 	parent: Layer | null;
@@ -76,7 +62,7 @@ const watched = new Map<Document, { count: number; stop: () => void }>();
 const modality = new WeakSet<Document>();
 let keyboard = false;
 
-const LayerContext = createContext<Layer | null>(null);
+export const LayerContext = createContext<Layer | null>(null);
 
 const within = (layer: Layer, node: Node): boolean =>
 	!!layer.element?.contains(node) ||
@@ -173,7 +159,7 @@ function unwatch(doc: Document) {
 	watched.delete(doc);
 }
 
-function attachLayer(layer: Layer, element: HTMLElement) {
+export function attachLayer(layer: Layer, element: HTMLElement) {
 	layer.element = element;
 	layers.push(layer);
 	layer.parent?.children.add(layer);
@@ -186,31 +172,11 @@ function attachLayer(layer: Layer, element: HTMLElement) {
 	};
 }
 
-/**
- * Registers an element that escapes, clicks or focus moves outside of. The
- * most recent layer gets Escape. Layers opened from inside another one count
- * as part of it.
- */
-export function registerLayer(
-	element: HTMLElement,
-	handlers: Omit<Layer, "element" | "parent" | "children">,
-	parent: Layer | null = null,
-) {
-	return attachLayer({ ...handlers, parent, children: new Set() }, element);
-}
-
-/** Clicks and focus inside a branch, such as the toasts, leave layers open. */
 export function registerBranch(element: Element) {
 	branches.add(element);
 	return () => {
 		branches.delete(element);
 	};
-}
-
-export const useParentLayer = () => useContext(LayerContext);
-
-export function LayerProvider(props: { layer: Layer; children?: JSX.Element }) {
-	return <LayerContext value={props.layer}>{props.children}</LayerContext>;
 }
 
 export function createLayer(
@@ -220,20 +186,8 @@ export function createLayer(
 	return { ...handlers, parent, children: new Set() };
 }
 
-export { attachLayer };
-
-function outsideEvent<E extends Event>(name: string, originalEvent: E) {
-	const event = new CustomEvent(name, {
-		cancelable: true,
-		detail: { originalEvent },
-	});
-	originalEvent.target?.dispatchEvent(event);
-	return event;
-}
-
 const hiddenBy = new WeakMap<Element, number>();
 
-/** Hides everything but `keep` from assistive technology, like a modal does. */
 export function hideOthers(keep: Element[]) {
 	const body = keep[0]?.ownerDocument.body;
 	if (!body) return () => {};
@@ -300,7 +254,6 @@ interface PlaceOptions {
 	side: Side;
 	align: Align;
 	sideOffset: number;
-	alignOffset: number;
 	collisionPadding: number;
 }
 
@@ -361,10 +314,10 @@ function place(
 	const limit = isVertical ? width : height;
 	let cross =
 		options.align === "start"
-			? refStart + options.alignOffset
+			? refStart
 			: options.align === "end"
-				? refStart + refSize - size - options.alignOffset
-				: refStart + refSize / 2 - size / 2 + options.alignOffset;
+				? refStart + refSize - size
+				: refStart + refSize / 2 - size / 2;
 	cross = Math.max(pad, Math.min(cross, limit - pad - size));
 	cross = Math.max(refStart - size, Math.min(cross, refStart + refSize));
 	const main = start(side);
@@ -374,10 +327,6 @@ function place(
 	content.dataset.align = options.align;
 }
 
-/**
- * Shows `content` in the top layer next to `anchor` and keeps it there while
- * the page scrolls or resizes.
- */
 function float(
 	content: HTMLElement,
 	anchor: HTMLElement | undefined,
@@ -415,16 +364,16 @@ function float(
 
 interface Disclosure {
 	open: Accessor<boolean>;
-	/** The open state including a change made earlier in this task. */
 	current: () => boolean;
 	setOpen: (open: boolean) => void;
 	trigger?: HTMLElement;
 	contentId: string;
 }
 
-function createDisclosure(props: OpenProps): Disclosure {
-	const [inner, setInner] = createSignal(() => props.defaultOpen ?? false);
-	const open = createMemo(() => props.open ?? inner());
+function createDisclosure(
+	open: Accessor<boolean>,
+	onOpenChange: (open: boolean) => void,
+): Disclosure {
 	let pending: boolean | undefined;
 	const current = () => pending ?? open();
 	return {
@@ -436,17 +385,18 @@ function createDisclosure(props: OpenProps): Disclosure {
 			queueMicrotask(() => {
 				pending = undefined;
 			});
-			setInner(next);
-			props.onOpenChange?.(next);
+			onOpenChange(next);
 		},
 		contentId: createUniqueId(),
 	};
 }
 
-/**
- * Resolves a trigger's single element child, hands it to `setup` and keeps
- * `attributes` on it. Attributes the child sets itself are left alone.
- */
+const controlled = (props: OpenProps) =>
+	createDisclosure(
+		() => props.open,
+		(next) => props.onOpenChange?.(next),
+	);
+
 function wire(
 	disclosure: Disclosure,
 	resolve: () => JSX.Element,
@@ -498,7 +448,6 @@ const placement = (
 	side: props.side ?? defaults.side,
 	align: props.align ?? defaults.align,
 	sideOffset: props.sideOffset ?? 0,
-	alignOffset: props.alignOffset ?? 0,
 	collisionPadding: props.collisionPadding ?? 0,
 });
 
@@ -506,12 +455,8 @@ const contentKeys = [
 	"side",
 	"align",
 	"sideOffset",
-	"alignOffset",
 	"collisionPadding",
-	"onEscapeKeyDown",
-	"onPointerDownOutside",
 	"onFocusOutside",
-	"onInteractOutside",
 	"onOpenAutoFocus",
 	"onCloseAutoFocus",
 	"ref",
@@ -519,16 +464,11 @@ const contentKeys = [
 	"children",
 ] as const;
 
-/**
- * The shared part of a popover or menu: the floating box, dismissal and the
- * focus moving in on open and back to the trigger on close.
- */
 function Floating(props: {
 	disclosure: Disclosure;
 	content: ContentProps;
 	kind: "popover" | "dropdown-menu";
 	role: JSX.HTMLAttributes<HTMLDivElement>["role"];
-	modal: boolean;
 	defaults: { side: Side; align: Align };
 	attributes?: JSX.HTMLAttributes<HTMLDivElement>;
 	onOpen: (element: HTMLElement) => void;
@@ -537,51 +477,37 @@ function Floating(props: {
 	) => void;
 	children?: JSX.Element;
 }) {
-	const parent = useParentLayer();
 	const rest = omit(props.content, ...contentKeys);
 	let element!: HTMLDivElement;
 	let interactedOutside = false;
 	let floating: ReturnType<typeof float> | undefined;
 	const close = () => props.disclosure.setOpen(false);
 	const trigger = () => props.disclosure.trigger;
-	const onOutside = <E extends PointerEvent | FocusEvent>(
-		event: E,
-		name: string,
-		handler: ((event: OutsideEvent<E>) => void) | undefined,
-	) => {
-		const target = event.target;
-		if (isNode(target) && trigger()?.contains(target)) return;
-		if (props.modal && event.type === "focusin") return;
-		const outside = outsideEvent(name, event);
-		handler?.(outside);
-		props.content.onInteractOutside?.(outside);
-		if (outside.defaultPrevented) return;
-		const pointer = event as PointerEvent;
-		const rightClick =
-			event.type === "pointerdown" &&
-			(pointer.button === 2 || (pointer.button === 0 && pointer.ctrlKey));
-		if (!props.modal || rightClick) interactedOutside = true;
-		close();
-	};
-	const layer = createLayer(parent, {
+	const onTrigger = (target: EventTarget | null) =>
+		isNode(target) && !!trigger()?.contains(target);
+	const layer = createLayer(useContext(LayerContext), {
 		escape(event) {
-			props.content.onEscapeKeyDown?.(event);
 			if (event.defaultPrevented) return;
 			event.preventDefault();
 			close();
 		},
-		pointerDownOutside: (event) =>
-			onOutside(
-				event,
-				"dismissableLayer.pointerDownOutside",
-				props.content.onPointerDownOutside,
-			),
-		focusOutside: (event) =>
-			onOutside(
-				event,
-				"dismissableLayer.focusOutside",
-				props.content.onFocusOutside,
-			),
+		pointerDownOutside(event) {
+			if (onTrigger(event.target)) return;
+			interactedOutside = true;
+			close();
+		},
+		focusOutside(event) {
+			if (onTrigger(event.target)) return;
+			const outside = new CustomEvent("dismissableLayer.focusOutside", {
+				cancelable: true,
+				detail: { originalEvent: event },
+			});
+			event.target?.dispatchEvent(outside);
+			props.content.onFocusOutside?.(outside);
+			if (outside.defaultPrevented) return;
+			interactedOutside = true;
+			close();
+		},
 	});
 	onSettled(() => {
 		const anchor = trigger();
@@ -592,15 +518,6 @@ function Floating(props: {
 			props.kind,
 		);
 		const detach = attachLayer(layer, element);
-		const doc = element.ownerDocument;
-		let restore = () => {};
-		let pointerEvents: string | undefined;
-		if (props.modal) {
-			restore = hideOthers([element]);
-			pointerEvents = doc.body.style.pointerEvents;
-			doc.body.style.pointerEvents = "none";
-			element.style.pointerEvents = "auto";
-		}
 		focusGeneration++;
 		const opening = new Event("openAutoFocus", { cancelable: true });
 		props.content.onOpenAutoFocus?.(opening);
@@ -610,9 +527,6 @@ function Floating(props: {
 			floating?.stop();
 			floating = undefined;
 			detach();
-			restore();
-			if (pointerEvents !== undefined)
-				doc.body.style.pointerEvents = pointerEvents;
 			const returnTo = interactedOutside ? undefined : anchor;
 			const generation = focusGeneration;
 			setTimeout(() => {
@@ -672,19 +586,9 @@ const defaultTooltipProvider: TooltipProviderValue = {
 
 const TooltipProviderContext = createContext<TooltipProviderValue | null>(null);
 
-interface TooltipRootValue extends Disclosure {
-	state: Accessor<"delayed-open" | "instant-open">;
-	enter: () => void;
-	leave: (next: EventTarget | null) => void;
-	show: () => void;
-	hide: () => void;
-	content?: HTMLElement;
-}
+let activeTooltip: { hide: () => void } | undefined;
 
-const TooltipRootContext = createContext<TooltipRootValue>();
-let activeTooltip: TooltipRootValue | undefined;
-
-function TooltipProvider(props: {
+export function TooltipProvider(props: {
 	delayDuration?: number;
 	skipDelayDuration?: number;
 	children?: JSX.Element;
@@ -705,16 +609,31 @@ function TooltipProvider(props: {
 	);
 }
 
-function TooltipRoot(
-	props: OpenProps & { delayDuration?: number; children?: JSX.Element },
-) {
+type TooltipProps = PlacementProps &
+	Omit<JSX.HTMLAttributes<HTMLDivElement>, "content" | "children"> & {
+		content: JSX.Element;
+		children: JSX.Element;
+	};
+
+export function Tooltip(props: TooltipProps) {
 	const provider = useContext(TooltipProviderContext) ?? defaultTooltipProvider;
-	const disclosure = createDisclosure(props);
+	const [open, setOpen] = createSignal(false);
+	const disclosure = createDisclosure(open, (next) => {
+		const active = document.activeElement;
+		if (
+			next &&
+			active instanceof HTMLElement &&
+			active.dataset.quietFocus === "true"
+		)
+			return;
+		setOpen(next);
+	});
 	const [state, setState] = createSignal<"delayed-open" | "instant-open">(
 		"delayed-open",
 	);
 	let timer: ReturnType<typeof setTimeout> | undefined;
-	const open = (next: "delayed-open" | "instant-open") => {
+	let content: HTMLElement | undefined;
+	const show = (next: "delayed-open" | "instant-open") => {
 		clearTimeout(timer);
 		timer = undefined;
 		if (activeTooltip && activeTooltip !== root) activeTooltip.hide();
@@ -724,27 +643,7 @@ function TooltipRoot(
 		setState(next);
 		disclosure.setOpen(true);
 	};
-	const root: TooltipRootValue = {
-		...disclosure,
-		state,
-		enter() {
-			if (!provider.delayed) {
-				open("instant-open");
-				return;
-			}
-			clearTimeout(timer);
-			timer = setTimeout(
-				() => open("delayed-open"),
-				props.delayDuration ?? provider.delayDuration,
-			);
-		},
-		leave(next) {
-			clearTimeout(timer);
-			timer = undefined;
-			if (isNode(next) && root.content?.contains(next)) return;
-			root.hide();
-		},
-		show: () => open("instant-open"),
+	const root = {
 		hide() {
 			clearTimeout(timer);
 			timer = undefined;
@@ -761,191 +660,142 @@ function TooltipRoot(
 		clearTimeout(timer);
 		if (activeTooltip === root) activeTooltip = undefined;
 	});
-	return <TooltipRootContext value={root}>{props.children}</TooltipRootContext>;
-}
-
-function TooltipTrigger(props: { children: JSX.Element }) {
-	const root = useContext(TooltipRootContext);
-	return wire(
-		root,
+	const trigger = wire(
+		disclosure,
 		() => props.children,
 		(element) => {
 			const doc = element.ownerDocument;
 			let moved = false;
 			let pressed = false;
 			const release = () => (pressed = false);
-			const listeners: [string, (event: never) => void][] = [
-				[
-					"pointermove",
-					(event: PointerEvent) => {
-						if (event.pointerType === "touch" || moved) return;
-						moved = true;
-						root.enter();
-					},
-				],
-				[
-					"pointerleave",
-					(event: PointerEvent) => {
-						moved = false;
-						root.leave(event.relatedTarget);
-					},
-				],
-				[
-					"pointerdown",
-					() => {
-						root.hide();
-						pressed = true;
-						doc.addEventListener("pointerup", release, { once: true });
-					},
-				],
-				[
-					"focus",
-					() => {
-						if (!pressed) root.show();
-					},
-				],
-				["blur", () => root.hide()],
-				["click", () => root.hide()],
-			];
-			for (const [type, listener] of listeners)
+			const listeners = {
+				pointermove(event: PointerEvent) {
+					if (event.pointerType === "touch" || moved) return;
+					moved = true;
+					if (!provider.delayed) {
+						show("instant-open");
+						return;
+					}
+					clearTimeout(timer);
+					timer = setTimeout(
+						() => show("delayed-open"),
+						provider.delayDuration,
+					);
+				},
+				pointerleave(event: PointerEvent) {
+					moved = false;
+					clearTimeout(timer);
+					timer = undefined;
+					const next = event.relatedTarget;
+					if (!isNode(next) || !content?.contains(next)) root.hide();
+				},
+				pointerdown() {
+					root.hide();
+					pressed = true;
+					doc.addEventListener("pointerup", release, { once: true });
+				},
+				focus() {
+					if (!pressed) show("instant-open");
+				},
+				blur: root.hide,
+				click: root.hide,
+			};
+			for (const [type, listener] of Object.entries(listeners))
 				element.addEventListener(type, listener as EventListener);
 			return () => {
-				for (const [type, listener] of listeners)
+				for (const [type, listener] of Object.entries(listeners))
 					element.removeEventListener(type, listener as EventListener);
 				doc.removeEventListener("pointerup", release);
 			};
 		},
 		() => ({
-			"aria-describedby": root.open() ? root.contentId : undefined,
+			"aria-describedby": open() ? disclosure.contentId : undefined,
 		}),
 	);
-}
-
-function TooltipContent(
-	props: PlacementProps &
-		Pick<DismissProps, "onEscapeKeyDown" | "onPointerDownOutside"> &
-		Omit<JSX.HTMLAttributes<HTMLDivElement>, "ref"> & {
-			ref?: JSX.Ref<HTMLDivElement>;
-		},
-) {
-	const root = useContext(TooltipRootContext);
-	return (
-		<Show when={root.open()}>
-			<TooltipFloating root={root} content={props} />
-		</Show>
-	);
-}
-
-function TooltipFloating(props: {
-	root: TooltipRootValue;
-	content: Parameters<typeof TooltipContent>[0];
-}) {
-	const parent = useParentLayer();
 	const rest = omit(
-		props.content,
+		props,
 		"side",
 		"align",
 		"sideOffset",
-		"alignOffset",
 		"collisionPadding",
-		"onEscapeKeyDown",
-		"onPointerDownOutside",
-		"ref",
+		"content",
 		"children",
 	);
-	let element!: HTMLDivElement;
-	let floating: ReturnType<typeof float> | undefined;
-	const options = () =>
-		placement(props.content, { side: "top", align: "center" });
-	onSettled(() => {
-		const anchor = props.root.trigger;
-		const view = element.ownerDocument.defaultView ?? window;
-		props.root.content = element;
-		floating = float(element, anchor, options, "tooltip");
-		const detach = registerLayer(
-			element,
-			{
-				escape: (event) => {
-					props.content.onEscapeKeyDown?.(event);
-					if (event.defaultPrevented) return;
-					event.preventDefault();
-					props.root.hide();
-				},
-				pointerDownOutside: (event) => {
-					const outside = outsideEvent(
-						"dismissableLayer.pointerDownOutside",
-						event,
-					);
-					props.content.onPointerDownOutside?.(outside);
-					if (!outside.defaultPrevented) props.root.hide();
-				},
-			},
-			parent,
+	const TooltipContent = () => {
+		const parent = useContext(LayerContext);
+		let element!: HTMLDivElement;
+		let floating: ReturnType<typeof float> | undefined;
+		const options = () => placement(props, { side: "top", align: "center" });
+		onSettled(() => {
+			const anchor = disclosure.trigger;
+			const view = element.ownerDocument.defaultView ?? window;
+			content = element;
+			floating = float(element, anchor, options, "tooltip");
+			const detach = attachLayer(
+				createLayer(parent, {
+					escape(event) {
+						if (event.defaultPrevented) return;
+						event.preventDefault();
+						root.hide();
+					},
+					pointerDownOutside: root.hide,
+				}),
+				element,
+			);
+			const scrolled = (event: Event) => {
+				if (anchor && isNode(event.target) && event.target.contains(anchor))
+					root.hide();
+			};
+			view.addEventListener("scroll", scrolled, { capture: true });
+			return () => {
+				floating?.stop();
+				floating = undefined;
+				detach();
+				view.removeEventListener("scroll", scrolled, { capture: true });
+				if (content === element) content = undefined;
+			};
+		});
+		createEffect(options, () => {
+			floating?.update();
+		});
+		return (
+			<Portal mount={disclosure.trigger?.ownerDocument.body}>
+				<div
+					popover="manual"
+					role="tooltip"
+					id={disclosure.contentId}
+					data-state={state()}
+					{...rest}
+					ref={(node: HTMLDivElement) => (element = node)}
+					onPointerLeave={(event) => {
+						const next = event.relatedTarget;
+						if (isNode(next) && disclosure.trigger?.contains(next)) return;
+						root.hide();
+					}}
+				>
+					{props.content}
+				</div>
+			</Portal>
 		);
-		const scrolled = (event: Event) => {
-			if (anchor && isNode(event.target) && event.target.contains(anchor))
-				props.root.hide();
-		};
-		view.addEventListener("scroll", scrolled, { capture: true });
-		return () => {
-			floating?.stop();
-			floating = undefined;
-			detach();
-			view.removeEventListener("scroll", scrolled, { capture: true });
-			if (props.root.content === element) props.root.content = undefined;
-		};
-	});
-	createEffect(options, () => {
-		floating?.update();
-	});
+	};
 	return (
-		<Portal mount={props.root.trigger?.ownerDocument.body}>
-			<div
-				popover="manual"
-				role="tooltip"
-				id={props.root.contentId}
-				data-state={props.root.state()}
-				{...rest}
-				ref={[(node: HTMLDivElement) => (element = node), props.content.ref]}
-				onPointerLeave={(event) => {
-					const next = event.relatedTarget;
-					if (isNode(next) && props.root.trigger?.contains(next)) return;
-					props.root.hide();
-				}}
-			>
-				{props.content.children}
-			</div>
-		</Portal>
+		<>
+			{trigger}
+			<Show when={open()}>
+				<TooltipContent />
+			</Show>
+		</>
 	);
 }
 
-const Passthrough = (props: { children?: JSX.Element }) => (
-	<>{props.children}</>
-);
-
-export const Tooltip = {
-	Provider: TooltipProvider,
-	Root: TooltipRoot,
-	Trigger: TooltipTrigger,
-	Portal: Passthrough,
-	Content: TooltipContent,
-};
-
 /* Popover */
 
-const PopoverContext = createContext<Disclosure & { modal: boolean }>();
+const PopoverContext = createContext<Disclosure>();
 
-function PopoverRoot(
-	props: OpenProps & { modal?: boolean; children?: JSX.Element },
-) {
-	const disclosure = createDisclosure(props);
-	const value = {
-		...disclosure,
-		get modal() {
-			return props.modal ?? false;
-		},
-	};
-	return <PopoverContext value={value}>{props.children}</PopoverContext>;
+function PopoverRoot(props: OpenProps & { children?: JSX.Element }) {
+	return (
+		<PopoverContext value={controlled(props)}>{props.children}</PopoverContext>
+	);
 }
 
 function PopoverTrigger(props: { children: JSX.Element }) {
@@ -978,7 +828,6 @@ function PopoverContent(props: ContentProps) {
 				content={props}
 				kind="popover"
 				role="dialog"
-				modal={false}
 				defaults={{ side: "bottom", align: "center" }}
 				onOpen={(element) => {
 					if (!focusFirst(tabbables(element, false), true))
@@ -994,14 +843,12 @@ function PopoverContent(props: ContentProps) {
 export const Popover = {
 	Root: PopoverRoot,
 	Trigger: PopoverTrigger,
-	Portal: Passthrough,
 	Content: PopoverContent,
 };
 
 /* Dropdown menu */
 
 interface MenuRootValue extends Disclosure {
-	modal: boolean;
 	triggerId: string;
 }
 
@@ -1015,17 +862,8 @@ interface MenuContentValue {
 
 const MenuContentContext = createContext<MenuContentValue>();
 
-function DropdownMenuRoot(
-	props: OpenProps & { modal?: boolean; children?: JSX.Element },
-) {
-	const disclosure = createDisclosure(props);
-	const value: MenuRootValue = {
-		...disclosure,
-		get modal() {
-			return props.modal ?? true;
-		},
-		triggerId: createUniqueId(),
-	};
+function DropdownMenuRoot(props: OpenProps & { children?: JSX.Element }) {
+	const value = { ...controlled(props), triggerId: createUniqueId() };
 	return <MenuRootContext value={value}>{props.children}</MenuRootContext>;
 }
 
@@ -1093,10 +931,7 @@ function DropdownMenuContent(props: ContentProps) {
 		if (query.length === 1)
 			ordered = ordered.filter((item) => item !== current);
 		const match = ordered.find((item) =>
-			(item.dataset.textValue ?? item.textContent ?? "")
-				.trim()
-				.toLowerCase()
-				.startsWith(query),
+			(item.textContent ?? "").trim().toLowerCase().startsWith(query),
 		);
 		match?.focus({ preventScroll: true });
 	};
@@ -1113,7 +948,6 @@ function DropdownMenuContent(props: ContentProps) {
 					content={props}
 					kind="dropdown-menu"
 					role="menu"
-					modal={root.modal}
 					defaults={{ side: "bottom", align: "center" }}
 					attributes={{
 						"aria-orientation": "vertical",
@@ -1181,14 +1015,13 @@ function DropdownMenuContent(props: ContentProps) {
 
 function DropdownMenuItem(
 	props: Omit<JSX.HTMLAttributes<HTMLDivElement>, "onSelect"> & {
-		onSelect?: (event: Event) => void;
+		onSelect?: () => void;
 		disabled?: boolean;
-		textValue?: string;
 	},
 ) {
 	const menu = useContext(MenuContentContext);
 	const [highlighted, setHighlighted] = createSignal(false);
-	const rest = omit(props, "onSelect", "disabled", "textValue", "children");
+	const rest = omit(props, "onSelect", "disabled", "children");
 	return (
 		// biome-ignore lint/a11y/useFocusableInteractive: Biome does not read Solid's lowercase tabindex
 		<div
@@ -1198,21 +1031,10 @@ function DropdownMenuItem(
 			aria-disabled={props.disabled ? "true" : undefined}
 			data-disabled={props.disabled ? "" : undefined}
 			data-highlighted={highlighted() ? "" : undefined}
-			data-text-value={props.textValue}
-			onClick={(event) => {
+			onClick={() => {
 				if (props.disabled) return;
-				const item = event.currentTarget;
-				const selected = new CustomEvent("menu.itemSelect", {
-					bubbles: true,
-					cancelable: true,
-				});
-				item.addEventListener(
-					"menu.itemSelect",
-					(selectEvent) => props.onSelect?.(selectEvent),
-					{ once: true },
-				);
-				item.dispatchEvent(selected);
-				if (!selected.defaultPrevented) menu.select();
+				props.onSelect?.();
+				menu.select();
 			}}
 			onKeyDown={(event) => {
 				if (props.disabled || (menu.typing() && event.key === " ")) return;
@@ -1241,10 +1063,6 @@ function DropdownMenuItem(
 	);
 }
 
-function DropdownMenuLabel(props: JSX.HTMLAttributes<HTMLDivElement>) {
-	return <div {...props} />;
-}
-
 function DropdownMenuSeparator(props: JSX.HTMLAttributes<HTMLDivElement>) {
 	return (
 		// biome-ignore lint/a11y/useSemanticElements: an hr brings a border that the separator classes do not expect
@@ -1257,9 +1075,7 @@ function DropdownMenuSeparator(props: JSX.HTMLAttributes<HTMLDivElement>) {
 export const DropdownMenu = {
 	Root: DropdownMenuRoot,
 	Trigger: DropdownMenuTrigger,
-	Portal: Passthrough,
 	Content: DropdownMenuContent,
 	Item: DropdownMenuItem,
-	Label: DropdownMenuLabel,
 	Separator: DropdownMenuSeparator,
 };

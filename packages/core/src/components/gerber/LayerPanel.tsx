@@ -1,4 +1,4 @@
-import { createMemo, createSignal, createUniqueId, For, Show } from "solid-js";
+import { createMemo, createSignal, createUniqueId, For } from "solid-js";
 import {
 	ChevronDown,
 	ChevronUp,
@@ -76,12 +76,11 @@ export function LayerPanel(props: {
 					aria-controls={listId}
 					onClick={() => setCollapsed(!collapsed())}
 				>
-					<Show
-						when={collapsed()}
-						fallback={<ChevronUp size={16} aria-hidden="true" />}
-					>
+					{collapsed() ? (
 						<ChevronDown size={16} aria-hidden="true" />
-					</Show>
+					) : (
+						<ChevronUp size={16} aria-hidden="true" />
+					)}
 				</button>
 			</header>
 			<ol
@@ -219,7 +218,7 @@ export function LayerPanel(props: {
 										{layer().name}
 									</span>
 								</button>
-								<Show when={diagnostics().length > 0}>
+								{diagnostics().length > 0 && (
 									<button
 										type="button"
 										data-testid="layer-diagnostics"
@@ -242,15 +241,14 @@ export function LayerPanel(props: {
 											})
 										}
 									>
-										<Show
-											when={errors()}
-											fallback={<TriangleAlert size={14} aria-hidden="true" />}
-										>
+										{errors() ? (
 											<OctagonAlert size={14} aria-hidden="true" />
-										</Show>
+										) : (
+											<TriangleAlert size={14} aria-hidden="true" />
+										)}
 										{total()}
 									</button>
-								</Show>
+								)}
 								<button
 									type="button"
 									class="relative z-1 grid h-7 w-full cursor-pointer place-items-center pointer-coarse:h-11 rounded-md border-0 bg-transparent p-0 text-fg-muted hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
@@ -259,11 +257,9 @@ export function LayerPanel(props: {
 									aria-pressed={layer().visible ? "true" : "false"}
 									onClick={() => props.onVisibility(layer().id)}
 								>
-									<Show when={layer().visible} fallback={<EyeOff size={17} />}>
-										<Eye size={17} />
-									</Show>
+									{layer().visible ? <Eye size={17} /> : <EyeOff size={17} />}
 								</button>
-								<Show when={props.onRemove}>
+								{props.onRemove && (
 									<button
 										type="button"
 										class="relative z-1 grid h-7 w-6 cursor-pointer place-items-center pointer-coarse:h-11 rounded-md border-0 bg-transparent p-0 text-fg-faint hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
@@ -273,8 +269,8 @@ export function LayerPanel(props: {
 									>
 										<X size={14} />
 									</button>
-								</Show>
-								<Show when={open() && diagnostics().length > 0}>
+								)}
+								{open() && diagnostics().length > 0 && (
 									<ul
 										id={diagnosticsId()}
 										data-testid="layer-diagnostics-list"
@@ -292,12 +288,12 @@ export function LayerPanel(props: {
 													>
 														{severityStyle[diagnostic().severity].label}
 													</span>
-													<Show when={diagnostic().line !== undefined}>
+													{diagnostic().line !== undefined && (
 														<span class="text-fg-faint">
 															{" "}
 															· Line {diagnostic().line}
 														</span>
-													</Show>
+													)}
 													<span class="block break-words">
 														{diagnostic().message}
 													</span>
@@ -305,7 +301,7 @@ export function LayerPanel(props: {
 											)}
 										</For>
 									</ul>
-								</Show>
+								)}
 							</li>
 						);
 					}}

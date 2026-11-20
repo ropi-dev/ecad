@@ -1,4 +1,5 @@
 import { For } from "solid-js";
+import { keepChecked } from "#/components/ui/checkbox.ts";
 import type { ParsedStepFile } from "#/formats/parseStepFile.ts";
 
 export function StepParts(props: {
@@ -33,11 +34,7 @@ export function StepParts(props: {
 								<input
 									type="checkbox"
 									checked={!props.hidden.has(index())}
-									onChange={(event) => {
-										const next = event.currentTarget.checked;
-										event.currentTarget.checked = !next;
-										props.onToggle(index());
-									}}
+									onChange={keepChecked(() => props.onToggle(index()))}
 									class="ui-checkbox"
 								/>
 								<span

@@ -86,11 +86,11 @@ function SymbolOption(props: {
 				<span class={optionNameClassName}>
 					{props.definition.packaging?.name ?? props.definition.name}
 				</span>
-				<Show when={!props.components || props.definition.packaging}>
+				{(!props.components || props.definition.packaging) && (
 					<span title={detail()} class={optionDetailClassName}>
 						{detail()}
 					</span>
-				</Show>
+				)}
 			</span>
 		</button>
 	);
@@ -420,183 +420,171 @@ export function SymbolPicker(props: {
 					<Cpu size={18} aria-hidden="true" />
 				</TooltipButton>
 			</Popover.Trigger>
-			<Popover.Portal>
-				<Popover.Content
-					ref={(element: HTMLDivElement) => {
-						pickerContent = element;
-					}}
-					onCloseAutoFocus={(event: Event) => {
-						if (chosenComponent) {
-							event.preventDefault();
-							chosenComponent = false;
-						}
-					}}
-					side="top"
-					sideOffset={8}
-					collisionPadding={COLLISION_PADDING}
-					aria-label={components() ? "Component library" : "Symbol library"}
-					onOpenAutoFocus={(event: Event) => {
+			<Popover.Content
+				ref={(element: HTMLDivElement) => {
+					pickerContent = element;
+				}}
+				onCloseAutoFocus={(event: Event) => {
+					if (chosenComponent) {
 						event.preventDefault();
-						searchInput.focus();
-					}}
-					onKeyDown={onKeyDown}
-					class="ui-popover z-50 flex max-h-[min(26rem,calc(100dvh-6rem))] w-[22.5rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden"
-				>
-					<div class="m-2 flex h-8 shrink-0 items-center gap-2 rounded-md border border-line bg-field px-2 focus-within:border-accent">
-						<Search
-							size={14}
-							aria-hidden="true"
-							class="shrink-0 text-fg-faint"
-						/>
-						<input
-							ref={searchInput}
-							type="search"
-							aria-label={searchLabel()}
-							placeholder={searchLabel()}
-							autocomplete="off"
-							aria-controls={openPart() ? packagingListId : listId}
-							aria-activedescendant={activeDescendant()}
-							value={query()}
-							onInput={(event) => {
-								setQuery(event.currentTarget.value);
-								setActiveId(undefined);
-								setOpenPartId(undefined);
-							}}
-							class="h-full min-w-0 flex-1 bg-transparent text-sm text-fg outline-none placeholder:text-fg-faint [&::-webkit-search-cancel-button]:hidden"
-						/>
-					</div>
-					<div
-						id={listId}
-						data-symbol-picker=""
-						onScroll={(event) => {
-							const part = openPart();
-							if (!part) return;
-							const row = document.getElementById(
-								optionIds().get(part.id) ?? "",
-							);
-							const list = event.currentTarget.getBoundingClientRect();
-							const bounds = row?.getBoundingClientRect();
-							const top = Math.max(
-								list.top,
-								row
-									?.closest("section")
-									?.querySelector("h3")
-									?.getBoundingClientRect().bottom ?? list.top,
-							);
-							if (!bounds || bounds.bottom <= top || bounds.top >= list.bottom)
-								setOpenPartId(undefined);
+						chosenComponent = false;
+					}
+				}}
+				side="top"
+				sideOffset={8}
+				collisionPadding={COLLISION_PADDING}
+				aria-label={components() ? "Component library" : "Symbol library"}
+				onOpenAutoFocus={(event: Event) => {
+					event.preventDefault();
+					searchInput.focus();
+				}}
+				onKeyDown={onKeyDown}
+				class="ui-popover z-50 flex max-h-[min(26rem,calc(100dvh-6rem))] w-[22.5rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden"
+			>
+				<div class="m-2 flex h-8 shrink-0 items-center gap-2 rounded-md border border-line bg-field px-2 focus-within:border-accent">
+					<Search size={14} aria-hidden="true" class="shrink-0 text-fg-faint" />
+					<input
+						ref={searchInput}
+						type="search"
+						aria-label={searchLabel()}
+						placeholder={searchLabel()}
+						autocomplete="off"
+						aria-controls={openPart() ? packagingListId : listId}
+						aria-activedescendant={activeDescendant()}
+						value={query()}
+						onInput={(event) => {
+							setQuery(event.currentTarget.value);
+							setActiveId(undefined);
+							setOpenPartId(undefined);
 						}}
-						class="min-h-0 flex-1 overflow-auto px-2 pb-2"
-					>
-						<Show when={props.library.error}>
-							<p
-								role="alert"
-								class="m-0 mb-2 whitespace-pre-wrap text-xs text-danger"
-							>
-								{props.library.error}
-							</p>
-						</Show>
-						<Show when={groups().length === 0}>
-							<output
-								aria-live="polite"
-								class="block px-1.5 py-2 text-xs text-fg-muted"
-							>
-								{query().trim()
-									? components()
-										? "No components found."
-										: "No symbols match your search."
-									: components()
-										? "No components available."
-										: "No symbols available. Open Project actions, then Symbol libraries to enable a library."}
-							</output>
-						</Show>
-						<div class="space-y-2">
-							<For each={groups()} keyed={(group) => group.category}>
-								{(group) => (
-									<section aria-label={categoryLabel(group().category)}>
-										<h3 class="ui-section-label sticky top-0 z-10 -mx-2 mt-0 mb-0.5 border-b border-line-subtle bg-raised px-3.5 py-1.5">
-											{categoryLabel(group().category)}
-										</h3>
-										<div class="flex flex-col">
-											<For each={group().entries} keyed={(entry) => entry.id}>
-												{(entry) => (
-													<Show
-														when={asSymbol(entry())}
-														fallback={
-															<Show when={asPart(entry())}>
-																{(part) => (
-																	<PartPicker
-																		entry={part()}
-																		optionId={optionIds().get(part().id)}
-																		highlighted={
-																			highlightedIds[part().id] === true
-																		}
-																		expanded={openPart()?.id === part().id}
-																		available={optionIds().has(part().id)}
-																		submenuSide={submenuSide()}
-																		packagingListId={packagingListId}
-																		packageOptionIds={packageOptionIds()}
-																		highlightedPackage={highlightedPackage()}
-																		components={components()}
-																		onOpenPackagings={() =>
-																			openPackagings(part())
-																		}
-																		onClosePackagings={() =>
-																			setOpenPartId(undefined)
-																		}
-																		onHighlight={highlightEntry}
-																		onHighlightPackage={setActivePackageId}
-																		onChoose={choose}
-																		onFocusSearch={focusSearch}
-																		isSearch={(target) =>
-																			target === searchInput
-																		}
-																	/>
-																)}
-															</Show>
-														}
-													>
-														{(symbol) => (
-															<SymbolOption
-																definition={symbol().definition}
-																optionId={optionIds().get(symbol().id)}
-																highlighted={
-																	highlightedIds[symbol().id] === true
-																}
-																components={components()}
-																onChoose={choose}
-																onHighlight={highlightEntry}
-															/>
-														)}
-													</Show>
-												)}
-											</For>
-										</div>
-									</section>
-								)}
-							</For>
-						</div>
+						class="h-full min-w-0 flex-1 bg-transparent text-sm text-fg outline-none placeholder:text-fg-faint [&::-webkit-search-cancel-button]:hidden"
+					/>
+				</div>
+				<div
+					id={listId}
+					data-symbol-picker=""
+					onScroll={(event) => {
+						const part = openPart();
+						if (!part) return;
+						const row = document.getElementById(optionIds().get(part.id) ?? "");
+						const list = event.currentTarget.getBoundingClientRect();
+						const bounds = row?.getBoundingClientRect();
+						const top = Math.max(
+							list.top,
+							row
+								?.closest("section")
+								?.querySelector("h3")
+								?.getBoundingClientRect().bottom ?? list.top,
+						);
+						if (!bounds || bounds.bottom <= top || bounds.top >= list.bottom)
+							setOpenPartId(undefined);
+					}}
+					class="min-h-0 flex-1 overflow-auto px-2 pb-2"
+				>
+					<Show when={props.library.error}>
+						<p
+							role="alert"
+							class="m-0 mb-2 whitespace-pre-wrap text-xs text-danger"
+						>
+							{props.library.error}
+						</p>
+					</Show>
+					{groups().length === 0 && (
+						<output
+							aria-live="polite"
+							class="block px-1.5 py-2 text-xs text-fg-muted"
+						>
+							{query().trim()
+								? components()
+									? "No components found."
+									: "No symbols match your search."
+								: components()
+									? "No components available."
+									: "No symbols available. Open Project actions, then Symbol libraries to enable a library."}
+						</output>
+					)}
+					<div class="space-y-2">
+						<For each={groups()} keyed={(group) => group.category}>
+							{(group) => (
+								<section aria-label={categoryLabel(group().category)}>
+									<h3 class="ui-section-label sticky top-0 z-10 -mx-2 mt-0 mb-0.5 border-b border-line-subtle bg-raised px-3.5 py-1.5">
+										{categoryLabel(group().category)}
+									</h3>
+									<div class="flex flex-col">
+										<For each={group().entries} keyed={(entry) => entry.id}>
+											{(entry) => (
+												<Show
+													when={asSymbol(entry())}
+													fallback={
+														<Show when={asPart(entry())}>
+															{(part) => (
+																<PartPicker
+																	entry={part()}
+																	optionId={optionIds().get(part().id)}
+																	highlighted={
+																		highlightedIds[part().id] === true
+																	}
+																	expanded={openPart()?.id === part().id}
+																	available={optionIds().has(part().id)}
+																	submenuSide={submenuSide()}
+																	packagingListId={packagingListId}
+																	packageOptionIds={packageOptionIds()}
+																	highlightedPackage={highlightedPackage()}
+																	components={components()}
+																	onOpenPackagings={() =>
+																		openPackagings(part())
+																	}
+																	onClosePackagings={() =>
+																		setOpenPartId(undefined)
+																	}
+																	onHighlight={highlightEntry}
+																	onHighlightPackage={setActivePackageId}
+																	onChoose={choose}
+																	onFocusSearch={focusSearch}
+																	isSearch={(target) => target === searchInput}
+																/>
+															)}
+														</Show>
+													}
+												>
+													{(symbol) => (
+														<SymbolOption
+															definition={symbol().definition}
+															optionId={optionIds().get(symbol().id)}
+															highlighted={highlightedIds[symbol().id] === true}
+															components={components()}
+															onChoose={choose}
+															onHighlight={highlightEntry}
+														/>
+													)}
+												</Show>
+											)}
+										</For>
+									</div>
+								</section>
+							)}
+						</For>
 					</div>
-					<p
-						aria-hidden="true"
-						class="m-0 flex shrink-0 items-center gap-3 border-t border-line-subtle px-3 py-1.5 text-2xs text-fg-faint"
-					>
-						<span class="flex items-center gap-1">
-							<kbd class="ui-kbd">↑</kbd>
-							<kbd class="ui-kbd">↓</kbd>
-							Browse
-						</span>
-						<span class="flex items-center gap-1">
-							<kbd class="ui-kbd">Enter</kbd>
-							{components() ? "Place" : "Insert"}
-						</span>
-						<span class="flex items-center gap-1">
-							<kbd class="ui-kbd">Esc</kbd>
-							Close
-						</span>
-					</p>
-				</Popover.Content>
-			</Popover.Portal>
+				</div>
+				<p
+					aria-hidden="true"
+					class="m-0 flex shrink-0 items-center gap-3 border-t border-line-subtle px-3 py-1.5 text-2xs text-fg-faint"
+				>
+					<span class="flex items-center gap-1">
+						<kbd class="ui-kbd">↑</kbd>
+						<kbd class="ui-kbd">↓</kbd>
+						Browse
+					</span>
+					<span class="flex items-center gap-1">
+						<kbd class="ui-kbd">Enter</kbd>
+						{components() ? "Place" : "Insert"}
+					</span>
+					<span class="flex items-center gap-1">
+						<kbd class="ui-kbd">Esc</kbd>
+						Close
+					</span>
+				</p>
+			</Popover.Content>
 		</Popover.Root>
 	);
 }
@@ -638,45 +626,43 @@ function PartPicker(props: {
 					onHighlight={props.onHighlight}
 				/>
 			</Popover.Trigger>
-			<Popover.Portal>
-				<Popover.Content
-					side={props.submenuSide}
-					align={props.submenuSide === "right" ? "start" : "end"}
-					sideOffset={props.submenuSide === "right" ? SUBMENU_OFFSET : 2}
-					collisionPadding={COLLISION_PADDING}
-					aria-label={`${props.entry.part} packagings`}
-					onOpenAutoFocus={(event: Event) => {
-						event.preventDefault();
-						props.onFocusSearch();
-					}}
-					onFocusOutside={(event) => {
-						if (props.isSearch(event.target)) event.preventDefault();
-					}}
-					onCloseAutoFocus={(event: Event) => {
-						event.preventDefault();
-						props.onFocusSearch();
-					}}
-					class="ui-popover z-50 flex max-h-[min(22rem,var(--radix-popover-content-available-height))] w-64 max-w-[calc(100vw-2rem)] flex-col overflow-auto p-2"
-				>
-					<h4 class="ui-section-label -mx-2 -mt-2 mb-1 border-b border-line-subtle px-3.5 py-1.5">
-						{props.entry.part}
-					</h4>
-					<div id={props.packagingListId} class="flex flex-col">
-						<For each={props.entry.symbols}>
-							{(definition) => (
-								<SymbolOption
-									definition={definition}
-									optionId={props.packageOptionIds.get(definition.id)}
-									highlighted={definition === props.highlightedPackage}
-									components={props.components}
-									onChoose={props.onChoose}
-									onHighlight={props.onHighlightPackage}
-								/>
-							)}
-						</For>
-					</div>
-				</Popover.Content>
-			</Popover.Portal>
+			<Popover.Content
+				side={props.submenuSide}
+				align={props.submenuSide === "right" ? "start" : "end"}
+				sideOffset={props.submenuSide === "right" ? SUBMENU_OFFSET : 2}
+				collisionPadding={COLLISION_PADDING}
+				aria-label={`${props.entry.part} packagings`}
+				onOpenAutoFocus={(event: Event) => {
+					event.preventDefault();
+					props.onFocusSearch();
+				}}
+				onFocusOutside={(event) => {
+					if (props.isSearch(event.target)) event.preventDefault();
+				}}
+				onCloseAutoFocus={(event: Event) => {
+					event.preventDefault();
+					props.onFocusSearch();
+				}}
+				class="ui-popover z-50 flex max-h-[min(22rem,var(--radix-popover-content-available-height))] w-64 max-w-[calc(100vw-2rem)] flex-col overflow-auto p-2"
+			>
+				<h4 class="ui-section-label -mx-2 -mt-2 mb-1 border-b border-line-subtle px-3.5 py-1.5">
+					{props.entry.part}
+				</h4>
+				<div id={props.packagingListId} class="flex flex-col">
+					<For each={props.entry.symbols}>
+						{(definition) => (
+							<SymbolOption
+								definition={definition}
+								optionId={props.packageOptionIds.get(definition.id)}
+								highlighted={definition === props.highlightedPackage}
+								components={props.components}
+								onChoose={props.onChoose}
+								onHighlight={props.onHighlightPackage}
+							/>
+						)}
+					</For>
+				</div>
+			</Popover.Content>
 		</Popover.Root>
 	);
 }

@@ -1,7 +1,7 @@
 import { Dynamic, type JSX } from "@solidjs/web";
 import { children, createEffect, createMemo, Show } from "solid-js";
 import { ChevronRight, type LucideIcon } from "#/components/ui/icons.tsx";
-import { Tooltip } from "#/components/ui/primitives.tsx";
+import { TooltipProvider } from "#/components/ui/primitives.tsx";
 import { projectFileSelections } from "#/projects/file-url.ts";
 import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
 import { primaryPcbId } from "#/projects/pcb.ts";
@@ -66,7 +66,7 @@ export function DocumentBar(props: {
 	const center = children(() => props.center);
 	return (
 		<Show when={project()}>
-			<Tooltip.Provider delayDuration={350} skipDelayDuration={150}>
+			<TooltipProvider delayDuration={350} skipDelayDuration={150}>
 				{/* The row mirrors the sidebar button's inset on the right, so a
 				    centred bar is centred on the workspace. */}
 				<div
@@ -115,7 +115,7 @@ export function DocumentBar(props: {
 						</div>
 					</Show>
 				</div>
-			</Tooltip.Provider>
+			</TooltipProvider>
 		</Show>
 	);
 }

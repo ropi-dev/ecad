@@ -1,6 +1,6 @@
 import { netNodeBox } from "@ecad/drawing-core/circuit/graph.ts";
 import type { CircuitNet } from "@ecad/drawing-core/circuit/model.ts";
-import { createMemo, Show } from "solid-js";
+import { createMemo } from "solid-js";
 import { CircuitInlineFields } from "#/components/circuit/CircuitInlineFields.tsx";
 import type { CircuitTool } from "#/components/circuit/CircuitToolbar.tsx";
 import type { CircuitGraphActions } from "#/components/circuit/circuitEditorState.ts";
@@ -92,7 +92,7 @@ export function CircuitNetNode(props: {
 					{props.label}
 				</text>
 			</GraphButton>
-			<Show when={props.isEditing}>
+			{props.isEditing && (
 				<CircuitInlineFields
 					x={props.x - 110}
 					y={props.y - 58}
@@ -126,7 +126,7 @@ export function CircuitNetNode(props: {
 						return false;
 					}}
 				/>
-			</Show>
+			)}
 		</g>
 	);
 }

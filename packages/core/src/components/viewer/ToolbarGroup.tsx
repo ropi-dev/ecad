@@ -16,7 +16,7 @@ import {
 	ChevronRight,
 	type LucideIcon,
 } from "#/components/ui/icons.tsx";
-import { Tooltip } from "#/components/ui/primitives.tsx";
+import { TooltipProvider } from "#/components/ui/primitives.tsx";
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
 import { useButtonShortcuts } from "#/components/viewer/useButtonShortcuts.ts";
 import {
@@ -49,9 +49,9 @@ export function ToolbarGroups(props: {
 		panelHost: () => props.panelHost,
 	};
 	return (
-		<Tooltip.Provider delayDuration={350} skipDelayDuration={150}>
+		<TooltipProvider delayDuration={350} skipDelayDuration={150}>
 			<GroupContext value={groups}>{props.children}</GroupContext>
-		</Tooltip.Provider>
+		</TooltipProvider>
 	);
 }
 
@@ -91,20 +91,22 @@ export function ToolbarDock(props: {
 				>
 					{props.children}
 				</div>
-				<Show when={scrollable()}>
-					<span
-						aria-hidden="true"
-						class="pointer-events-none absolute inset-y-0 left-0 hidden w-5 items-center justify-center text-fg group-data-[fade=both]:flex group-data-[fade=start]:flex"
-					>
-						<ChevronLeft size={14} strokeWidth={2.5} />
-					</span>
-					<span
-						aria-hidden="true"
-						class="pointer-events-none absolute inset-y-0 right-0 hidden w-5 items-center justify-center text-fg group-data-[fade=both]:flex group-data-[fade=end]:flex"
-					>
-						<ChevronRight size={14} strokeWidth={2.5} />
-					</span>
-				</Show>
+				{scrollable() && (
+					<>
+						<span
+							aria-hidden="true"
+							class="pointer-events-none absolute inset-y-0 left-0 hidden w-5 items-center justify-center text-fg group-data-[fade=both]:flex group-data-[fade=start]:flex"
+						>
+							<ChevronLeft size={14} strokeWidth={2.5} />
+						</span>
+						<span
+							aria-hidden="true"
+							class="pointer-events-none absolute inset-y-0 right-0 hidden w-5 items-center justify-center text-fg group-data-[fade=both]:flex group-data-[fade=end]:flex"
+						>
+							<ChevronRight size={14} strokeWidth={2.5} />
+						</span>
+					</>
+				)}
 			</div>
 		</ToolbarGroups>
 	);

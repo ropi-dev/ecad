@@ -97,17 +97,17 @@ export function HistoryControls(props: {
 								#{id}
 							</span>
 							<span class="whitespace-nowrap">{entry().label}</span>
-							<Show when={isCurrent()}>
+							{isCurrent() && (
 								<span class="ml-auto pl-3 text-2xs">Current</span>
-							</Show>
+							)}
 						</button>
-						<Show when={entry().childIds.length > 0}>
+						{entry().childIds.length > 0 && (
 							<ol class="m-0 ml-3.5 border-l border-line p-0 pl-1.5">
 								<For each={entry().childIds}>
 									{(child) => renderNode(child)}
 								</For>
 							</ol>
-						</Show>
+						)}
 					</li>
 				)}
 			</Show>
@@ -179,11 +179,11 @@ export function HistoryControls(props: {
 						<ol class="m-0 min-w-max list-none p-0">
 							<For each={roots()}>{(id) => renderNode(id)}</For>
 						</ol>
-						<Show when={Object.keys(props.history.nodes).length < 2}>
+						{Object.keys(props.history.nodes).length < 2 && (
 							<p class="m-0 px-2 pt-1 pb-1.5 text-xs text-fg-faint">
 								Each edit is listed here. Choose one to go back to it.
 							</p>
-						</Show>
+						)}
 					</div>
 				</section>
 			</Show>

@@ -28,9 +28,7 @@ export function RulerPositionGuide(props: {
 					aria-hidden="true"
 					class="absolute inset-0 size-full stroke-fg-muted/60 stroke-1"
 				>
-					<Show
-						when={position().y >= 0 && position().y <= height() - RULER_BAND}
-					>
+					{position().y >= 0 && position().y <= height() - RULER_BAND && (
 						<line
 							data-axis="y"
 							x1={width() - RULER_BAND}
@@ -38,8 +36,8 @@ export function RulerPositionGuide(props: {
 							x2={width()}
 							y2={position().y}
 						/>
-					</Show>
-					<Show when={position().x >= 0 && position().x < width() - RULER_BAND}>
+					)}
+					{position().x >= 0 && position().x < width() - RULER_BAND && (
 						<line
 							data-axis="x"
 							x1={position().x}
@@ -47,7 +45,7 @@ export function RulerPositionGuide(props: {
 							x2={position().x}
 							y2={height()}
 						/>
-					</Show>
+					)}
 				</svg>
 			)}
 		</Show>

@@ -298,44 +298,43 @@ export function EditorToolbar(props: EditorToolbarProps) {
 				)}
 			</For>
 			<ToolbarSeparator />
-			<Show
-				when={props.board}
-				fallback={
-					<Show
-						when={props.footprint}
-						fallback={
-							<>
-								<SymbolPicker
-									library={props.symbolLibrary}
-									allowNetSymbols={!props.sheetless}
-									disabled={!ready()}
-									active={props.tool === "symbol"}
-									onChoose={(definition) => {
-										if (props.sheetless && definition.netSymbol) return;
-										props.finishDrag();
-										props.finishWire();
-										props.setSymbolDefinition(definition);
-										props.setTool("symbol");
-									}}
-								/>
-								{renderGroup("connections", "Connections", Cable)}
-							</>
-						}
+			{props.board ? (
+				<>
+					{renderGroup("routing", "Routing", Spline)}
+					<Toggle
+						disabled={!ready()}
+						aria-label="Update from schematic"
+						tooltip="Update from schematic"
+						onClick={() => props.board?.onSync()}
 					>
-						{renderGroup("pads", "Pads and vias", CircleDot)}
-					</Show>
-				}
-			>
-				{renderGroup("routing", "Routing", Spline)}
-				<Toggle
-					disabled={!ready()}
-					aria-label="Update from schematic"
-					tooltip="Update from schematic"
-					onClick={() => props.board?.onSync()}
+						<RefreshCw size={18} aria-hidden="true" />
+					</Toggle>
+				</>
+			) : (
+				<Show
+					when={props.footprint}
+					fallback={
+						<>
+							<SymbolPicker
+								library={props.symbolLibrary}
+								allowNetSymbols={!props.sheetless}
+								disabled={!ready()}
+								active={props.tool === "symbol"}
+								onChoose={(definition) => {
+									if (props.sheetless && definition.netSymbol) return;
+									props.finishDrag();
+									props.finishWire();
+									props.setSymbolDefinition(definition);
+									props.setTool("symbol");
+								}}
+							/>
+							{renderGroup("connections", "Connections", Cable)}
+						</>
+					}
 				>
-					<RefreshCw size={18} aria-hidden="true" />
-				</Toggle>
-			</Show>
+					{renderGroup("pads", "Pads and vias", CircleDot)}
+				</Show>
+			)}
 			{renderGroup("shapes", "Shapes", Shapes)}
 			<ToolbarSeparator />
 			<For each={rotations}>
@@ -416,14 +415,14 @@ export function EditorToolbar(props: EditorToolbarProps) {
 				<SquareDashedMousePointer size={18} aria-hidden="true" />
 			</Toggle>
 			<ToolbarSeparator />
-			<Show when={props.onErc}>
+			{props.onErc && (
 				<ErcButton
 					open={props.ercOpen}
 					disabled={!ready()}
 					onClick={() => props.onErc?.()}
 				/>
-			</Show>
-			<Show when={props.onSettings}>
+			)}
+			{props.onSettings && (
 				<Toggle
 					disabled={!ready()}
 					aria-label="Schematic settings"
@@ -434,10 +433,8 @@ export function EditorToolbar(props: EditorToolbarProps) {
 				>
 					<SlidersHorizontal size={18} aria-hidden="true" />
 				</Toggle>
-			</Show>
-			<Show when={props.onErc || props.onSettings}>
-				<ToolbarSeparator />
-			</Show>
+			)}
+			{(props.onErc || props.onSettings) && <ToolbarSeparator />}
 			<Show when={props.board}>
 				{(board) => (
 					<>

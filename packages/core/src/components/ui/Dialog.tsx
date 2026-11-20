@@ -6,6 +6,7 @@ import {
 	createUniqueId,
 	onSettled,
 	Show,
+	useContext,
 } from "solid-js";
 import {
 	dialogWindowsEnabled,
@@ -21,10 +22,9 @@ import {
 	createLayer,
 	focusElement,
 	hideOthers,
-	LayerProvider,
+	LayerContext,
 	returnFocusLater,
 	tabbables,
-	useParentLayer,
 } from "#/components/ui/primitives.tsx";
 import { panelIconButtonClassName } from "#/components/viewer/viewControlStyles.ts";
 
@@ -34,19 +34,6 @@ const widths = {
 	lg: "max-w-lg",
 	xl: "max-w-3xl",
 } as const;
-
-/** Title and optional description shared by every dialog. */
-export function DialogHeader(props: {
-	title: JSX.Element;
-	description?: JSX.Element;
-}) {
-	return (
-		<header class="shrink-0 pt-4 pr-12 pb-1 pl-5">
-			{props.title}
-			{props.description}
-		</header>
-	);
-}
 
 /**
  * Place for a dialog's close button. The button follows the dialog's content
@@ -106,20 +93,16 @@ function DialogCard(props: {
 	const footer = children(() => props.dialog.footer);
 	return (
 		<>
-			<DialogHeader
-				title={
-					<h2 id={props.titleId} class={dialogTitleClassName}>
-						{props.dialog.title}
-					</h2>
-				}
-				description={
-					<Show when={props.description}>
-						<p id={props.descriptionId} class={dialogDescriptionClassName}>
-							{props.description}
-						</p>
-					</Show>
-				}
-			/>
+			<header class="shrink-0 pt-4 pr-12 pb-1 pl-5">
+				<h2 id={props.titleId} class={dialogTitleClassName}>
+					{props.dialog.title}
+				</h2>
+				<Show when={props.description}>
+					<p id={props.descriptionId} class={dialogDescriptionClassName}>
+						{props.description}
+					</p>
+				</Show>
+			</header>
 			{props.dialog.children}
 			<Show when={footer.toArray().length}>
 				<footer class={dialogFooterClassName}>{footer()}</footer>
@@ -144,7 +127,7 @@ function PageDialogCard(props: AppDialogProps) {
 	let content!: HTMLDivElement;
 	let lastFocused: HTMLElement | undefined;
 	const close = () => props.onOpenChange(false);
-	const layer = createLayer(useParentLayer(), {
+	const layer = createLayer(useContext(LayerContext), {
 		escape(event) {
 			event.preventDefault();
 			close();
@@ -219,7 +202,7 @@ function PageDialogCard(props: AppDialogProps) {
 					}
 				}}
 			>
-				<LayerProvider layer={layer}>
+				<LayerContext value={layer}>
 					<DialogCard
 						titleId={titleId}
 						descriptionId={descriptionId}
@@ -227,7 +210,7 @@ function PageDialogCard(props: AppDialogProps) {
 						dialog={props}
 						close={close}
 					/>
-				</LayerProvider>
+				</LayerContext>
 			</div>
 		</Portal>
 	);

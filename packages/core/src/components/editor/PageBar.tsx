@@ -220,7 +220,7 @@ export function PageBar(props: {
 			>
 				<Plus size={16} aria-hidden="true" />
 			</button>
-			<Show when={listOpen()}>
+			{listOpen() && (
 				<section
 					ref={panel}
 					id={listId}
@@ -250,27 +250,7 @@ export function PageBar(props: {
 										<span class="w-5 shrink-0 text-right text-2xs text-fg-faint tabular-nums">
 											{index() + 1}
 										</span>
-										<Show
-											when={renaming() === page().id}
-											fallback={
-												<button
-													type="button"
-													class={`${tabClassName} h-7 min-w-0 max-w-none flex-1 justify-between gap-2`}
-													aria-current={
-														page().id === props.current ? "page" : undefined
-													}
-													aria-label={`Open ${page().name}`}
-													disabled={disabled()}
-													onClick={() => props.onSelect(page().id)}
-													onDblClick={() => setRenaming(page().id)}
-												>
-													<span class="truncate">{page().name}</span>
-													<span class="shrink-0 text-2xs font-normal tabular-nums opacity-70">
-														{itemCount(count())}
-													</span>
-												</button>
-											}
-										>
+										{renaming() === page().id ? (
 											<RenameInput
 												name={page().name}
 												class={inputClassName}
@@ -278,7 +258,24 @@ export function PageBar(props: {
 												onDone={(name) => rename(page().id, name)}
 												onCancel={() => setRenaming(null)}
 											/>
-										</Show>
+										) : (
+											<button
+												type="button"
+												class={`${tabClassName} h-7 min-w-0 max-w-none flex-1 justify-between gap-2`}
+												aria-current={
+													page().id === props.current ? "page" : undefined
+												}
+												aria-label={`Open ${page().name}`}
+												disabled={disabled()}
+												onClick={() => props.onSelect(page().id)}
+												onDblClick={() => setRenaming(page().id)}
+											>
+												<span class="truncate">{page().name}</span>
+												<span class="shrink-0 text-2xs font-normal tabular-nums opacity-70">
+													{itemCount(count())}
+												</span>
+											</button>
+										)}
 										<button
 											type="button"
 											class={smallIconButtonClassName}
@@ -340,7 +337,7 @@ export function PageBar(props: {
 						Add page
 					</button>
 				</section>
-			</Show>
+			)}
 		</nav>
 	);
 }

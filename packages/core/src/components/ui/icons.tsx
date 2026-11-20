@@ -1,93 +1,5 @@
 import type { JSX } from "@solidjs/web";
-import {
-	Activity as ActivityNode,
-	ArrowLeft as ArrowLeftNode,
-	Box as BoxNode,
-	Cable as CableNode,
-	Check as CheckNode,
-	ChevronDown as ChevronDownNode,
-	ChevronLeft as ChevronLeftNode,
-	ChevronRight as ChevronRightNode,
-	ChevronUp as ChevronUpNode,
-	CircleAlert as CircleAlertNode,
-	CircleArrowUp as CircleArrowUpNode,
-	CircleCheck as CircleCheckNode,
-	CircleDashed as CircleDashedNode,
-	CircleDot as CircleDotNode,
-	Circle as CircleNode,
-	CirclePlus as CirclePlusNode,
-	CircleSmall as CircleSmallNode,
-	CircuitBoard as CircuitBoardNode,
-	Component as ComponentNode,
-	Cpu as CpuNode,
-	Diff as DiffNode,
-	Download as DownloadNode,
-	Eye as EyeNode,
-	EyeOff as EyeOffNode,
-	FileArchive as FileArchiveNode,
-	FileCog as FileCogNode,
-	FileImage as FileImageNode,
-	FilePlus2 as FilePlus2Node,
-	Files as FilesNode,
-	FileUp as FileUpNode,
-	FlipHorizontal2 as FlipHorizontal2Node,
-	FolderCog as FolderCogNode,
-	FolderOpen as FolderOpenNode,
-	FolderUp as FolderUpNode,
-	Grid2x2 as Grid2x2Node,
-	GripVertical as GripVerticalNode,
-	Hand as HandNode,
-	History as HistoryNode,
-	House as HouseNode,
-	type IconNode,
-	ImageDown as ImageDownNode,
-	Info as InfoNode,
-	Layers as LayersNode,
-	Library as LibraryNode,
-	LoaderCircle as LoaderCircleNode,
-	Lock as LockNode,
-	LockOpen as LockOpenNode,
-	MapPin as MapPinNode,
-	Minus as MinusNode,
-	Monitor as MonitorNode,
-	MousePointer2 as MousePointer2Node,
-	OctagonAlert as OctagonAlertNode,
-	Pencil as PencilNode,
-	Pentagon as PentagonNode,
-	PlugZap as PlugZapNode,
-	Plus as PlusNode,
-	RectangleVertical as RectangleVerticalNode,
-	Redo2 as Redo2Node,
-	RefreshCw as RefreshCwNode,
-	RotateCcw as RotateCcwNode,
-	RotateCw as RotateCwNode,
-	Save as SaveNode,
-	Scan as ScanNode,
-	Search as SearchNode,
-	Settings2 as Settings2Node,
-	Settings as SettingsNode,
-	Shapes as ShapesNode,
-	ShieldCheck as ShieldCheckNode,
-	Shuffle as ShuffleNode,
-	SlidersHorizontal as SlidersHorizontalNode,
-	Sparkles as SparklesNode,
-	Spline as SplineNode,
-	SquareDashedBottom as SquareDashedBottomNode,
-	SquareDashedMousePointer as SquareDashedMousePointerNode,
-	SquareDashed as SquareDashedNode,
-	Square as SquareNode,
-	Tag as TagNode,
-	Tags as TagsNode,
-	Trash2 as Trash2Node,
-	TriangleAlert as TriangleAlertNode,
-	Triangle as TriangleNode,
-	Type as TypeNode,
-	Undo2 as Undo2Node,
-	Upload as UploadNode,
-	Workflow as WorkflowNode,
-	X as XNode,
-	Zap as ZapNode,
-} from "lucide";
+import * as lucide from "lucide";
 import { omit } from "solid-js";
 
 export interface IconProps extends JSX.SvgSVGAttributes<SVGSVGElement> {
@@ -97,7 +9,7 @@ export interface IconProps extends JSX.SvgSVGAttributes<SVGSVGElement> {
 
 export type LucideIcon = (props: IconProps) => JSX.Element;
 
-const markup = (node: IconNode) =>
+const markup = (node: lucide.IconNode) =>
 	node
 		.map(
 			([tag, attributes]) =>
@@ -107,7 +19,7 @@ const markup = (node: IconNode) =>
 		)
 		.join("");
 
-function icon(name: string, node: IconNode): LucideIcon {
+function icon(name: string, node: lucide.IconNode): LucideIcon {
 	const content = markup(node);
 	return (props) => {
 		const rest = omit(props, "size", "strokeWidth", "class");
@@ -130,101 +42,101 @@ function icon(name: string, node: IconNode): LucideIcon {
 	};
 }
 
-export const Activity = icon("activity", ActivityNode);
-export const ArrowLeft = icon("arrow-left", ArrowLeftNode);
-export const Box = icon("box", BoxNode);
-export const Cable = icon("cable", CableNode);
-export const Check = icon("check", CheckNode);
-export const ChevronDown = icon("chevron-down", ChevronDownNode);
-export const ChevronLeft = icon("chevron-left", ChevronLeftNode);
-export const ChevronRight = icon("chevron-right", ChevronRightNode);
-export const ChevronUp = icon("chevron-up", ChevronUpNode);
-export const Circle = icon("circle", CircleNode);
-export const CircleAlert = icon("circle-alert", CircleAlertNode);
-export const CircleArrowUp = icon("circle-arrow-up", CircleArrowUpNode);
-export const CircleCheck = icon("circle-check", CircleCheckNode);
-export const CircleDashed = icon("circle-dashed", CircleDashedNode);
-export const CircleDot = icon("circle-dot", CircleDotNode);
-export const CirclePlus = icon("circle-plus", CirclePlusNode);
-export const CircleSmall = icon("circle-small", CircleSmallNode);
-export const CircuitBoard = icon("circuit-board", CircuitBoardNode);
-export const Component = icon("component", ComponentNode);
-export const Cpu = icon("cpu", CpuNode);
-export const Diff = icon("diff", DiffNode);
-export const Download = icon("download", DownloadNode);
-export const Eye = icon("eye", EyeNode);
-export const EyeOff = icon("eye-off", EyeOffNode);
-export const FileArchive = icon("file-archive", FileArchiveNode);
-export const FileCog = icon("file-cog", FileCogNode);
-export const FileImage = icon("file-image", FileImageNode);
-export const FilePlus2 = icon("file-plus2", FilePlus2Node);
-export const Files = icon("files", FilesNode);
-export const FileUp = icon("file-up", FileUpNode);
-export const FlipHorizontal2 = icon("flip-horizontal2", FlipHorizontal2Node);
-export const FolderCog = icon("folder-cog", FolderCogNode);
-export const FolderOpen = icon("folder-open", FolderOpenNode);
-export const FolderUp = icon("folder-up", FolderUpNode);
-export const Grid2x2 = icon("grid2x2", Grid2x2Node);
-export const GripVertical = icon("grip-vertical", GripVerticalNode);
-export const Hand = icon("hand", HandNode);
-export const History = icon("history", HistoryNode);
-export const House = icon("house", HouseNode);
-export const ImageDown = icon("image-down", ImageDownNode);
-export const Info = icon("info", InfoNode);
-export const Layers = icon("layers", LayersNode);
-export const Library = icon("library", LibraryNode);
-export const LoaderCircle = icon("loader-circle", LoaderCircleNode);
-export const Lock = icon("lock", LockNode);
-export const LockOpen = icon("lock-open", LockOpenNode);
-export const MapPin = icon("map-pin", MapPinNode);
-export const Minus = icon("minus", MinusNode);
-export const Monitor = icon("monitor", MonitorNode);
-export const MousePointer2 = icon("mouse-pointer2", MousePointer2Node);
-export const OctagonAlert = icon("octagon-alert", OctagonAlertNode);
-export const Pencil = icon("pencil", PencilNode);
-export const Pentagon = icon("pentagon", PentagonNode);
-export const PlugZap = icon("plug-zap", PlugZapNode);
-export const Plus = icon("plus", PlusNode);
+export const Activity = icon("activity", lucide.Activity);
+export const ArrowLeft = icon("arrow-left", lucide.ArrowLeft);
+export const Box = icon("box", lucide.Box);
+export const Cable = icon("cable", lucide.Cable);
+export const Check = icon("check", lucide.Check);
+export const ChevronDown = icon("chevron-down", lucide.ChevronDown);
+export const ChevronLeft = icon("chevron-left", lucide.ChevronLeft);
+export const ChevronRight = icon("chevron-right", lucide.ChevronRight);
+export const ChevronUp = icon("chevron-up", lucide.ChevronUp);
+export const Circle = icon("circle", lucide.Circle);
+export const CircleAlert = icon("circle-alert", lucide.CircleAlert);
+export const CircleArrowUp = icon("circle-arrow-up", lucide.CircleArrowUp);
+export const CircleCheck = icon("circle-check", lucide.CircleCheck);
+export const CircleDashed = icon("circle-dashed", lucide.CircleDashed);
+export const CircleDot = icon("circle-dot", lucide.CircleDot);
+export const CirclePlus = icon("circle-plus", lucide.CirclePlus);
+export const CircleSmall = icon("circle-small", lucide.CircleSmall);
+export const CircuitBoard = icon("circuit-board", lucide.CircuitBoard);
+export const Component = icon("component", lucide.Component);
+export const Cpu = icon("cpu", lucide.Cpu);
+export const Diff = icon("diff", lucide.Diff);
+export const Download = icon("download", lucide.Download);
+export const Eye = icon("eye", lucide.Eye);
+export const EyeOff = icon("eye-off", lucide.EyeOff);
+export const FileArchive = icon("file-archive", lucide.FileArchive);
+export const FileCog = icon("file-cog", lucide.FileCog);
+export const FileImage = icon("file-image", lucide.FileImage);
+export const FilePlus2 = icon("file-plus2", lucide.FilePlus2);
+export const Files = icon("files", lucide.Files);
+export const FileUp = icon("file-up", lucide.FileUp);
+export const FlipHorizontal2 = icon("flip-horizontal2", lucide.FlipHorizontal2);
+export const FolderCog = icon("folder-cog", lucide.FolderCog);
+export const FolderOpen = icon("folder-open", lucide.FolderOpen);
+export const FolderUp = icon("folder-up", lucide.FolderUp);
+export const Grid2x2 = icon("grid2x2", lucide.Grid2x2);
+export const GripVertical = icon("grip-vertical", lucide.GripVertical);
+export const Hand = icon("hand", lucide.Hand);
+export const History = icon("history", lucide.History);
+export const House = icon("house", lucide.House);
+export const ImageDown = icon("image-down", lucide.ImageDown);
+export const Info = icon("info", lucide.Info);
+export const Layers = icon("layers", lucide.Layers);
+export const Library = icon("library", lucide.Library);
+export const LoaderCircle = icon("loader-circle", lucide.LoaderCircle);
+export const Lock = icon("lock", lucide.Lock);
+export const LockOpen = icon("lock-open", lucide.LockOpen);
+export const MapPin = icon("map-pin", lucide.MapPin);
+export const Minus = icon("minus", lucide.Minus);
+export const Monitor = icon("monitor", lucide.Monitor);
+export const MousePointer2 = icon("mouse-pointer2", lucide.MousePointer2);
+export const OctagonAlert = icon("octagon-alert", lucide.OctagonAlert);
+export const Pencil = icon("pencil", lucide.Pencil);
+export const Pentagon = icon("pentagon", lucide.Pentagon);
+export const PlugZap = icon("plug-zap", lucide.PlugZap);
+export const Plus = icon("plus", lucide.Plus);
 export const RectangleVertical = icon(
 	"rectangle-vertical",
-	RectangleVerticalNode,
+	lucide.RectangleVertical,
 );
-export const Redo2 = icon("redo2", Redo2Node);
-export const RefreshCw = icon("refresh-cw", RefreshCwNode);
-export const RotateCcw = icon("rotate-ccw", RotateCcwNode);
-export const RotateCw = icon("rotate-cw", RotateCwNode);
-export const Save = icon("save", SaveNode);
-export const Scan = icon("scan", ScanNode);
-export const Search = icon("search", SearchNode);
-export const Settings = icon("settings", SettingsNode);
-export const Settings2 = icon("settings2", Settings2Node);
-export const Shapes = icon("shapes", ShapesNode);
-export const ShieldCheck = icon("shield-check", ShieldCheckNode);
-export const Shuffle = icon("shuffle", ShuffleNode);
+export const Redo2 = icon("redo2", lucide.Redo2);
+export const RefreshCw = icon("refresh-cw", lucide.RefreshCw);
+export const RotateCcw = icon("rotate-ccw", lucide.RotateCcw);
+export const RotateCw = icon("rotate-cw", lucide.RotateCw);
+export const Save = icon("save", lucide.Save);
+export const Scan = icon("scan", lucide.Scan);
+export const Search = icon("search", lucide.Search);
+export const Settings = icon("settings", lucide.Settings);
+export const Settings2 = icon("settings2", lucide.Settings2);
+export const Shapes = icon("shapes", lucide.Shapes);
+export const ShieldCheck = icon("shield-check", lucide.ShieldCheck);
+export const Shuffle = icon("shuffle", lucide.Shuffle);
 export const SlidersHorizontal = icon(
 	"sliders-horizontal",
-	SlidersHorizontalNode,
+	lucide.SlidersHorizontal,
 );
-export const Sparkles = icon("sparkles", SparklesNode);
-export const Spline = icon("spline", SplineNode);
-export const Square = icon("square", SquareNode);
-export const SquareDashed = icon("square-dashed", SquareDashedNode);
+export const Sparkles = icon("sparkles", lucide.Sparkles);
+export const Spline = icon("spline", lucide.Spline);
+export const Square = icon("square", lucide.Square);
+export const SquareDashed = icon("square-dashed", lucide.SquareDashed);
 export const SquareDashedBottom = icon(
 	"square-dashed-bottom",
-	SquareDashedBottomNode,
+	lucide.SquareDashedBottom,
 );
 export const SquareDashedMousePointer = icon(
 	"square-dashed-mouse-pointer",
-	SquareDashedMousePointerNode,
+	lucide.SquareDashedMousePointer,
 );
-export const Tag = icon("tag", TagNode);
-export const Tags = icon("tags", TagsNode);
-export const Trash2 = icon("trash2", Trash2Node);
-export const Triangle = icon("triangle", TriangleNode);
-export const TriangleAlert = icon("triangle-alert", TriangleAlertNode);
-export const Type = icon("type", TypeNode);
-export const Undo2 = icon("undo2", Undo2Node);
-export const Upload = icon("upload", UploadNode);
-export const Workflow = icon("workflow", WorkflowNode);
-export const X = icon("x", XNode);
-export const Zap = icon("zap", ZapNode);
+export const Tag = icon("tag", lucide.Tag);
+export const Tags = icon("tags", lucide.Tags);
+export const Trash2 = icon("trash2", lucide.Trash2);
+export const Triangle = icon("triangle", lucide.Triangle);
+export const TriangleAlert = icon("triangle-alert", lucide.TriangleAlert);
+export const Type = icon("type", lucide.Type);
+export const Undo2 = icon("undo2", lucide.Undo2);
+export const Upload = icon("upload", lucide.Upload);
+export const Workflow = icon("workflow", lucide.Workflow);
+export const X = icon("x", lucide.X);
+export const Zap = icon("zap", lucide.Zap);

@@ -17,8 +17,8 @@ import {
 	createSignal,
 	For,
 	Match,
-	Show,
 	Switch,
+	untrack,
 } from "solid-js";
 import { boardCopperLayersInUse } from "#/board/format.ts";
 import { OctagonAlert, TriangleAlert, X } from "#/components/ui/icons.tsx";
@@ -109,7 +109,7 @@ export function BoardChecksPanel(props: {
 	}
 	const rerun = createMemo(() => current() && result()?.unit !== props.unit);
 	createEffect(rerun, (value) => {
-		if (value) start();
+		if (value) untrack(start);
 	});
 	return (
 		<FloatingPanel
@@ -173,12 +173,12 @@ export function BoardChecksPanel(props: {
 						Run DRC
 					</button>
 				</div>
-				<Show when={current() && findings().length === 0}>
+				{current() && findings().length === 0 && (
 					<p class="m-0 mt-2 text-xs leading-[1.125rem] text-fg">
 						No violations, and every connection is routed.
 					</p>
-				</Show>
-				<Show when={current() && findings().length > 0}>
+				)}
+				{current() && findings().length > 0 && (
 					<ol
 						class="-mx-1.5 mt-2 mb-0 min-h-0 list-none overflow-y-auto overscroll-contain p-0"
 						aria-label="DRC results"
@@ -212,13 +212,13 @@ export function BoardChecksPanel(props: {
 								</li>
 							)}
 						</For>
-						<Show when={findings().length > pageSize}>
+						{findings().length > pageSize && (
 							<li class="px-1.5 pt-1 text-2xs text-fg-muted">
 								{findings().length - pageSize} more not shown.
 							</li>
-						</Show>
+						)}
 					</ol>
-				</Show>
+				)}
 			</div>
 		</FloatingPanel>
 	);
@@ -282,11 +282,11 @@ export function BoardSetupPanel(props: {
 						</For>
 					</select>
 				</label>
-				<Show when={fewest() > 2}>
+				{fewest() > 2 && (
 					<p class="col-span-2 m-0 text-2xs text-fg-faint">
 						Fewer than {fewest()} layers would drop items on inner copper.
 					</p>
-				</Show>
+				)}
 				<For each={ruleFields}>
 					{(field) => (
 						<RuleField

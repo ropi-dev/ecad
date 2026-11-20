@@ -34,12 +34,12 @@ export function ProjectConflictNotice() {
 							? "Saving, and opening other files or projects, is paused so neither version is overwritten."
 							: "Saving is paused so neither version is overwritten."}
 					</p>
-					<Show when={project()?.dirty || project()?.otherUnsavedEdits}>
+					{(project()?.dirty || project()?.otherUnsavedEdits) && (
 						<p class="m-0 mt-0.5 text-fg-muted">
 							Your unsaved changes are still here. Reloading from disk discards
 							them.
 						</p>
-					</Show>
+					)}
 				</div>
 				<button
 					type="button"

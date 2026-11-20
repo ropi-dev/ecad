@@ -302,9 +302,7 @@ export function EditorDocument(
 			<Switch
 				fallback={
 					<div class="relative">
-						<Show when={state().inProject}>
-							<PreloadEditorViews />
-						</Show>
+						{state().inProject && <PreloadEditorViews />}
 						<For each={panes()} keyed={(pane) => pane.key}>
 							{(pane) => (
 								<EditorPane active={activeView() === pane().view}>

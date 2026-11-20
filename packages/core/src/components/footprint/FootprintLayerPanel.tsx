@@ -161,12 +161,11 @@ export function FootprintLayerPanel(props: {
 					aria-controls={listId}
 					onClick={() => setCollapsed(!collapsed())}
 				>
-					<Show
-						when={collapsed()}
-						fallback={<ChevronUp size={16} aria-hidden="true" />}
-					>
+					{collapsed() ? (
 						<ChevronDown size={16} aria-hidden="true" />
-					</Show>
+					) : (
+						<ChevronUp size={16} aria-hidden="true" />
+					)}
 				</button>
 			</header>
 			<ol
@@ -232,12 +231,11 @@ export function FootprintLayerPanel(props: {
 									disabled={props.active === layer}
 									onClick={() => props.onToggle(layer)}
 								>
-									<Show
-										when={visible()}
-										fallback={<EyeOff size={16} aria-hidden="true" />}
-									>
+									{visible() ? (
 										<Eye size={16} aria-hidden="true" />
-									</Show>
+									) : (
+										<EyeOff size={16} aria-hidden="true" />
+									)}
 								</button>
 							</li>
 						);

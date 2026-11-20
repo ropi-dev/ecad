@@ -149,14 +149,7 @@ export function SymbolAttributesDialog(props: {
 					}
 				}}
 			>
-				<Show
-					when={rows.length > 0}
-					fallback={
-						<p class="m-0 text-sm text-fg-muted">
-							This symbol has no attributes of its own yet.
-						</p>
-					}
-				>
+				{rows.length > 0 ? (
 					<div class="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_auto] items-center gap-x-2 gap-y-2">
 						<span class="text-xs font-medium text-fg-muted">Name</span>
 						<span class="text-xs font-medium text-fg-muted">Default value</span>
@@ -180,7 +173,11 @@ export function SymbolAttributesDialog(props: {
 							)}
 						</For>
 					</div>
-				</Show>
+				) : (
+					<p class="m-0 text-sm text-fg-muted">
+						This symbol has no attributes of its own yet.
+					</p>
+				)}
 				<div>
 					<button
 						type="button"

@@ -185,74 +185,76 @@ export function ErcPanel(props: {
 						Run ERC
 					</button>
 				</div>
-				<Show when={current() && diagnostics().length === 0}>
+				{current() && diagnostics().length === 0 && (
 					<p class="m-0 mt-2 text-xs leading-[1.125rem] text-fg">
 						No electrical issues found by the {props.ruleCount} enabled rules.
 					</p>
-				</Show>
-				<Show when={current() && diagnostics().length > 0}>
-					<ol
-						class="-mx-1.5 mt-2 mb-0 min-h-0 list-none overflow-y-auto overscroll-contain p-0"
-						aria-label="ERC results"
-					>
-						<For each={diagnostics().slice(first(), last())}>
-							{(item) => (
-								<li class="mb-0.5 last:mb-0">
-									<button
-										type="button"
-										class="ui-toggle w-full cursor-pointer rounded-md border px-1.5 py-1.5 text-left text-2xs leading-4 [--toggle-on-fg:var(--color-fg-muted)] [--toggle-on-line:var(--color-accent-line)] hover:[--toggle-fg:var(--color-fg-muted)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
-										aria-current={activeId() === item.id ? "true" : undefined}
-										onClick={() => {
-											setActiveId(item.id);
-											props.onSelect(item);
-										}}
-									>
-										<span
-											class={[
-												"font-medium",
-												severityStyle[item.severity].className,
-											]}
+				)}
+				{current() && diagnostics().length > 0 && (
+					<>
+						<ol
+							class="-mx-1.5 mt-2 mb-0 min-h-0 list-none overflow-y-auto overscroll-contain p-0"
+							aria-label="ERC results"
+						>
+							<For each={diagnostics().slice(first(), last())}>
+								{(item) => (
+									<li class="mb-0.5 last:mb-0">
+										<button
+											type="button"
+											class="ui-toggle w-full cursor-pointer rounded-md border px-1.5 py-1.5 text-left text-2xs leading-4 [--toggle-on-fg:var(--color-fg-muted)] [--toggle-on-line:var(--color-accent-line)] hover:[--toggle-fg:var(--color-fg-muted)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+											aria-current={activeId() === item.id ? "true" : undefined}
+											onClick={() => {
+												setActiveId(item.id);
+												props.onSelect(item);
+											}}
 										>
-											{severityStyle[item.severity].label}
-										</span>
-										<span class="text-fg-faint"> · {item.ruleId}</span>
-										<span class="mt-0.5 block break-words text-xs text-fg">
-											{item.message}
-										</span>
-									</button>
-								</li>
-							)}
-						</For>
-					</ol>
-					<Show when={diagnostics().length > pageSize}>
-						<footer class="mt-2 flex items-center justify-between gap-2 border-t border-line-subtle pt-2">
-							<button
-								type="button"
-								class={iconButton}
-								aria-label="Previous"
-								title="Previous page"
-								disabled={page() === 0}
-								onClick={() => setPage(page() - 1)}
-							>
-								<ChevronLeft size={16} aria-hidden="true" />
-							</button>
-							<span class="text-2xs text-fg-muted tabular-nums">
-								{(first() + 1).toLocaleString()}–{last().toLocaleString()} of{" "}
-								{diagnostics().length.toLocaleString()}
-							</span>
-							<button
-								type="button"
-								class={iconButton}
-								aria-label="Next"
-								title="Next page"
-								disabled={last() >= diagnostics().length}
-								onClick={() => setPage(page() + 1)}
-							>
-								<ChevronRight size={16} aria-hidden="true" />
-							</button>
-						</footer>
-					</Show>
-				</Show>
+											<span
+												class={[
+													"font-medium",
+													severityStyle[item.severity].className,
+												]}
+											>
+												{severityStyle[item.severity].label}
+											</span>
+											<span class="text-fg-faint"> · {item.ruleId}</span>
+											<span class="mt-0.5 block break-words text-xs text-fg">
+												{item.message}
+											</span>
+										</button>
+									</li>
+								)}
+							</For>
+						</ol>
+						<Show when={diagnostics().length > pageSize}>
+							<footer class="mt-2 flex items-center justify-between gap-2 border-t border-line-subtle pt-2">
+								<button
+									type="button"
+									class={iconButton}
+									aria-label="Previous"
+									title="Previous page"
+									disabled={page() === 0}
+									onClick={() => setPage(page() - 1)}
+								>
+									<ChevronLeft size={16} aria-hidden="true" />
+								</button>
+								<span class="text-2xs text-fg-muted tabular-nums">
+									{(first() + 1).toLocaleString()}–{last().toLocaleString()} of{" "}
+									{diagnostics().length.toLocaleString()}
+								</span>
+								<button
+									type="button"
+									class={iconButton}
+									aria-label="Next"
+									title="Next page"
+									disabled={last() >= diagnostics().length}
+									onClick={() => setPage(page() + 1)}
+								>
+									<ChevronRight size={16} aria-hidden="true" />
+								</button>
+							</footer>
+						</Show>
+					</>
+				)}
 			</div>
 		</FloatingPanel>
 	);

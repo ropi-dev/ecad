@@ -36,7 +36,7 @@ import {
 	Workflow,
 	X,
 } from "#/components/ui/icons.tsx";
-import { DropdownMenu, Tooltip } from "#/components/ui/primitives.tsx";
+import { DropdownMenu, TooltipProvider } from "#/components/ui/primitives.tsx";
 import { PinnedNotice } from "#/components/ui/Toaster.tsx";
 import { toastManager } from "#/components/ui/toast.ts";
 import {
@@ -663,15 +663,15 @@ export function ProjectFilesSidebar(
 			>
 				{/* Opened by a tap or click, the sidebar is a drawer: a tap outside
 				    closes it without also pressing whatever lies under it. */}
-				<Show when={drawerOpen()}>
+				{drawerOpen() && (
 					<div
 						aria-hidden="true"
 						data-testid="sidebar-backdrop"
 						class="fixed inset-0 animate-fade-in bg-scrim/50 motion-reduce:animate-none"
 						onClick={() => closeDrawer()}
 					/>
-				</Show>
-				<Tooltip.Provider delayDuration={350} skipDelayDuration={150}>
+				)}
+				<TooltipProvider delayDuration={350} skipDelayDuration={150}>
 					{/* biome-ignore lint/a11y/useKeyWithClickEvents: a tap on the rail's empty space opens the sidebar on touch screens, which cannot hover */}
 					<nav
 						ref={rail}
@@ -713,11 +713,10 @@ export function ProjectFilesSidebar(
 							height={28}
 							class="my-1 size-7 shrink-0 object-contain"
 						/>
-						<Show when={snapshot()}>
+						{snapshot() && (
 							<DropdownMenu.Root
 								open={railAddMenuOpen()}
 								onOpenChange={setRailAddMenuOpen}
-								modal={false}
 							>
 								<TooltipTrigger
 									tooltip="Add file"
@@ -737,68 +736,60 @@ export function ProjectFilesSidebar(
 										</button>
 									</DropdownMenu.Trigger>
 								</TooltipTrigger>
-								<DropdownMenu.Portal>
-									<DropdownMenu.Content
-										aria-label="Add file"
-										side="right"
-										align="start"
-										sideOffset={12}
-										collisionPadding={12}
-										onCloseAutoFocus={(event) => {
-											event.preventDefault();
-											if (!creatingFile()) returnToRail("Add file");
-										}}
-										class={sidebarMenuContent}
+								<DropdownMenu.Content
+									aria-label="Add file"
+									side="right"
+									align="start"
+									sideOffset={12}
+									collisionPadding={12}
+									onCloseAutoFocus={(event) => {
+										event.preventDefault();
+										if (!creatingFile()) returnToRail("Add file");
+									}}
+									class={sidebarMenuContent}
+								>
+									<div class={sidebarMenuLabel}>New</div>
+									<For each={newFileTypes}>
+										{([kind, Icon]) => (
+											<DropdownMenu.Item
+												class={sidebarMenuItem}
+												disabled={busy()}
+												onSelect={() => setCreatingFile(kind)}
+											>
+												<Icon size={14} aria-hidden="true" />
+												New {kind}
+											</DropdownMenu.Item>
+										)}
+									</For>
+									<DropdownMenu.Separator class={sidebarMenuSeparator} />
+									<div class={sidebarMenuLabel}>Import</div>
+									<For each={importTypes}>
+										{([kind, , Icon, , item]) => (
+											<DropdownMenu.Item
+												class={sidebarMenuItem}
+												disabled={
+													busy() || (kind === "symbol" && library.loading)
+												}
+												onSelect={() => fileInputs[kind]?.click()}
+											>
+												<Icon size={14} aria-hidden="true" />
+												{item}
+											</DropdownMenu.Item>
+										)}
+									</For>
+									<DropdownMenu.Separator class={sidebarMenuSeparator} />
+									<div class={sidebarMenuLabel}>Examples</div>
+									<DropdownMenu.Item
+										class={sidebarMenuItem}
+										disabled={busy()}
+										onSelect={() => void openExample()}
 									>
-										<DropdownMenu.Label class={sidebarMenuLabel}>
-											New
-										</DropdownMenu.Label>
-										<For each={newFileTypes}>
-											{([kind, Icon]) => (
-												<DropdownMenu.Item
-													class={sidebarMenuItem}
-													disabled={busy()}
-													onSelect={() => setCreatingFile(kind)}
-												>
-													<Icon size={14} aria-hidden="true" />
-													New {kind}
-												</DropdownMenu.Item>
-											)}
-										</For>
-										<DropdownMenu.Separator class={sidebarMenuSeparator} />
-										<DropdownMenu.Label class={sidebarMenuLabel}>
-											Import
-										</DropdownMenu.Label>
-										<For each={importTypes}>
-											{([kind, , Icon, , item]) => (
-												<DropdownMenu.Item
-													class={sidebarMenuItem}
-													disabled={
-														busy() || (kind === "symbol" && library.loading)
-													}
-													onSelect={() => fileInputs[kind]?.click()}
-												>
-													<Icon size={14} aria-hidden="true" />
-													{item}
-												</DropdownMenu.Item>
-											)}
-										</For>
-										<DropdownMenu.Separator class={sidebarMenuSeparator} />
-										<DropdownMenu.Label class={sidebarMenuLabel}>
-											Examples
-										</DropdownMenu.Label>
-										<DropdownMenu.Item
-											class={sidebarMenuItem}
-											disabled={busy()}
-											onSelect={() => void openExample()}
-										>
-											<Grid2x2 size={14} aria-hidden="true" />
-											RP2350A reference design
-										</DropdownMenu.Item>
-									</DropdownMenu.Content>
-								</DropdownMenu.Portal>
+										<Grid2x2 size={14} aria-hidden="true" />
+										RP2350A reference design
+									</DropdownMenu.Item>
+								</DropdownMenu.Content>
 							</DropdownMenu.Root>
-						</Show>
+						)}
 						<OpenProjectButton
 							registerActive={(active) => setRailOpenActive(() => active)}
 							onCloseAutoFocus={(event) => {
@@ -944,7 +935,7 @@ export function ProjectFilesSidebar(
 							<Settings size={18} aria-hidden="true" />
 						</TooltipButton>
 						{props.footerActions}
-						<Show when={props.onExit}>
+						{props.onExit && (
 							<TooltipButton
 								aria-label="Exit"
 								aria-keyshortcuts={`${shortcutModifier().key}+Q`}
@@ -961,9 +952,9 @@ export function ProjectFilesSidebar(
 							>
 								<X size={18} aria-hidden="true" />
 							</TooltipButton>
-						</Show>
+						)}
 					</nav>
-				</Tooltip.Provider>
+				</TooltipProvider>
 				<Show when={importReport()}>
 					{(report) => (
 						<PinnedNotice fallbackClassName="fixed right-4 bottom-4 z-50 w-[min(360px,calc(100vw-2rem))]">
@@ -1047,150 +1038,153 @@ export function ProjectFilesSidebar(
 						)}
 					</For>
 					<div class="flex min-h-0 flex-1 flex-col overflow-hidden border-t border-line-subtle">
-						<Show when={snapshot()}>
-							<div class="shrink-0 pt-3 pb-2">
-								<div class="mx-3 flex h-7 items-center gap-2 rounded-md border border-line bg-field px-2 focus-within:border-accent hover:border-line-strong pointer-coarse:h-11">
-									<Search
-										class="size-3.5 shrink-0 text-fg-faint"
-										aria-hidden="true"
-									/>
-									<input
-										type="search"
-										aria-label="Search project files"
-										placeholder="Find a file..."
-										value={query()}
-										onInput={(event) => {
-											setQuery(event.currentTarget.value);
-											setPage(0);
-										}}
-										class="h-full min-w-0 flex-1 bg-transparent text-xs text-fg outline-none placeholder:text-fg-faint pointer-coarse:text-lg [&::-webkit-search-cancel-button]:hidden"
-									/>
-									<Show when={query()}>
-										<button
-											type="button"
-											aria-label="Clear file search"
-											class={`-mr-1 grid size-5 cursor-pointer place-items-center rounded-sm text-fg-faint hover:bg-hover hover:text-fg pointer-coarse:size-11 ${focus}`}
-											onClick={() => {
-												setQuery("");
+						{snapshot() && (
+							<>
+								<div class="shrink-0 pt-3 pb-2">
+									<div class="mx-3 flex h-7 items-center gap-2 rounded-md border border-line bg-field px-2 focus-within:border-accent hover:border-line-strong pointer-coarse:h-11">
+										<Search
+											class="size-3.5 shrink-0 text-fg-faint"
+											aria-hidden="true"
+										/>
+										<input
+											type="search"
+											aria-label="Search project files"
+											placeholder="Find a file..."
+											value={query()}
+											onInput={(event) => {
+												setQuery(event.currentTarget.value);
 												setPage(0);
 											}}
-										>
-											<X class="size-3.5" aria-hidden="true" />
-										</button>
-									</Show>
-								</div>
-								<FileTypeFilters
-									filter={filter()}
-									onFilter={(type) => {
-										setFilter(type);
-										setPage(0);
-									}}
-								/>
-							</div>
-							<Show when={importing()}>
-								<output
-									class="px-3 py-1 text-xs text-fg-muted"
-									aria-live="polite"
-								>
-									<span>Adding project files...</span>
-								</output>
-							</Show>
-							<Show when={error() || library.error}>
-								<p
-									role="alert"
-									title={error() || library.error || undefined}
-									class="m-0 line-clamp-3 px-3 py-1 text-xs text-warning"
-								>
-									<span>{error() || library.error}</span>
-								</p>
-							</Show>
-							<Show when={library.message}>
-								<output class="sr-only" aria-live="polite">
-									{library.message}
-								</output>
-							</Show>
-							<div class="min-h-0 flex-1 overflow-auto overscroll-contain px-2 pb-2">
-								<table class="w-full table-fixed border-collapse text-left">
-									<caption class="sr-only">
-										Files in the current project
-									</caption>
-									<thead class="sr-only">
-										<tr>
-											<th scope="col">Name</th>
-										</tr>
-									</thead>
-									<tbody>
-										<For each={shownFiles()} keyed={(file) => file.path}>
-											{(file) => (
-												<FileRow
-													file={file()}
-													active={isActive(file())}
-													circuitActive={
-														openView() === "circuit" &&
-														activePath() === (file().circuitPath ?? file().path)
-													}
-													boardActive={
-														openView() === "pcb" &&
-														activePath() === file().boardPath
-													}
-													onOpen={() => openFile(file())}
-													onOpenCircuit={() =>
-														openCircuitView(file().circuitPath ?? file().path)
-													}
-													onOpenBoard={() => openBoardView(file().boardPath)}
-												/>
-											)}
-										</For>
-									</tbody>
-								</table>
-								<Show when={!filtered().length}>
-									<div class="px-1.5 py-3 text-xs text-fg-muted">
-										<p class="m-0">No matching files</p>
-										<button
-											type="button"
-											class="ui-button mt-2"
-											data-variant="secondary"
-											onClick={clearFilters}
-										>
-											Clear filters
-										</button>
+											class="h-full min-w-0 flex-1 bg-transparent text-xs text-fg outline-none placeholder:text-fg-faint pointer-coarse:text-lg [&::-webkit-search-cancel-button]:hidden"
+										/>
+										<Show when={query()}>
+											<button
+												type="button"
+												aria-label="Clear file search"
+												class={`-mr-1 grid size-5 cursor-pointer place-items-center rounded-sm text-fg-faint hover:bg-hover hover:text-fg pointer-coarse:size-11 ${focus}`}
+												onClick={() => {
+													setQuery("");
+													setPage(0);
+												}}
+											>
+												<X class="size-3.5" aria-hidden="true" />
+											</button>
+										</Show>
 									</div>
+									<FileTypeFilters
+										filter={filter()}
+										onFilter={(type) => {
+											setFilter(type);
+											setPage(0);
+										}}
+									/>
+								</div>
+								<Show when={importing()}>
+									<output
+										class="px-3 py-1 text-xs text-fg-muted"
+										aria-live="polite"
+									>
+										<span>Adding project files...</span>
+									</output>
 								</Show>
-							</div>
-							<Show when={lastPage() > 0}>
-								<footer class="flex h-9 shrink-0 items-center justify-between gap-2 border-t border-line-subtle pr-2 pl-3 text-2xs text-fg-faint tabular-nums">
-									<span>
-										{first() + 1}–
-										{Math.min(first() + pageSize, filtered().length)} of{" "}
-										{filtered().length}
-									</span>
-									<nav aria-label="Project file pages" class="flex gap-1">
-										<button
-											type="button"
-											aria-label="Previous files"
-											disabled={!currentPage()}
-											class="ui-button"
-											data-variant="ghost"
-											data-icon
-											onClick={() => setPage(currentPage() - 1)}
-										>
-											<ChevronLeft class="size-3.5" aria-hidden="true" />
-										</button>
-										<button
-											type="button"
-											aria-label="Next files"
-											disabled={currentPage() === lastPage()}
-											class="ui-button"
-											data-variant="ghost"
-											data-icon
-											onClick={() => setPage(currentPage() + 1)}
-										>
-											<ChevronRight class="size-3.5" aria-hidden="true" />
-										</button>
-									</nav>
-								</footer>
-							</Show>
-						</Show>
+								<Show when={error() || library.error}>
+									<p
+										role="alert"
+										title={error() || library.error || undefined}
+										class="m-0 line-clamp-3 px-3 py-1 text-xs text-warning"
+									>
+										<span>{error() || library.error}</span>
+									</p>
+								</Show>
+								<Show when={library.message}>
+									<output class="sr-only" aria-live="polite">
+										{library.message}
+									</output>
+								</Show>
+								<div class="min-h-0 flex-1 overflow-auto overscroll-contain px-2 pb-2">
+									<table class="w-full table-fixed border-collapse text-left">
+										<caption class="sr-only">
+											Files in the current project
+										</caption>
+										<thead class="sr-only">
+											<tr>
+												<th scope="col">Name</th>
+											</tr>
+										</thead>
+										<tbody>
+											<For each={shownFiles()} keyed={(file) => file.path}>
+												{(file) => (
+													<FileRow
+														file={file()}
+														active={isActive(file())}
+														circuitActive={
+															openView() === "circuit" &&
+															activePath() ===
+																(file().circuitPath ?? file().path)
+														}
+														boardActive={
+															openView() === "pcb" &&
+															activePath() === file().boardPath
+														}
+														onOpen={() => openFile(file())}
+														onOpenCircuit={() =>
+															openCircuitView(file().circuitPath ?? file().path)
+														}
+														onOpenBoard={() => openBoardView(file().boardPath)}
+													/>
+												)}
+											</For>
+										</tbody>
+									</table>
+									{!filtered().length && (
+										<div class="px-1.5 py-3 text-xs text-fg-muted">
+											<p class="m-0">No matching files</p>
+											<button
+												type="button"
+												class="ui-button mt-2"
+												data-variant="secondary"
+												onClick={clearFilters}
+											>
+												Clear filters
+											</button>
+										</div>
+									)}
+								</div>
+								<Show when={lastPage() > 0}>
+									<footer class="flex h-9 shrink-0 items-center justify-between gap-2 border-t border-line-subtle pr-2 pl-3 text-2xs text-fg-faint tabular-nums">
+										<span>
+											{first() + 1}–
+											{Math.min(first() + pageSize, filtered().length)} of{" "}
+											{filtered().length}
+										</span>
+										<nav aria-label="Project file pages" class="flex gap-1">
+											<button
+												type="button"
+												aria-label="Previous files"
+												disabled={!currentPage()}
+												class="ui-button"
+												data-variant="ghost"
+												data-icon
+												onClick={() => setPage(currentPage() - 1)}
+											>
+												<ChevronLeft class="size-3.5" aria-hidden="true" />
+											</button>
+											<button
+												type="button"
+												aria-label="Next files"
+												disabled={currentPage() === lastPage()}
+												class="ui-button"
+												data-variant="ghost"
+												data-icon
+												onClick={() => setPage(currentPage() + 1)}
+											>
+												<ChevronRight class="size-3.5" aria-hidden="true" />
+											</button>
+										</nav>
+									</footer>
+								</Show>
+							</>
+						)}
 					</div>
 					<ProjectLink
 						href="/editor"
@@ -1413,34 +1407,36 @@ function ImportReport(props: {
 				Imported KiCad drawing with electrical net and supply names. Review
 				conversion limits and source metadata in the report.
 			</span>
-			<Show when={props.report.skipped.length > 0}>
-				<span class="mt-2 block font-medium text-warning">
-					Skipped {props.report.skipped.length}{" "}
-					{props.report.skipped.length === 1 ? "item" : "items"} that could not
-					be converted:
-				</span>
-				<ul
-					aria-label="Skipped KiCad items"
-					class="m-0 mt-1 max-h-32 list-disc overflow-y-auto pl-4 text-fg-muted"
-				>
-					{/* Units of one multi-unit part share a name and reason. */}
-					<For each={props.report.skipped.slice(0, 20)} keyed={false}>
-						{(skipped) => (
-							<li>
-								{skipped().item.charAt(0).toUpperCase() +
-									skipped().item.slice(1)}
-								: {skipped().reason}
-							</li>
-						)}
-					</For>
-				</ul>
-				<Show when={props.report.skipped.length > 20}>
-					<span class="mt-1 block text-fg-muted">
-						Showing the first 20. The report lists all{" "}
-						{props.report.skipped.length}.
+			{props.report.skipped.length > 0 && (
+				<>
+					<span class="mt-2 block font-medium text-warning">
+						Skipped {props.report.skipped.length}{" "}
+						{props.report.skipped.length === 1 ? "item" : "items"} that could
+						not be converted:
 					</span>
-				</Show>
-			</Show>
+					<ul
+						aria-label="Skipped KiCad items"
+						class="m-0 mt-1 max-h-32 list-disc overflow-y-auto pl-4 text-fg-muted"
+					>
+						{/* Units of one multi-unit part share a name and reason. */}
+						<For each={props.report.skipped.slice(0, 20)} keyed={false}>
+							{(skipped) => (
+								<li>
+									{skipped().item.charAt(0).toUpperCase() +
+										skipped().item.slice(1)}
+									: {skipped().reason}
+								</li>
+							)}
+						</For>
+					</ul>
+					<Show when={props.report.skipped.length > 20}>
+						<span class="mt-1 block text-fg-muted">
+							Showing the first 20. The report lists all{" "}
+							{props.report.skipped.length}.
+						</span>
+					</Show>
+				</>
+			)}
 			<span class="mt-3 flex justify-end gap-2">
 				<button
 					type="button"

@@ -78,6 +78,7 @@ import {
 } from "#/components/editor/SymbolFootprintField.tsx";
 import { SymbolInstanceAttributeForm } from "#/components/editor/SymbolInstanceAttributeForm.tsx";
 import { SymbolInstanceAttributeInput } from "#/components/editor/SymbolInstanceAttributeInput.tsx";
+import { keepChecked } from "#/components/ui/checkbox.ts";
 import { Lock, X } from "#/components/ui/icons.tsx";
 import { Keyed } from "#/components/ui/Keyed.tsx";
 import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
@@ -89,6 +90,16 @@ export const numberInputClassName = "ui-input w-28 pr-8 text-right";
 export const textInputClassName = "ui-input w-36";
 
 /** A number input with its unit shown inside the field's right edge. */
+function MixedOption(props: { when: boolean; value: string }) {
+	return (
+		<Show when={props.when}>
+			<option value={props.value} disabled>
+				Mixed
+			</option>
+		</Show>
+	);
+}
+
 export function UnitField(props: { unit?: string; children: JSX.Element }) {
 	return (
 		<span class="relative inline-flex">
@@ -439,15 +450,13 @@ function PinLabelRows(props: {
 							aria-label={label}
 							class="ui-checkbox"
 							checked={props.pin[attribute] ?? props.pin.showLabels ?? true}
-							onChange={(event) => {
-								const next = event.currentTarget.checked;
-								event.currentTarget.checked = !next;
+							onChange={keepChecked((next) => {
 								props.onEdit({
 									kind: "pin",
 									attribute,
 									value: next,
 								});
-							}}
+							})}
 						/>
 					</Row>
 				);
@@ -561,9 +570,7 @@ function PadRows(props: {
 								? "Show the pad's copper layer to remove its paste"
 								: undefined
 						}
-						onChange={(event) => {
-							const next = event.currentTarget.checked;
-							event.currentTarget.checked = !next;
+						onChange={keepChecked((next) => {
 							props.onEdit({
 								kind: "pad",
 								edit: {
@@ -571,7 +578,7 @@ function PadRows(props: {
 									value: next,
 								},
 							});
-						}}
+						})}
 					/>
 				</Row>
 			</Show>
@@ -817,11 +824,7 @@ function BoardRows(props: {
 								})
 							}
 						>
-							<Show when={current().value === "mixed"}>
-								<option value="mixed" disabled>
-									Mixed
-								</option>
-							</Show>
+							<MixedOption when={current().value === "mixed"} value="mixed" />
 							<option value="">No net</option>
 							<Show
 								when={
@@ -857,11 +860,7 @@ function BoardRows(props: {
 								})
 							}
 						>
-							<Show when={value() === "mixed"}>
-								<option value="mixed" disabled>
-									Mixed
-								</option>
-							</Show>
+							<MixedOption when={value() === "mixed"} value="mixed" />
 							<option value="front">Front</option>
 							<option value="back">Back</option>
 						</select>
@@ -923,11 +922,9 @@ function LockedCheckbox(props: {
 			type="checkbox"
 			aria-label="Locked"
 			checked={props.locked}
-			onChange={(event) => {
-				const next = event.currentTarget.checked;
-				event.currentTarget.checked = !next;
+			onChange={keepChecked((next) => {
 				props.onEdit({ kind: "lock", locked: next });
-			}}
+			})}
 			class="ui-checkbox"
 		/>
 	);
@@ -1051,18 +1048,16 @@ function SelectionAttributesPanel(props: SelectionAttributesProps) {
 				shape.kind !== "symbol" && !(shape.kind === "text" && shape.electrical),
 		),
 	);
-	const symbol = createMemo(() => {
-		const shape = single();
-		return shape?.kind === "symbol" ? shape : undefined;
-	});
-	const pin = createMemo(() => {
-		const shape = single();
-		return shape?.kind === "pin" ? shape : undefined;
-	});
-	const text = createMemo(() => {
-		const shape = single();
-		return shape?.kind === "text" ? shape : undefined;
-	});
+	const singleAs = <T extends EditorShape>(
+		is: (shape: EditorShape) => shape is T,
+	) =>
+		createMemo(() => {
+			const shape = single();
+			return shape && is(shape) ? shape : undefined;
+		});
+	const symbol = singleAs((shape) => shape.kind === "symbol");
+	const pin = singleAs((shape) => shape.kind === "pin");
+	const text = singleAs((shape) => shape.kind === "text");
 	const locked = createMemo(() =>
 		props.shapes.every((shape) => shape.locked === true),
 	);
@@ -1079,18 +1074,9 @@ function SelectionAttributesPanel(props: SelectionAttributesProps) {
 		};
 	});
 	const distance = (value: number) => formatLength(value, unit());
-	const pad = createMemo(() => {
-		const shape = single();
-		return shape && isPad(shape) ? shape : undefined;
-	});
-	const via = createMemo(() => {
-		const shape = single();
-		return shape && isVia(shape) ? shape : undefined;
-	});
-	const hole = createMemo(() => {
-		const shape = single();
-		return shape && isHole(shape) ? shape : undefined;
-	});
+	const pad = singleAs(isPad);
+	const via = singleAs(isVia);
+	const hole = singleAs(isHole);
 	const layer = createMemo(() => {
 		const { shapes } = props;
 		return footprint() && shapes.every((shape) => shape.kind !== "symbol")
@@ -1311,16 +1297,14 @@ function SelectionAttributesPanel(props: SelectionAttributesProps) {
 						element.addEventListener("keydown", blurOnKey, { capture: true })
 					}
 				>
-					<Show
-						when={symbol() || (!single() && props.onCreateSymbol) || text()}
-					>
+					{(symbol() || (!single() && props.onCreateSymbol) || text()) && (
 						<div class="flex flex-col gap-2.5 px-3 pt-3 pb-2.5">
-							<Show when={symbol()}>
+							{symbol() && (
 								<SymbolDefinitionAction
 									onEditSymbol={props.onEditSymbol}
 									onCopySymbol={props.onCopySymbol}
 								/>
-							</Show>
+							)}
 							<Show when={!single() && props.onCreateSymbol}>
 								{(onCreateSymbol) => (
 									<>
@@ -1405,7 +1389,7 @@ function SelectionAttributesPanel(props: SelectionAttributesProps) {
 								)}
 							</Show>
 						</div>
-					</Show>
+					)}
 					<Section title="Properties">
 						<Rows>
 							<Row label="Locked">
@@ -1430,11 +1414,7 @@ function SelectionAttributesPanel(props: SelectionAttributesProps) {
 													})
 												}
 											>
-												<Show when={layer() === ""}>
-													<option value="" disabled>
-														Mixed
-													</option>
-												</Show>
+												<MixedOption when={layer() === ""} value="" />
 												<For
 													each={layers().filter(
 														(item) => !pad() || isOuterCopperLayer(item),
@@ -1543,14 +1523,12 @@ function SelectionAttributesPanel(props: SelectionAttributesProps) {
 													aria-label="Net symbol"
 													class="ui-checkbox"
 													checked={shape().netSymbol ?? false}
-													onChange={(event) => {
-														const next = event.currentTarget.checked;
-														event.currentTarget.checked = !next;
+													onChange={keepChecked((next) => {
 														props.onEdit({
 															kind: "net-symbol",
 															netSymbol: next,
 														});
-													}}
+													})}
 												/>
 											</Row>
 										</Show>
@@ -1733,7 +1711,7 @@ function SelectionAttributesPanel(props: SelectionAttributesProps) {
 							</Show>
 						</Rows>
 					</Section>
-					<Show when={hasAppearance()}>
+					{hasAppearance() && (
 						<Section title="Appearance">
 							<Show when={pin()}>
 								{(shape) => (
@@ -1787,14 +1765,12 @@ function SelectionAttributesPanel(props: SelectionAttributesProps) {
 										aria-label="Filled"
 										class="ui-checkbox"
 										checked={fillable().every((shape) => shape.filled)}
-										onChange={(event) => {
-											const next = event.currentTarget.checked;
-											event.currentTarget.checked = !next;
+										onChange={keepChecked((next) => {
 											props.onEdit({
 												kind: "fill",
 												filled: next,
 											});
-										}}
+										})}
 									/>
 								</label>
 							</Show>
@@ -1812,11 +1788,7 @@ function SelectionAttributesPanel(props: SelectionAttributesProps) {
 											})
 										}
 									>
-										<Show when={lineStyle() === ""}>
-											<option value="" disabled>
-												Mixed
-											</option>
-										</Show>
+										<MixedOption when={lineStyle() === ""} value="" />
 										<For each={lineStyles}>
 											{(style) => (
 												<option value={style}>{lineStyleLabels[style]}</option>
@@ -1828,21 +1800,7 @@ function SelectionAttributesPanel(props: SelectionAttributesProps) {
 							<Show when={outlinedShapes().length > 0}>
 								<div class={rowClassName}>
 									<span>Line width</span>
-									<Show
-										when={symbol()}
-										fallback={
-											<AttributeInput
-												identity={selectionIds()}
-												label="Line width"
-												value={lineWidth()}
-												unit={unit()}
-												positive
-												onChange={(value) =>
-													onAttributeChange("lineWidth", value)
-												}
-											/>
-										}
-									>
+									{symbol() ? (
 										<SymbolInstanceAttributeInput
 											name="lineWidth"
 											label="Line width"
@@ -1857,11 +1815,22 @@ function SelectionAttributesPanel(props: SelectionAttributesProps) {
 													);
 											}}
 										/>
-									</Show>
+									) : (
+										<AttributeInput
+											identity={selectionIds()}
+											label="Line width"
+											value={lineWidth()}
+											unit={unit()}
+											positive
+											onChange={(value) =>
+												onAttributeChange("lineWidth", value)
+											}
+										/>
+									)}
 								</div>
 							</Show>
 						</Section>
-					</Show>
+					)}
 					<Tips>
 						{tip()} Arrow keys move {distance(props.snapStep || SCHEMATIC_STEP)}
 						; Shift + arrows move{" "}
@@ -1983,11 +1952,7 @@ function TextAlignmentInputs(props: {
 								props.onChange({ [axis]: event.currentTarget.value })
 							}
 						>
-							<Show when={value() === ""}>
-								<option value="" disabled>
-									Mixed
-								</option>
-							</Show>
+							<MixedOption when={value() === ""} value="" />
 							<For
 								each={horizontal ? horizontalAlignments : verticalAlignments}
 							>

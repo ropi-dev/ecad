@@ -366,11 +366,11 @@ function StatsWindow(props: { stats: Stats; onHide: () => void }) {
 						)}
 					</For>
 				</dl>
-				<Show when={!props.stats.recorder}>
+				{!props.stats.recorder && (
 					<p class="m-0 mt-1 max-w-48 text-2xs text-warning">
 						Recorder off (?perf=0), only FPS is live.
 					</p>
-				</Show>
+				)}
 			</div>
 		</section>
 	);

@@ -151,12 +151,13 @@ export function SceneViewport(props: SceneViewportProps) {
 	const activeProjection = createMemo(() =>
 		orbiting() ? orbitProjection() : flatProjection(),
 	);
-	const reportOrbit = (next: boolean) => {
-		if (next && !orbitingNow) setOrbitProjection("perspective");
-		orbitingNow = next;
-		setOrbiting(next);
-		props.onOrbit?.(next);
-	};
+	const reportOrbit = (next: boolean) =>
+		untrack(() => {
+			if (next && !orbitingNow) setOrbitProjection("perspective");
+			orbitingNow = next;
+			setOrbiting(next);
+			props.onOrbit?.(next);
+		});
 	const displayScale = useDisplayScale(() => props.physicalSizeZoom ?? false);
 	const zoomScale = createMemo(() =>
 		props.lockProjection ? (props.pixelsPerMmAt100 ?? displayScale()) : null,
@@ -173,11 +174,12 @@ export function SceneViewport(props: SceneViewportProps) {
 	const axesShown = createMemo(
 		() => props.cameraMode === "orbit" || orbiting(),
 	);
-	const reportChange = (snapshot: Viewer2DSnapshot) => {
-		if (rulersShown()) rulers?.update(snapshot);
-		if (props.cameraState) props.cameraState.camera = snapshot.camera;
-		props.onChange?.(snapshot);
-	};
+	const reportChange = (snapshot: Viewer2DSnapshot) =>
+		untrack(() => {
+			if (rulersShown()) rulers?.update(snapshot);
+			if (props.cameraState) props.cameraState.camera = snapshot.camera;
+			props.onChange?.(snapshot);
+		});
 	const theme = useTheme();
 	const gridBounds = createMemo(() => props.gridBounds, { equals: sameBounds });
 	const grid = createMemo(() => {
@@ -196,11 +198,13 @@ export function SceneViewport(props: SceneViewportProps) {
 			},
 		};
 	});
-	const reportReady = (ready: boolean) => {
-		setControlsReady(ready);
-		props.onReady?.(ready);
-	};
-	const reportError = (message: string) => props.onError?.(message);
+	const reportReady = (ready: boolean) =>
+		untrack(() => {
+			setControlsReady(ready);
+			props.onReady?.(ready);
+		});
+	const reportError = (message: string) =>
+		untrack(() => props.onError?.(message));
 	props.ref?.({
 		fit: () => stepZoom((viewport) => viewport.fit()),
 		zoom: (factor) => stepZoom((viewport) => viewport.zoom(factor)),

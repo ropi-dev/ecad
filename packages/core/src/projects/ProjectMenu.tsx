@@ -26,11 +26,7 @@ export function ProjectMenu(props: {
 		<Show when={project()}>
 			{(current) => (
 				<>
-					<DropdownMenu.Root
-						open={menuOpen()}
-						onOpenChange={setMenuOpen}
-						modal={false}
-					>
+					<DropdownMenu.Root open={menuOpen()} onOpenChange={setMenuOpen}>
 						<TooltipTrigger tooltip="Project actions" side="right">
 							<DropdownMenu.Trigger>
 								<button
@@ -43,32 +39,30 @@ export function ProjectMenu(props: {
 								</button>
 							</DropdownMenu.Trigger>
 						</TooltipTrigger>
-						<DropdownMenu.Portal>
-							<DropdownMenu.Content
-								aria-label="Project actions"
-								side="right"
-								onCloseAutoFocus={(event) => props.onCloseAutoFocus?.(event)}
-								align="start"
-								sideOffset={12}
-								collisionPadding={12}
-								class={sidebarMenuContent}
+						<DropdownMenu.Content
+							aria-label="Project actions"
+							side="right"
+							onCloseAutoFocus={(event) => props.onCloseAutoFocus?.(event)}
+							align="start"
+							sideOffset={12}
+							collisionPadding={12}
+							class={sidebarMenuContent}
+						>
+							<DropdownMenu.Item
+								class={sidebarMenuItem}
+								onSelect={() => void current().create("Untitled")}
 							>
-								<DropdownMenu.Item
-									class={sidebarMenuItem}
-									onSelect={() => void current().create("Untitled")}
-								>
-									<FilePlus2 size={14} aria-hidden="true" />
-									New untitled project
-								</DropdownMenu.Item>
-								<DropdownMenu.Item
-									class={sidebarMenuItem}
-									onSelect={() => setSettingsOpen(true)}
-								>
-									<Library size={14} aria-hidden="true" />
-									Symbol libraries...
-								</DropdownMenu.Item>
-							</DropdownMenu.Content>
-						</DropdownMenu.Portal>
+								<FilePlus2 size={14} aria-hidden="true" />
+								New untitled project
+							</DropdownMenu.Item>
+							<DropdownMenu.Item
+								class={sidebarMenuItem}
+								onSelect={() => setSettingsOpen(true)}
+							>
+								<Library size={14} aria-hidden="true" />
+								Symbol libraries...
+							</DropdownMenu.Item>
+						</DropdownMenu.Content>
 					</DropdownMenu.Root>
 					<LazySettingsDialog
 						open={settingsOpen()}

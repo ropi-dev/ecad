@@ -60,7 +60,7 @@ export function GerberWorkspace() {
 				</output>
 			</Show>
 			<div class="relative flex min-h-0 flex-1">
-				<Show when={gerber.layers.length > 0}>
+				{gerber.layers.length > 0 && (
 					<LayerPanel
 						layers={gerber.layers}
 						focusedLayerId={focusedLayerId()}
@@ -108,7 +108,7 @@ export function GerberWorkspace() {
 							})
 						}
 					/>
-				</Show>
+				)}
 				<div class="relative min-h-0 min-w-0 flex-1">
 					<GerberViewer
 						scene={gerber.layers}

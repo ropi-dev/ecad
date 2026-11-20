@@ -1,5 +1,5 @@
 import type { JSX } from "@solidjs/web";
-import { children, Loading, lazy, Show } from "solid-js";
+import { children, Loading, lazy } from "solid-js";
 import { Keyed } from "#/components/ui/Keyed.tsx";
 import { Toaster } from "#/components/ui/Toaster.tsx";
 import { useButtonShortcuts } from "#/components/viewer/useButtonShortcuts.ts";
@@ -34,22 +34,21 @@ export function ProjectShell(props: {
 			inert={project()?.busy}
 			class="relative flex h-dvh overflow-hidden bg-app text-fg"
 		>
-			<Show
-				when={sidebar() !== undefined}
-				fallback={<ProjectFilesSidebar onExit={props.onExit} />}
-			>
-				{sidebar()}
-			</Show>
+			{sidebar() !== undefined ? (
+				sidebar()
+			) : (
+				<ProjectFilesSidebar onExit={props.onExit} />
+			)}
 			<Keyed key={project()?.session}>
 				<div class="min-w-0 flex-1 overflow-auto">{props.children}</div>
 			</Keyed>
 			<ProjectConflictNotice />
 			<Toaster />
-			<Show when={debugStats()}>
+			{debugStats() && (
 				<Loading fallback={null}>
 					<DebugStats />
 				</Loading>
-			</Show>
+			)}
 		</div>
 	);
 }

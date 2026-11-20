@@ -13,6 +13,7 @@ import {
 	Switch,
 	untrack,
 } from "solid-js";
+import { keepChecked } from "#/components/ui/checkbox.ts";
 import { AppDialog } from "#/components/ui/Dialog.tsx";
 import {
 	Activity,
@@ -323,11 +324,9 @@ function DisplaySettings() {
 						type="checkbox"
 						class="ui-checkbox shrink-0"
 						checked={settings().debugStats ?? false}
-						onChange={(event) => {
-							const next = event.currentTarget.checked;
-							event.currentTarget.checked = !next;
+						onChange={keepChecked((next) => {
 							void setDebugStats(next);
-						}}
+						})}
 					/>
 				)}
 			</SettingRow>
@@ -394,16 +393,14 @@ function UsageDataSettings() {
 						type="checkbox"
 						class="ui-checkbox shrink-0"
 						checked={enabled()}
-						onChange={(event) => {
-							const next = event.currentTarget.checked;
-							event.currentTarget.checked = !next;
+						onChange={keepChecked((next) => {
 							setError("");
 							setTelemetryEnabled(next).catch((cause) =>
 								setError(
 									`The choice could not be saved. ${errorMessage(cause, "")}`.trim(),
 								),
 							);
-						}}
+						})}
 					/>
 				)}
 			</SettingRow>

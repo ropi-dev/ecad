@@ -128,132 +128,125 @@ export function McpControls(props: {
 					panelOpen() && connection() && connection()?.status !== "disconnected"
 				}
 			>
-				<Popover.Portal>
-					<Popover.Content
-						id={`${fieldId}-panel`}
-						role="region"
-						aria-label="MCP connection"
-						side="right"
-						align="start"
-						sideOffset={12}
-						collisionPadding={12}
-						onCloseAutoFocus={(event: Event) => {
-							event.preventDefault();
-							quietFocus(trigger ?? null);
-						}}
-						class="ui-popover z-30 grid max-h-[min(var(--radix-popover-content-available-height),calc(100dvh-1.5rem))] w-[min(360px,calc(100vw-1.5rem))] max-w-[var(--radix-popover-content-available-width)] gap-3 overflow-auto p-3 text-xs"
-					>
-						<header class="flex items-center justify-between gap-3">
-							<h2 class="m-0 text-sm font-semibold">MCP connection</h2>
-							<Show when={enabled()}>
-								<button
-									type="button"
-									class="ui-button"
-									data-variant="danger"
-									onClick={() => {
-										activeConnection?.disconnect();
-										setEnabled(false);
-										setPanelOpen(false);
-										setConnection(null);
-										setCopyMessage("");
-									}}
-								>
-									Disable MCP
-								</button>
-							</Show>
-						</header>
-						<Switch>
-							<Match when={connection()?.status === "connecting"}>
-								<output class="text-fg-muted">
-									Starting the MCP server...
-								</output>
-							</Match>
-							<Match when={failure()}>
-								{(error) => (
-									<p role="alert" class="m-0 text-danger">
-										{error().message}
+				<Popover.Content
+					id={`${fieldId}-panel`}
+					role="region"
+					aria-label="MCP connection"
+					side="right"
+					align="start"
+					sideOffset={12}
+					collisionPadding={12}
+					onCloseAutoFocus={(event: Event) => {
+						event.preventDefault();
+						quietFocus(trigger ?? null);
+					}}
+					class="ui-popover z-30 grid max-h-[min(var(--radix-popover-content-available-height),calc(100dvh-1.5rem))] w-[min(360px,calc(100vw-1.5rem))] max-w-[var(--radix-popover-content-available-width)] gap-3 overflow-auto p-3 text-xs"
+				>
+					<header class="flex items-center justify-between gap-3">
+						<h2 class="m-0 text-sm font-semibold">MCP connection</h2>
+						{enabled() && (
+							<button
+								type="button"
+								class="ui-button"
+								data-variant="danger"
+								onClick={() => {
+									activeConnection?.disconnect();
+									setEnabled(false);
+									setPanelOpen(false);
+									setConnection(null);
+									setCopyMessage("");
+								}}
+							>
+								Disable MCP
+							</button>
+						)}
+					</header>
+					<Switch>
+						<Match when={connection()?.status === "connecting"}>
+							<output class="text-fg-muted">Starting the MCP server...</output>
+						</Match>
+						<Match when={failure()}>
+							{(error) => (
+								<p role="alert" class="m-0 text-danger">
+									{error().message}
+								</p>
+							)}
+						</Match>
+						<Match when={connected()}>
+							{(live) => (
+								<>
+									<output class="flex items-center gap-2 font-medium text-success">
+										<span
+											aria-hidden="true"
+											class="size-1.5 rounded-full bg-success"
+										/>
+										Connected to the open drawing
+									</output>
+									<p class="m-0 text-fg-muted">
+										MCP tools can read and edit the drawing open in the editor.
+										Keep ECAD open. Disable MCP to disconnect.
 									</p>
-								)}
-							</Match>
-							<Match when={connected()}>
-								{(live) => (
-									<>
-										<output class="flex items-center gap-2 font-medium text-success">
-											<span
-												aria-hidden="true"
-												class="size-1.5 rounded-full bg-success"
-											/>
-											Connected to the open drawing
-										</output>
-										<p class="m-0 text-fg-muted">
-											MCP tools can read and edit the drawing open in the
-											editor. Keep ECAD open. Disable MCP to disconnect.
-										</p>
-										<div class="grid gap-1.5">
-											<label for={`${fieldId}-url`} class={fieldLabel}>
-												MCP URL
-											</label>
-											<input
-												id={`${fieldId}-url`}
-												class={fieldClassName}
-												readonly
-												value={live().url}
-											/>
-										</div>
-										<div class="grid gap-1.5">
-											<label for={`${fieldId}-token`} class={fieldLabel}>
-												MCP bearer token
-											</label>
-											<input
-												id={`${fieldId}-token`}
-												class={fieldClassName}
-												readonly
-												type="password"
-												value={live().token}
-											/>
-										</div>
-										<div class="grid gap-1.5">
-											<label
-												for={`${fieldId}-configuration`}
-												class={fieldLabel}
-											>
-												MCP configuration
-											</label>
-											<textarea
-												id={`${fieldId}-configuration`}
-												class={fieldClassName}
-												readonly
-												rows={9}
-												value={configuration()}
-											/>
-										</div>
-										<button
-											type="button"
-											class="ui-button"
-											data-variant="primary"
-											data-size="md"
-											onClick={async () => {
-												try {
-													await navigator.clipboard.writeText(configuration());
-													setCopyMessage("Configuration copied.");
-												} catch {
-													setCopyMessage(
-														"Select and copy the configuration above.",
-													);
-												}
-											}}
-										>
-											Copy configuration
-										</button>
-										<Show when={copyMessage()}>
-											<output class="text-fg-muted">{copyMessage()}</output>
-										</Show>
-									</>
-								)}
-							</Match>
-						</Switch>
-					</Popover.Content>
-				</Popover.Portal>
+									<div class="grid gap-1.5">
+										<label for={`${fieldId}-url`} class={fieldLabel}>
+											MCP URL
+										</label>
+										<input
+											id={`${fieldId}-url`}
+											class={fieldClassName}
+											readonly
+											value={live().url}
+										/>
+									</div>
+									<div class="grid gap-1.5">
+										<label for={`${fieldId}-token`} class={fieldLabel}>
+											MCP bearer token
+										</label>
+										<input
+											id={`${fieldId}-token`}
+											class={fieldClassName}
+											readonly
+											type="password"
+											value={live().token}
+										/>
+									</div>
+									<div class="grid gap-1.5">
+										<label for={`${fieldId}-configuration`} class={fieldLabel}>
+											MCP configuration
+										</label>
+										<textarea
+											id={`${fieldId}-configuration`}
+											class={fieldClassName}
+											readonly
+											rows={9}
+											value={configuration()}
+										/>
+									</div>
+									<button
+										type="button"
+										class="ui-button"
+										data-variant="primary"
+										data-size="md"
+										onClick={async () => {
+											try {
+												await navigator.clipboard.writeText(configuration());
+												setCopyMessage("Configuration copied.");
+											} catch {
+												setCopyMessage(
+													"Select and copy the configuration above.",
+												);
+											}
+										}}
+									>
+										Copy configuration
+									</button>
+									<Show when={copyMessage()}>
+										<output class="text-fg-muted">{copyMessage()}</output>
+									</Show>
+								</>
+							)}
+						</Match>
+					</Switch>
+				</Popover.Content>
 			</Show>
 		</Popover.Root>
 	);

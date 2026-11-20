@@ -160,32 +160,20 @@ export function SymbolInstanceAttributeForm(props: {
 
 	const defaultValue = (name: string) =>
 		name in form.defaults ? form.defaults[name] : fieldValue(values(), name);
-	createEffect(
-		() => ({
-			values: values(),
-			defaults: { ...form.defaults },
-			drafts: Object.entries(form.drafts).map(
-				([name, draft]) => [name, draftValue(draft)] as const,
-			),
-		}),
-		(next, previous) => {
-			if (!previous || next.values === previous.values) return;
-			const clean = previous.drafts.flatMap(([name, value]) =>
-				sameValue(
-					value,
-					name in previous.defaults
-						? previous.defaults[name]
-						: fieldValue(previous.values, name),
-				)
-					? [name]
-					: [],
-			);
-			setForm((draft) => {
-				for (const name of clean) delete draft.drafts[name];
-				draft.defaults = {};
-			});
-		},
-	);
+	createEffect(values, (_next, previous) => {
+		if (!previous) return;
+		setForm((draft) => {
+			for (const [name, entered] of Object.entries(draft.drafts)) {
+				const committed =
+					name in draft.defaults
+						? draft.defaults[name]
+						: fieldValue(previous, name);
+				if (sameValue(draftValue(entered), committed))
+					delete draft.drafts[name];
+			}
+			draft.defaults = {};
+		});
+	});
 
 	const state: SymbolInstanceAttributeFormState = {
 		shown: (name) => formatField(defaultValue(name)),

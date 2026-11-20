@@ -1,5 +1,5 @@
 import type { JSX } from "@solidjs/web";
-import { createSignal, omit, Show } from "solid-js";
+import { omit, Show } from "solid-js";
 import { Tooltip } from "#/components/ui/primitives.tsx";
 import { formatShortcut } from "#/components/viewer/shortcutModifier.ts";
 
@@ -14,41 +14,26 @@ export function TooltipTrigger(props: {
 	side?: TooltipSide;
 	children: JSX.Element;
 }) {
-	const [open, setOpen] = createSignal(false);
 	return (
-		<Tooltip.Root
-			open={open()}
-			onOpenChange={(next) => {
-				// Focus moved back here by code, not by the user: skip the tooltip.
-				if (
-					next &&
-					document.activeElement instanceof HTMLElement &&
-					document.activeElement.dataset.quietFocus === "true"
-				)
-					return;
-				setOpen(next);
-			}}
+		<Tooltip
+			data-slot="toolbar-tooltip"
+			side={props.side ?? "top"}
+			sideOffset={8}
+			collisionPadding={12}
+			class={tooltipClassName}
+			content={
+				<span class="flex items-center gap-2">
+					<span>{props.tooltip}</span>
+					<Show when={props.shortcut}>
+						{(shortcut) => (
+							<kbd class="ui-kbd">{formatShortcut(shortcut())}</kbd>
+						)}
+					</Show>
+				</span>
+			}
 		>
-			<Tooltip.Trigger>{props.children}</Tooltip.Trigger>
-			<Tooltip.Portal>
-				<Tooltip.Content
-					data-slot="toolbar-tooltip"
-					side={props.side ?? "top"}
-					sideOffset={8}
-					collisionPadding={12}
-					class={tooltipClassName}
-				>
-					<span class="flex items-center gap-2">
-						<span>{props.tooltip}</span>
-						<Show when={props.shortcut}>
-							{(shortcut) => (
-								<kbd class="ui-kbd">{formatShortcut(shortcut())}</kbd>
-							)}
-						</Show>
-					</span>
-				</Tooltip.Content>
-			</Tooltip.Portal>
-		</Tooltip.Root>
+			{props.children}
+		</Tooltip>
 	);
 }
 
