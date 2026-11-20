@@ -125,12 +125,9 @@ export const getDrawingInputSchema = z.strictObject({
 		),
 });
 
-/** The web relay refuses a larger editor acknowledgement, which carries one reply. */
-export const drawingAcknowledgementByteLimit = 8 * 1024 * 1024;
 /**
  * The largest serialized MCP tool result. A result repeats its reply as escaped
- * JSON text, and the SDK's stdio transport refuses messages over 10 MiB. The
- * reply itself is under half of this, so it also fits one acknowledgement.
+ * JSON text, and the SDK's stdio transport refuses messages over 10 MiB.
  */
 export const drawingToolResultByteLimit = 8 * 1024 * 1024;
 /** Room for the tool result wrapper and JSON-RPC envelope around both copies. */
@@ -155,13 +152,6 @@ export const drawingOperationSchema = z.discriminatedUnion("type", [
 	moveShapesToPageInputSchema.extend({ type: z.literal("moveShapesToPage") }),
 ]);
 export type DrawingOperation = z.infer<typeof drawingOperationSchema>;
-
-export const drawingEnvelopeSchema = z.strictObject({
-	requestId: z.string().min(1),
-	expiresAt: z.number().int().nonnegative().safe(),
-	operation: drawingOperationSchema,
-});
-export type DrawingEnvelope = z.infer<typeof drawingEnvelopeSchema>;
 
 const drawingStateSchema = z.strictObject({
 	// A drawing may still hold legacy diagonal wires; edits use the strict schemas.

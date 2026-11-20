@@ -1,12 +1,5 @@
-import type { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
 import type { JSX } from "@solidjs/web";
 import { createContext, createSignal, useContext } from "solid-js";
-
-interface EditorControls {
-	id: symbol;
-	store: ReturnType<typeof createDrawingStore>;
-	enableMcp: boolean;
-}
 
 /** What the open workspace tells the sidebar about itself. */
 export interface WorkspaceDocument {
@@ -23,18 +16,12 @@ export interface SidebarActions {
 }
 
 interface WorkspaceControlsValue {
-	editor: EditorControls | null;
-	registerEditor: (
-		store: EditorControls["store"],
-		enableMcp: boolean,
-	) => () => void;
 	document: WorkspaceDocument | null;
 	sidebarDocked: boolean;
 	sidebar: SidebarActions | null;
 }
 
 interface WorkspaceRegistration {
-	registerEditor: WorkspaceControlsValue["registerEditor"];
 	registerDocument: (document: WorkspaceDocument) => () => void;
 	setSidebarDocked: (docked: boolean) => void;
 	registerSidebar: (actions: SidebarActions) => () => void;
@@ -46,7 +33,6 @@ const Registration = createContext<WorkspaceRegistration | null>(null);
 const owned = { ownedWrite: true };
 
 export function WorkspaceControlsProvider(props: { children: JSX.Element }) {
-	const [editors, setEditors] = createSignal<EditorControls[]>([], owned);
 	const [documents, setDocuments] = createSignal<
 		(WorkspaceDocument & { id: symbol })[]
 	>([], owned);
@@ -60,15 +46,6 @@ export function WorkspaceControlsProvider(props: { children: JSX.Element }) {
 		return () =>
 			setSidebar((current) => (current === actions ? null : current));
 	};
-	const registerEditor = (
-		store: EditorControls["store"],
-		enableMcp: boolean,
-	) => {
-		const id = Symbol();
-		setEditors((current) => [...current, { id, store, enableMcp }]);
-		return () =>
-			setEditors((current) => current.filter((editor) => editor.id !== id));
-	};
 	const registerDocument = (document: WorkspaceDocument) => {
 		const id = Symbol();
 		setDocuments((current) => [...current, { ...document, id }]);
@@ -76,16 +53,11 @@ export function WorkspaceControlsProvider(props: { children: JSX.Element }) {
 			setDocuments((current) => current.filter((entry) => entry.id !== id));
 	};
 	const registration: WorkspaceRegistration = {
-		registerEditor,
 		registerDocument,
 		setSidebarDocked: (docked) => setSidebarDocked(docked),
 		registerSidebar,
 	};
 	const value: WorkspaceControlsValue = {
-		get editor() {
-			return editors().at(-1) ?? null;
-		},
-		registerEditor,
 		get document() {
 			return documents().at(-1) ?? null;
 		},
@@ -105,5 +77,3 @@ export function WorkspaceControlsProvider(props: { children: JSX.Element }) {
 
 export const useWorkspaceControls = () => useContext(WorkspaceControls);
 export const useWorkspaceRegistration = () => useContext(Registration);
-export const useEditorControlsRegistration = () =>
-	useContext(Registration)?.registerEditor ?? null;

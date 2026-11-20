@@ -1,5 +1,6 @@
 import type { SymbolLibrary } from "@ecad/core/components/editor/symbolFormat.ts";
 import type { ProjectStorage } from "@ecad/core/projects/storage.ts";
+import type { McpClientSetup } from "@ecad/core/settings/mcp-clients.ts";
 import type { AppSettings } from "@ecad/core/settings/schema.ts";
 import type {
 	ConfiguredSymbolLibrary,
@@ -12,10 +13,6 @@ import type {
 } from "@ecad/core/symbol-library/storage.ts";
 import type { TelemetryConsent } from "@ecad/core/telemetry/consent.ts";
 import type { TelemetryBatch } from "@ecad/core/telemetry/schema.ts";
-import type {
-	DrawingEnvelope,
-	DrawingReply,
-} from "@ecad/drawing-core/mcp/drawing-protocol.ts";
 
 export interface DesktopSymbolLibraryBridge
 	extends Pick<
@@ -73,7 +70,7 @@ declare global {
 		ecadApp: DesktopAppBridge;
 		ecadSettings: DesktopSettingsBridge;
 		ecadUpdates: DesktopUpdatesBridge;
-		ecadMcp: DesktopMcpBridge;
+		ecadMcpClients: McpClientSetup;
 		ecadTelemetry: DesktopTelemetryBridge;
 	}
 }
@@ -138,27 +135,10 @@ export const updateEvents = {
 	changed: "updates:changed",
 } as const;
 
-export interface DesktopMcpEndpoint {
-	url: string;
-	token: string;
-}
-
-/** The main process serves MCP on localhost and runs each tool call in the open editor. */
-export interface DesktopMcpBridge {
-	enable(): Promise<DesktopMcpEndpoint>;
-	disable(): Promise<void>;
-	reply(requestId: string, reply: DrawingReply): Promise<void>;
-	onRequest(listener: (request: DrawingEnvelope) => void): () => void;
-}
-
-export const mcpChannels = {
-	enable: "mcp:enable",
-	disable: "mcp:disable",
-	reply: "mcp:reply",
-} as const;
-
-export const mcpEvents = {
-	request: "mcp:request",
+export const mcpClientChannels = {
+	list: "mcp-clients:list",
+	add: "mcp-clients:add",
+	remove: "mcp-clients:remove",
 } as const;
 
 export interface DesktopTelemetryBridge {
@@ -189,7 +169,7 @@ export type InvokeChannel =
 	| (typeof projectChannels)[keyof typeof projectChannels]
 	| (typeof settingsChannels)[keyof typeof settingsChannels]
 	| (typeof updateChannels)[keyof typeof updateChannels]
-	| (typeof mcpChannels)[keyof typeof mcpChannels]
+	| (typeof mcpClientChannels)[keyof typeof mcpClientChannels]
 	| (typeof telemetryChannels)[keyof typeof telemetryChannels]
 	| typeof displayChannels.getCalibration
 	| typeof appChannels.quit;

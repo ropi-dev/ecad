@@ -1,10 +1,10 @@
 import type { DisplayBridge } from "@ecad/core/components/viewer/displayScale.ts";
 import type { ProjectStorage } from "@ecad/core/projects/storage.ts";
+import type { McpClientSetup } from "@ecad/core/settings/mcp-clients.ts";
 import { contextBridge, ipcRenderer } from "electron";
 import {
 	appChannels,
 	type DesktopAppBridge,
-	type DesktopMcpBridge,
 	type DesktopSettingsBridge,
 	type DesktopSymbolLibraryBridge,
 	type DesktopTelemetryBridge,
@@ -12,8 +12,7 @@ import {
 	type DesktopUpdatesBridge,
 	displayChannels,
 	libraryChannels,
-	mcpChannels,
-	mcpEvents,
+	mcpClientChannels,
 	projectChannels,
 	projectEvents,
 	settingsChannels,
@@ -122,21 +121,12 @@ const updates: DesktopUpdatesBridge = {
 };
 contextBridge.exposeInMainWorld("ecadUpdates", updates);
 
-const mcp: DesktopMcpBridge = {
-	enable: () => ipcRenderer.invoke(mcpChannels.enable),
-	disable: () => ipcRenderer.invoke(mcpChannels.disable),
-	reply: (requestId, reply) =>
-		ipcRenderer.invoke(mcpChannels.reply, requestId, reply),
-	onRequest: (listener) => {
-		const handle = (_event: unknown, request: Parameters<typeof listener>[0]) =>
-			listener(request);
-		ipcRenderer.on(mcpEvents.request, handle);
-		return () => {
-			ipcRenderer.removeListener(mcpEvents.request, handle);
-		};
-	},
+const mcpClients: McpClientSetup = {
+	list: () => ipcRenderer.invoke(mcpClientChannels.list),
+	add: (id) => ipcRenderer.invoke(mcpClientChannels.add, id),
+	remove: (id) => ipcRenderer.invoke(mcpClientChannels.remove, id),
 };
-contextBridge.exposeInMainWorld("ecadMcp", mcp);
+contextBridge.exposeInMainWorld("ecadMcpClients", mcpClients);
 
 const telemetry: DesktopTelemetryBridge = {
 	send: (batch, revision) =>

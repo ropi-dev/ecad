@@ -7,6 +7,7 @@ import {
 	projectNameSchema,
 	projectPathSchema,
 } from "@ecad/core/projects/format.ts";
+import { mcpClientIdSchema } from "@ecad/core/settings/mcp-clients.ts";
 import {
 	appSettingsSchema,
 	projectSettingsSchema,
@@ -15,14 +16,13 @@ import { parseSymbolConfig } from "@ecad/core/symbol-library/config.ts";
 import { telemetryConsentSchema } from "@ecad/core/telemetry/consent.ts";
 import { telemetryBatchSchema } from "@ecad/core/telemetry/schema.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
-import { drawingReplySchema } from "@ecad/drawing-core/mcp/drawing-protocol.ts";
 import { z } from "zod";
 import {
 	appChannels,
 	displayChannels,
 	type InvokeChannel,
 	libraryChannels,
-	mcpChannels,
+	mcpClientChannels,
 	projectChannels,
 	settingsChannels,
 	telemetryChannels,
@@ -134,9 +134,9 @@ export const ipcArguments = {
 	[updateChannels.check]: z.tuple([]),
 	[updateChannels.install]: z.tuple([]),
 	[updateChannels.restart]: z.tuple([]),
-	[mcpChannels.enable]: z.tuple([]),
-	[mcpChannels.disable]: z.tuple([]),
-	[mcpChannels.reply]: z.tuple([z.string().uuid(), drawingReplySchema]),
+	[mcpClientChannels.list]: z.tuple([]),
+	[mcpClientChannels.add]: z.tuple([mcpClientIdSchema]),
+	[mcpClientChannels.remove]: z.tuple([mcpClientIdSchema]),
 	[telemetryChannels.send]: z.tuple([
 		telemetryBatchSchema,
 		telemetryConsentSchema.shape.revision,

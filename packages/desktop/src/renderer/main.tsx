@@ -8,14 +8,15 @@ import { ProjectFilesSidebar } from "@ecad/core/projects/ProjectFilesSidebar.tsx
 import { ProjectProvider } from "@ecad/core/projects/ProjectProvider.tsx";
 import { ProjectShell } from "@ecad/core/projects/ProjectShell.tsx";
 import { WorkspaceStart } from "@ecad/core/projects/WorkspaceStart.tsx";
+import { setMcpClientSetup } from "@ecad/core/settings/mcp-clients.ts";
 import { setSettingsStorage } from "@ecad/core/settings/store.ts";
 import { setConsentStorage } from "@ecad/core/telemetry/consent.ts";
 import { startTelemetry } from "@ecad/core/telemetry/telemetry.ts";
 import { render } from "@solidjs/web";
 import { createSignal, Match, onSettled, Switch } from "solid-js";
-import { createDesktopMcpConnector } from "#/renderer/mcp.ts";
 import {
 	createDesktopConsentStorage,
+	createDesktopMcpClientSetup,
 	createDesktopProjectStorage,
 	createDesktopSettingsStorage,
 	createDesktopSymbolLibraryStorage,
@@ -27,7 +28,7 @@ import "#/renderer/window.css";
 type Workspace = "home" | "editor" | "gerber" | "step";
 const storage = createDesktopSymbolLibraryStorage(window.ecadSymbolLibrary);
 const projects = createDesktopProjectStorage(window.ecadProjects);
-const mcp = createDesktopMcpConnector(window.ecadMcp);
+setMcpClientSetup(createDesktopMcpClientSetup(window.ecadMcpClients));
 setDialogWindows(true);
 function App() {
 	const [workspace, setWorkspace] = createSignal<Workspace>("home");
@@ -60,7 +61,6 @@ function App() {
 					<ProjectFilesSidebar
 						onExit={() => void window.ecadApp.quit()}
 						footerActions={<UpdateButton updates={window.ecadUpdates} />}
-						mcp={mcp}
 					/>
 				}
 			>

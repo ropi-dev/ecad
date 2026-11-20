@@ -5,7 +5,7 @@ import {
 	appChannels,
 	displayChannels,
 	libraryChannels,
-	mcpChannels,
+	mcpClientChannels,
 	projectChannels,
 	settingsChannels,
 	telemetryChannels,
@@ -41,7 +41,7 @@ test("every invoke channel validates its arguments", () => {
 		displayChannels.getCalibration,
 		appChannels.quit,
 		...Object.values(updateChannels),
-		...Object.values(mcpChannels),
+		...Object.values(mcpClientChannels),
 		...Object.values(telemetryChannels),
 	];
 	assert.deepEqual(Object.keys(ipcArguments).sort(), [...channels].sort());

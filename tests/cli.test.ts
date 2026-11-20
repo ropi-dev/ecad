@@ -138,6 +138,7 @@ test("CLI rejects invalid arguments and preserves structured tool failures", asy
 		["call"],
 		["tools", "{}"],
 		["mcp", "{}"],
+		["--drawing", "drawing.ecaddraw", "mcp"],
 		["getDrawing", "{}", "{}"],
 		["getDrawing", "[]"],
 		["getDrawing", "null"],
@@ -241,53 +242,60 @@ test("CLI recovers a lock left by an exited process", async (context) => {
 
 test("standalone stdio MCP and CLI share tools, files and persistent undo history", async (context) => {
 	const fixture = await drawing(context);
+	const path = fixture.path;
 	const { client } = await stdio(context, fixture.env);
 	const tools = await client.listTools();
 	const direct = await startCli(["tools"], fixture.env).result;
 	assert.deepEqual(tools.tools, JSON.parse(direct.stdout).tools);
 	const placed = await client.callTool({
 		name: "placeRectangle",
-		arguments: rectangle,
+		arguments: { path, ...rectangle },
 	});
 	assert.equal(placed.isError, undefined);
 	assert.equal((await fixture.read()).shapes.length, 1);
 	await call(fixture.env, "placeRectangle", { ...rectangle, x: 50 });
 	const read = drawingReplySchema.parse(
-		(await client.callTool({ name: "getDrawing", arguments: {} }))
+		(await client.callTool({ name: "getDrawing", arguments: { path } }))
 			.structuredContent,
 	);
 	assert.ok(read.ok);
 	assert.equal(read.drawing?.shapes.length, 2);
-	await client.callTool({ name: "undo", arguments: {} });
+	await client.callTool({ name: "undo", arguments: { path } });
 	assert.equal((await fixture.read()).shapes.length, 1);
 	await client.close();
 	const restarted = await stdio(context, fixture.env);
-	await restarted.client.callTool({ name: "redo", arguments: {} });
+	await restarted.client.callTool({ name: "redo", arguments: { path } });
 	assert.equal((await fixture.read()).shapes.length, 2);
 	const invalid = await restarted.client.callTool({
 		name: "removeShapes",
-		arguments: { ids: [999] },
+		arguments: { path, ids: [999] },
 	});
 	assert.equal(invalid.isError, true);
 	assert.equal(drawingReplySchema.parse(invalid.structuredContent).ok, false);
 });
 
-test("concurrent CLI processes and MCP requests allocate distinct IDs without losing edits", async (context) => {
+test("one stdio MCP server, configured without a drawing, edits each drawing its tool calls name", async (context) => {
 	const fixture = await drawing(context);
-	const { client } = await stdio(context, fixture.env);
-	await Promise.all([
-		...Array.from({ length: 4 }, (_, x) =>
-			call(fixture.env, "placeRectangle", { ...rectangle, x }),
-		),
-		client.callTool({ name: "placeRectangle", arguments: rectangle }),
-	]);
-	assert.deepEqual(
-		(await fixture.read()).shapes
-			.map((shape: { id: number }) => shape.id)
-			.sort(),
-		[1, 2, 3, 4, 5],
+	const other = join(fixture.directory, "other.ecaddraw");
+	const { client } = await stdio(context, {});
+	for (const path of [fixture.path, other, fixture.path])
+		await client.callTool({
+			name: "placeRectangle",
+			arguments: { path, ...rectangle },
+		});
+	assert.equal((await fixture.read()).shapes.length, 2);
+	assert.equal(JSON.parse(await readFile(other, "utf8")).shapes.length, 1);
+	const relative = drawingReplySchema.parse(
+		(
+			await client.callTool({
+				name: "getDrawing",
+				arguments: { path: "drawing.ecaddraw" },
+			})
+		).structuredContent,
 	);
-	assert.equal((await readDrawing(fixture.env)).history.nodes.length, 6);
+	assert.equal(!relative.ok && relative.error.code, "InvalidDrawingPath");
+	const missing = await client.callTool({ name: "getDrawing", arguments: {} });
+	assert.equal(missing.isError, true);
 });
 
 test("stdio MCP exits on stdin EOF and SIGTERM without stdout diagnostics", async (context) => {

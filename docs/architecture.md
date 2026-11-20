@@ -68,9 +68,9 @@ A rectangle drag starts with temporary editor geometry. Pointer movement updates
 
 The store exposes stable, immutable snapshots and a subscription that `fromExternalStore` in `packages/core/src/lib/external-store.ts` turns into a Solid accessor. Pass it to `<Editor2D store={store} />` to display and edit the same document used by external commands. Without this prop, each editor creates its own store.
 
-In the desktop app, the sidebar's **Enable MCP** button starts an MCP endpoint in Electron's main process. It forwards complete operations to the renderer, where Effect executes them against the open editor's store. The web app has no MCP controls or endpoints. See [MCP access to drawings](mcp.md) for client setup, tool inputs, and connection lifetime.
+The CLI and its stdio MCP server create a store from a drawing file for each operation. The desktop app runs no MCP server; **Settings > MCP** only adds `ecad mcp` to Claude Code and Codex, and the app reloads drawings that the server changes on disk. See [MCP access to drawings](mcp.md).
 
-The standalone CLI and stdio server create a store from a local drawing for each operation. They reuse the same MCP tool definitions and commands, save successful edits, and preserve history in an adjacent file. The stdio server reloads the drawing on each call so it sees edits from other CLI processes. See [CLI and stdio access](mcp.md#cli-and-stdio-access).
+The CLI and stdio server They reuse the same MCP tool definitions and commands, save successful edits, and preserve history in an adjacent file. The stdio server reloads the drawing on each call so it sees edits from other CLI processes. See [CLI and stdio access](mcp.md#cli-and-stdio-access).
 
 An external document change cancels any active gesture and removes deleted IDs from the editor's selection. A stale preview cannot overwrite the external command when the pointer is released.
 

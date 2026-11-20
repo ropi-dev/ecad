@@ -20,20 +20,20 @@
 	"dependencies": {
 		"@ecad/core": "workspace:*",
 		"@ecad/drawing-core": "workspace:*",
-		"@modelcontextprotocol/sdk": "^1.32.2",
+		"@solidjs/web": "2.0.3",
 		"effect": "^3.22.2",
-		"zod": "^4.6.7",
+		"smol-toml": "^1.9.0",
 		"solid-js": "2.0.3",
-		"@solidjs/web": "2.0.3"
+		"zod": "^4.6.7"
 	},
 	"devDependencies": {
+		"@solidjs/vite-plugin": "3.0.1",
 		"@tailwindcss/vite": "^4.1.18",
 		"@types/node": "^24.19.2",
 		"electron": "^44.10.0",
 		"esbuild": "^0.28.2",
 		"tsx": "^4.21.0",
 		"typescript": "^6.0.2",
-		"vite": "^8.3.5",
-		"@solidjs/vite-plugin": "3.0.1"
+		"vite": "^8.3.5"
 	}
 }

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { open, readFile, realpath, rename, rm, stat } from "node:fs/promises";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { drawingSnapshotSchema } from "@ecad/drawing-core/commands/drawing-snapshot.ts";
 import {
 	createDrawingStore,
@@ -184,14 +184,10 @@ async function withDrawingLock<T>(
 }
 
 export interface LocalDrawingOptions {
-	path?: string;
 	lockTimeout?: number;
 }
 
-export function createLocalDrawing(options: LocalDrawingOptions = {}) {
-	if (options.path !== undefined && !options.path.trim())
-		throw new Error("The drawing path must not be empty.");
-	const filePath = resolve(options.path ?? "drawing.ecaddraw");
+export function createLocalDrawings(options: LocalDrawingOptions = {}) {
 	const timeout = options.lockTimeout ?? 30_000;
 	let cachedRead:
 		| {
@@ -217,15 +213,21 @@ export function createLocalDrawing(options: LocalDrawingOptions = {}) {
 		async settled() {
 			while (running.size) await Promise.allSettled([...running]);
 		},
-		execute(operation: DrawingOperation) {
+		execute(operation: DrawingOperation, filePath: string) {
 			return Effect.tryPromise({
 				try: (signal) =>
 					track(
 						measurePerformanceAsync("drawing.local-command", async () => {
-							const path = await realpath(filePath).catch((error) => {
+							if (!isAbsolute(filePath))
+								throw new LocalDrawingError({
+									code: "InvalidDrawingPath",
+									message: `Pass the drawing's absolute path, not ${JSON.stringify(filePath)}.`,
+								});
+							const resolved = resolve(filePath);
+							const path = await realpath(resolved).catch((error) => {
 								if (!hasCode(error, "ENOENT")) throw error;
-								return realpath(dirname(filePath)).then((directory) =>
-									join(directory, basename(filePath)),
+								return realpath(dirname(resolved)).then((directory) =>
+									join(directory, basename(resolved)),
 								);
 							});
 							return withDrawingLock(path, timeout, signal, async () => {
@@ -305,13 +307,13 @@ export function createLocalDrawing(options: LocalDrawingOptions = {}) {
 	};
 }
 
-// An MCP server for a local drawing, and a way to wait for its operations,
+// An MCP server for local drawings, and a way to wait for its operations,
 // which closing the server interrupts without awaiting.
 export function createLocalDrawingSession(options: LocalDrawingOptions = {}) {
-	const drawing = createLocalDrawing(options);
+	const drawings = createLocalDrawings(options);
 	return {
-		server: createDrawingMcpServer(drawing.execute),
-		settled: drawing.settled,
+		server: createDrawingMcpServer(drawings.execute),
+		settled: drawings.settled,
 	};
 }
 

@@ -144,7 +144,7 @@ import {
 } from "#/projects/ProjectProvider.tsx";
 import type { BoardDocument } from "#/projects/ProjectSession.ts";
 import { projectIndex } from "#/projects/project-index.ts";
-import { useEditorControlsRegistration } from "#/projects/WorkspaceControls.tsx";
+import { useWorkspaceRegistration } from "#/projects/WorkspaceControls.tsx";
 import { setBoardUnit, useBoardUnit } from "#/settings/useBoardUnit.ts";
 import type { SymbolEditTarget } from "#/symbol-library/storage.ts";
 
@@ -158,8 +158,6 @@ export interface Editor2DProps {
 	sheet?: SheetSize;
 
 	store?: ReturnType<typeof createDrawingStore>;
-
-	enableMcp?: boolean;
 }
 
 const noLayers: ReadonlySet<FootprintLayer> = new Set();
@@ -285,18 +283,7 @@ function EditorCanvas(props: EditorCanvasProps) {
 	const cameraView = viewport.cameraView;
 	const gridStep = () => viewport.gridStep;
 	const ready = createMemo(() => viewport.ready && boardView() !== "closing");
-	const registerEditor = useEditorControlsRegistration();
-	createEffect(
-		() => ({
-			registered: active(),
-			store: store(),
-			enableMcp: (props.enableMcp ?? true) && !isFootprint(),
-		}),
-		(next) =>
-			next.registered
-				? registerEditor?.(next.store, next.enableMcp)
-				: undefined,
-	);
+	const inWorkspace = !!useWorkspaceRegistration();
 	const drawingSource = createMemo(() => {
 		const current = store();
 		return fromExternalStore(current.subscribe, current.getSnapshot);
@@ -1098,7 +1085,7 @@ function EditorCanvas(props: EditorCanvasProps) {
 						? `${editorKind()} editor · ${props.board?.file.name ?? props.footprintName ?? props.symbolName}`
 						: `Schematic editor · ${props.drawingName ? `${props.drawingName} · ` : ""}${pages().length > 1 ? `${page().name} (page ${pageIndex() + 1} of ${pages().length}) · ` : ""}${sheet().name ? `${sheet().name} · ` : ""}${formatInches(sheet().width)} × ${formatInches(sheet().height)} in`}
 				</h1>
-				{registerEditor ? (
+				{inWorkspace ? (
 					<DocumentBar
 						icon={
 							isBoard()
@@ -1284,7 +1271,7 @@ function EditorCanvas(props: EditorCanvasProps) {
 								/>
 							)}
 						</Show>
-						{registerEditor ? undefined : pageBar(true)}
+						{inWorkspace ? undefined : pageBar(true)}
 						{ercOpen() && !sheetless() && (
 							<Loading
 								fallback={
@@ -1404,7 +1391,6 @@ function LibrarySymbolEditor(props: {
 		<EditorCanvas
 			store={symbol.store}
 			symbolName={props.target.file.name}
-			enableMcp={false}
 			headerControls={
 				<>
 					<button

@@ -1,4 +1,8 @@
 import type { ProjectStorage } from "@ecad/core/projects/storage.ts";
+import type {
+	McpClientId,
+	McpClientSetup,
+} from "@ecad/core/settings/mcp-clients.ts";
 import type { AppSettings } from "@ecad/core/settings/schema.ts";
 import type { SettingsStorage } from "@ecad/core/settings/store.ts";
 import type { SymbolLibraryStorage } from "@ecad/core/symbol-library/storage.ts";
@@ -164,5 +168,15 @@ export async function createDesktopConsentStorage(
 			void reload();
 			return stop;
 		},
+	};
+}
+
+export function createDesktopMcpClientSetup(
+	bridge: McpClientSetup,
+): McpClientSetup {
+	return {
+		list: decodeIpcErrors(() => bridge.list()),
+		add: decodeIpcErrors((id: McpClientId) => bridge.add(id)),
+		remove: decodeIpcErrors((id: McpClientId) => bridge.remove(id)),
 	};
 }
