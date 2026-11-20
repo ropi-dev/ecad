@@ -609,6 +609,39 @@ describe("routing and the ratsnest", () => {
 		assert.ok(!isUnsafeMove(move(via, { x: 1, y: 0 })));
 	});
 
+	test("a track with no net can still be dragged onto a netted track", () => {
+		const netted = trackSegment(
+			1,
+			{ x: 0, y: 0 },
+			{ x: 4, y: 0 },
+			"F.Cu",
+			0.25,
+			"a",
+		);
+		const loose = trackSegment(
+			2,
+			{ x: 0, y: 2 },
+			{ x: 3, y: 2 },
+			"F.Cu",
+			0.25,
+			undefined,
+		);
+		const shapes = [netted, loose];
+		const result = dragTrackEnd(
+			loose,
+			1,
+			{ x: 3, y: 0 },
+			shapes,
+			3,
+			0.1,
+			trackRouting(shapes),
+		);
+		assert.ok(!isUnsafeMove(result));
+		assert.ok(
+			touching(applyMove(shapes, result).filter((item) => item.width > 0)),
+		);
+	});
+
 	test("a track ending on another track's middle stays joined when either one moves", () => {
 		const trunk = trackSegment(
 			1,

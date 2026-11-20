@@ -71,6 +71,7 @@ export interface TrackRoute {
 	readonly net?: string;
 	readonly prefer?: Point;
 	readonly ignore: ReadonlySet<number>;
+	readonly relax?: boolean;
 }
 
 export interface RouteBudget {
@@ -142,7 +143,7 @@ function obstaclesFor(
 	route: TrackRoute,
 	routing: TrackRouting,
 	area: Bounds,
-	relax = true,
+	relax = route.relax !== false,
 ): Obstacle[] {
 	const half = route.width / 2;
 	const reach = half + routing.clearance + pitch + margin;
@@ -163,6 +164,15 @@ function obstaclesFor(
 				if (route.ignore.has(item.shapeId)) continue;
 				if (!item.layers.includes(route.layer as CopperLayer)) continue;
 				if (!foreign(item, route.net)) continue;
+				if (
+					route.net === undefined &&
+					item.hulls.some(
+						(hull) =>
+							pointHullDistance(hull, route.from) <= half ||
+							pointHullDistance(hull, route.to) <= half,
+					)
+				)
+					continue;
 				for (const hull of item.hulls) {
 					const gap = relax
 						? Math.min(
@@ -220,11 +230,14 @@ export function copperClear(
 				if (!item.layers.some((layer) => copper.layers.includes(layer)))
 					continue;
 				for (const own of copper.hulls)
-					for (const hull of item.hulls)
-						if (hullDistance(own, hull) < routing.clearance - 1e-6) {
+					for (const hull of item.hulls) {
+						const distance = hullDistance(own, hull);
+						if (copper.net === undefined && distance <= 1e-6) continue;
+						if (distance < routing.clearance - 1e-6) {
 							clear = false;
 							return;
 						}
+					}
 			}
 		},
 	);
