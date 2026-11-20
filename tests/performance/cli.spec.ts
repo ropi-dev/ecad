@@ -75,7 +75,10 @@ test(
 				expect((await client.listTools()).tools).toHaveLength(12);
 			});
 			const result = await measure("stdioPlaceMs", () =>
-				client.callTool({ name: "placeShapes", arguments: { shapes } }),
+				client.callTool({
+					name: "placeShapes",
+					arguments: { path: drawing.path, shapes },
+				}),
 			);
 			expect(result.isError).not.toBe(true);
 			expect((await drawing.read()).shapes).toHaveLength(2000);

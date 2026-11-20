@@ -177,7 +177,6 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 		["@import", "@storage", "@circuit"],
 	],
 	["packages/core/src/formats/**", ["@import"]],
-	["packages/core/src/mcp/**", ["@editor"]],
 	["packages/core/src/services/**", ["@editor"]],
 	["packages/core/src/symbol-library/**", ["@symbols", "@storage"]],
 

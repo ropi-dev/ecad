@@ -1,36 +1,25 @@
 # MCP access to drawings
 
-The standalone CLI and stdio MCP server read and edit local `.ecaddraw` files under Node. See [CLI and stdio access](#cli-and-stdio-access) below.
+`ecad mcp` is a stdio MCP server that reads and edits drawing files under Node. Every tool takes the absolute `path` of the drawing it works on, so one entry in an MCP client's global configuration covers every drawing. The desktop app hosts no MCP server. It only writes that entry for Claude Code and Codex.
 
-MCP clients can also read and edit the drawing open in the desktop app's editor. The web app has no MCP controls or endpoints.
+## Add ECAD to Claude Code or Codex
 
-## Connect a client to the desktop app
+Open **Settings > MCP** in the desktop app and click **Add** next to Claude Code or Codex. Each row shows the config file it edits:
 
-1. Start the desktop app, for example with `pnpm run dev:desktop`.
-2. Click **Enable MCP** (the plug icon) in the sidebar. With no drawing open, it opens the project's first drawing. A project with no drawings disables the button until you create one. Wait for **Connected to the open drawing**.
-3. Click **Copy configuration**. Add the copied endpoint and authorization header to an MCP client that supports Streamable HTTP and custom headers.
-4. Keep ECAD open while using the client. Click **MCP connected** to hide or show settings without disconnecting. Click **Disable MCP** in the settings panel to revoke access.
+| Client | Config file | Entry |
+| --- | --- | --- |
+| Claude Code | `~/.claude.json`, or `$CLAUDE_CONFIG_DIR/.claude.json` | `mcpServers.ecad`, user scope |
+| Codex | `~/.codex/config.toml`, or `$CODEX_HOME/config.toml` | `[mcp_servers.ecad]` |
 
-The panel provides a configuration in this form. Use the actual URL and token copied from the app:
+The entry runs the CLI bundled with the app on the app's own Electron binary, with `ELECTRON_RUN_AS_NODE=1`. A packaged app runs `cli/ecad.js` next to its executable. A development build runs `packages/cli/src/main.ts` through tsx, so the entry points into that checkout. When the entry exists but runs another command, for example after the app moved, the row offers **Update**. **Remove** deletes only the `ecad` entry.
 
-```json
-{
-  "mcpServers": {
-    "ecad": {
-      "url": "http://127.0.0.1:<port>/mcp",
-      "headers": {
-        "Authorization": "Bearer <token>"
-      }
-    }
-  }
-}
-```
+ECAD replaces each file in one rename and keeps the rest of it. It rewrites `.claude.json` with two-space indentation. In `config.toml` it removes the old `[mcp_servers.ecad]` tables and appends a new one, so comments and other tables stay as they were. Before writing, it parses the result and refuses the edit if any other setting would change, for example when `ecad` is defined as an inline table. Then the row asks you to edit the file by hand. Agent sessions that are already running keep their old tools until you restart them.
 
-The token grants read and edit access to the drawing open in the editor. Commands follow the editor: after you open another drawing, they run against that one.
+When the desktop app has the project open, it reloads a drawing that `ecad mcp` changed, as it does for any program that edits its files. The reload starts a new undo history in the editor. Unsaved edits in the editor turn the change into a conflict instead.
 
 ## CLI and stdio access
 
-The `@ecad/cli` workspace runs independently under Node. It uses `@ecad/drawing-core` for the drawing model, Effect commands, schemas, and MCP tool registration. The desktop editor uses the same implementation.
+The `@ecad/cli` workspace runs independently under Node. It uses `@ecad/drawing-core` for the drawing model, Effect commands, schemas, and MCP tool registration. The desktop editor runs the same commands.
 
 ```bash
 export ECAD_DRAWING="$PWD/drawing.ecaddraw"
@@ -42,7 +31,7 @@ printf '%s' '{"ids":[1]}' | pnpm --silent cli removeShapes -
 pnpm --silent cli undo
 ```
 
-`--drawing <path>` overrides `ECAD_DRAWING`. The default is `drawing.ecaddraw` in the current directory. Its parent directory must exist. A missing drawing starts empty, and the first successful edit creates it. Reading an empty drawing or listing tools creates no drawing file.
+`--drawing <path>` overrides `ECAD_DRAWING`. The default is `drawing.ecaddraw` in the current directory. A `path` in the tool arguments overrides both, and a relative one resolves against the current directory. The drawing's folder must exist. A missing drawing starts empty, and the first successful edit creates it. Reading an empty drawing or listing tools creates no drawing file.
 
 All nine drawing tools are available by their MCP names. Arguments default to `{}`. `call <tool> [json|-]` handles tool names that conflict with CLI commands. `--timeout` sets the file lock wait in milliseconds, with a default of 30000. `--help` and `--version` run without loading drawing commands.
 
@@ -53,28 +42,26 @@ Build the executable once:
 ```bash
 pnpm run build:cli
 node packages/cli/bin/ecad.mjs --drawing drawing.ecaddraw getDrawing
-node packages/cli/bin/ecad.mjs --drawing drawing.ecaddraw mcp
 ```
 
-For an MCP client that launches stdio servers, use the absolute paths to the executable and drawing:
+To configure another MCP client by hand, add `ecad mcp`:
 
 ```json
 {
   "mcpServers": {
     "ecad": {
       "command": "node",
-      "args": [
-        "/absolute/path/to/ecad/packages/cli/bin/ecad.mjs",
-        "--drawing",
-        "/absolute/path/to/drawing.ecaddraw",
-        "mcp"
-      ]
+      "args": ["/absolute/path/to/ecad/packages/cli/bin/ecad.mjs", "mcp"]
     }
   }
 }
 ```
 
-`ecad mcp` starts a local MCP server with the same tool schemas, annotations, and results as the desktop MCP server. Stdout contains only MCP messages. The server logs an input line that is not JSON, or not a JSON-RPC message, to stderr and keeps serving. Closing stdin closes the server once replies already handed to stdout are written. SIGINT, SIGTERM or SIGHUP stops running commands, waits until they release the drawing lock, and exits with code 130, 143 or 129 without waiting for stdout. CLI tool commands handle these signals the same way. A message over 10 MB, or a stdin or stdout failure, stops it with exit code 1.
+With the `.deb` package installed, use `"command": "ecad", "args": ["mcp"]`.
+
+Every tool takes a required `path`, the absolute path of the drawing to read or edit. It can be a standalone `.ecaddraw` file or a drawing file inside a desktop project folder. A relative path fails with `InvalidDrawingPath`, because MCP clients start servers in unpredictable directories. `ecad mcp` rejects `--drawing` and ignores `ECAD_DRAWING`.
+
+Stdout contains only MCP messages. The server logs an input line that is not JSON, or not a JSON-RPC message, to stderr and keeps serving. Closing stdin closes the server once replies already handed to stdout are written. SIGINT, SIGTERM or SIGHUP stops running commands, waits until they release the drawing lock, and exits with code 130, 143 or 129 without waiting for stdout. CLI tool commands handle these signals the same way. A message over 10 MB, or a stdin or stdout failure, stops it with exit code 1.
 
 Drawings use the app's JSON object format with a `shapes` array. Edits preserve other fields, including drawing IDs, names, and symbol library configuration. The adjacent `<drawing>.history.json` file stores undo branches and shape ID allocation across CLI calls and MCP restarts. Keep it with the drawing to retain history. An external change to the drawing starts a new history at that state.
 
@@ -86,7 +73,7 @@ A lock records its owner's process ID and host name. On Linux it also records th
 
 A lock blocks commands until the timeout when the CLI cannot prove that its owner exited. That happens when the lock comes from another computer or another PID namespace, such as a different container, and when the CLI cannot read it, as with locks from older CLI versions. On Linux, the CLI checks a process ID only when the lock and the current process both recorded the same boot ID and PID namespace. It compares start times only when `/proc` belongs to its own PID namespace. Other systems record neither, so the host name identifies the computer, and computers that share a drawing's folder need distinct host names. Linux computers that share a folder also need distinct machine IDs, as systemd requires. With a cloned `/etc/machine-id` and the same host name, the CLI takes another computer's lock for one left over from an earlier boot. Outside Linux, a lock whose process ID now belongs to another program also blocks until that program exits. Remove a blocking lock by hand only after checking that its process has stopped. On file systems without hard links, a crash between creating and writing a lock can leave it empty.
 
-The package exports `runCli`, `createLocalDrawing`, `createLocalDrawingMcpServer`, and `serveStdioMcp` for other workspace modules. `createLocalDrawing` exposes an Effect executor. `createLocalDrawingMcpServer` returns the standalone MCP server for a chosen file.
+The package exports `runCli`, `createLocalDrawings`, `createLocalDrawingMcpServer`, and `serveStdioMcp` for other workspace modules. `createLocalDrawings` exposes an Effect executor that takes the drawing's path with each operation. `createLocalDrawingMcpServer` returns the standalone MCP server, whose tools take `path`.
 
 ## Tools and coordinates
 
@@ -107,7 +94,7 @@ Coordinates and dimensions are millimetres. `x` and `y` specify the shape center
 | `setSheet` | `sheet`, optional `label` | Replace the paper size and title block that every page shares, in one undo step. Fields left out return to their defaults: A3 landscape and blank text. |
 | `moveShapesToPage` | `ids`, `page`, optional `label` | Move explicit existing IDs to another page at the same coordinates. Circuit labels pinned to a moved symbol move with it. Move connected wires and labels together, because wires connect only on their own page. |
 
-For example, send this tool call to place a 40 × 15 mm rectangle centered at `(20, 30)`:
+For example, send this tool call to place a 40 × 15 mm rectangle centered at `(20, 30)`. `ecad mcp` also needs `path`:
 
 ```json
 {
@@ -123,7 +110,7 @@ For example, send this tool call to place a 40 × 15 mm rectangle centered at `(
 }
 ```
 
-All six fields are required. The command commits immediately as one undo step. The standalone server saves it to the drawing file. With a desktop MCP connection, the edit appears in the open editor and leaves the selected tool unchanged.
+All six geometry fields are required. The command commits immediately as one undo step, and the server saves it to the drawing file.
 
 `placeShapes` supports rectangles, circles, triangles, orthogonal wires, pins, text, and symbols. Pins have a string `name`, which defaults to empty when omitted, including pins inside symbols. Text includes its content, font size, and already measured width and height. Symbol children use coordinates relative to the symbol center and IDs local to the symbol. Read `getDrawing` before replacing or removing shapes, and include every connected neighbor that a replacement needs to move. The commands validate geometry and normalize overlapping wires; they do not infer an editor gesture.
 
@@ -151,43 +138,11 @@ Every `getDrawing` reply contains a `revision` derived from the drawing's shapes
 
 A paged reply also contains `page` with `offset`, `count`, `total`, and `nextOffset`. Each page returns as many shapes as fit, up to `limit` when given. Only the page at offset 0 includes `nets`, which cover the whole drawing. Every page includes the history. A drawing whose history and nets alone exceed the limit, or a single shape over the limit, fails with `DrawingTooLarge`. As a last check, a tool result that would still exceed 8 MiB becomes a `ReplyTooLarge` error. The connection stays open, but the command may have run, so read the drawing before retrying.
 
-Desktop editor UI edits and MCP edits share the same history. An external mutation cancels an unfinished gesture before its preview can overwrite the command.
-
-## Desktop connection lifetime
-
-Disabling MCP, leaving the editor, opening the symbol editor, reloading or closing the window, or quitting the app stops the endpoint and revokes its token. Commands still waiting fail with `EditorDisconnected`. Enabling MCP again starts a new endpoint on a new port with a new token, so update the client's configuration after reconnecting.
-
-A command the editor does not finish within 15 seconds fails with `EditorTimeout`. It may still have run. At most 128 commands wait for the editor at a time; more fail with `EditorBusy`. Disabling MCP does not undo completed edits.
-
-## Request checks
-
-The main process listens on `127.0.0.1` only, on a port the system picks. Every request must carry the bearer token. A request that carries an `Origin` header gets HTTP 403, because MCP clients send none and every web page does. A `Host` header other than `127.0.0.1:<port>` or `localhost:<port>` also gets HTTP 403, which stops DNS rebinding. MCP request bodies are limited to 1 MiB, below the editor's 2 MiB command limit; larger requests get HTTP 413.
-
-## Desktop implementation
-
-The MCP server in Electron's main process validates tool arguments and sends each complete operation to the renderer over IPC. The renderer runs its Effect command with the same `DrawingStore` used by `Editor2D`, one at a time in arrival order, and replies over IPC. Solid subscriptions update the display and Three.js renderer.
-
-```mermaid
-sequenceDiagram
-    participant Client as MCP client
-    participant Main as Electron main process
-    participant Editor as Renderer
-    participant Store as DrawingStore
-    Client->>Main: Tool call with complete geometry
-    Main->>Editor: Operation with request ID and expiry
-    Editor->>Store: Execute Effect command
-    Store-->>Editor: Command result and drawing summary
-    Editor-->>Main: Reply
-    Main-->>Client: MCP tool result
-```
-
 | Location | Responsibility |
 | --- | --- |
 | `packages/drawing-core/src/mcp/drawing-protocol.ts` | Shared operation schemas, reply schemas, and Effect command execution. |
-| `packages/drawing-core/src/mcp/drawing-server.ts` | MCP tool registration and protocol results. |
-| `packages/desktop/src/main/mcp-server.ts` | Localhost endpoint, token and request checks, pending commands, and timeouts. |
-| `packages/desktop/src/renderer/mcp.ts` | Renderer side of the IPC bridge and command order. |
-| `packages/core/src/mcp/editor-connection.ts` | Connector interface and command execution against a store. |
-| `packages/core/src/components/editor/McpControls.tsx` | Enable/disable controls and client configuration. |
+| `packages/drawing-core/src/mcp/drawing-server.ts` | MCP tool registration, the `path` argument, and protocol results. |
+| `packages/cli/src/drawing.ts` | File locking, history files, and saving for each tool call. |
+| `packages/desktop/src/main/mcp-clients.ts` | The Claude Code and Codex config edits behind **Settings > MCP**. |
 
 See [drawing architecture](architecture.md) for command and rendering boundaries, and [Effect integration](effect.md) for execution and resource lifetimes.

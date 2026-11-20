@@ -8,10 +8,8 @@ import {
 	For,
 	Loading,
 	lazy,
-	Match,
 	onSettled,
 	Show,
-	Switch,
 } from "solid-js";
 import copperE from "#/assets/copper-e.svg?url";
 import { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
@@ -28,7 +26,6 @@ import {
 	House,
 	Layers,
 	type LucideIcon,
-	PlugZap,
 	Plus,
 	Save,
 	Search,
@@ -53,7 +50,6 @@ import {
 	useScrollEdges,
 } from "#/components/viewer/useScrollEdges.ts";
 import type { KiCadImportReport } from "#/formats/kicad/import.ts";
-import type { EditorMcpConnector } from "#/mcp/editor-connection.ts";
 import { addProjectFiles } from "#/projects/add-project-files.ts";
 import { isProjectError } from "#/projects/errors.ts";
 import {
@@ -84,10 +80,6 @@ import {
 } from "#/projects/WorkspaceControls.tsx";
 import { LazySettingsDialog } from "#/settings/LazySettingsDialog.tsx";
 
-const SidebarMcpControls = lazy(
-	() => import("#/components/editor/McpControls.tsx"),
-	{ export: "McpControls" },
-);
 const CreateFileDialog = lazy(
 	() => import("#/components/editor/CreateFileDialog.tsx"),
 	{ export: "CreateFileDialog" },
@@ -260,8 +252,6 @@ export function ProjectFilesSidebar(
 		/** Quits the app. The Exit button shows only when it is given. */
 		onExit?: () => void;
 		footerActions?: JSX.Element;
-		/** Only the desktop app passes this; the web app shows no MCP controls. */
-		mcp?: EditorMcpConnector;
 	} = {},
 ) {
 	const project = useProjectSelection(
@@ -337,20 +327,12 @@ export function ProjectFilesSidebar(
 	const [railOpenActive, setRailOpenActive] = createSignal<Accessor<boolean>>();
 	const [railProjectActive, setRailProjectActive] =
 		createSignal<Accessor<boolean>>();
-	const [railMcpActive, setRailMcpActive] = createSignal<Accessor<boolean>>();
-	const [mcpRequested, setMcpRequested] = createSignal(false);
-	const editorOpen = createMemo(() => Boolean(workspaceControls?.editor));
-	createEffect(editorOpen, (open) => {
-		if (!open) return;
-		return () => setMcpRequested(false);
-	});
 	// Menus and dialogs opened from the rail leave the sidebar closed.
 	const overlayOpen = createMemo(
 		() =>
 			railAddMenuOpen() ||
 			railOpenActive()?.() ||
 			railProjectActive()?.() ||
-			railMcpActive()?.() ||
 			creatingFile() !== null ||
 			settingsOpen(),
 	);
@@ -431,10 +413,6 @@ export function ProjectFilesSidebar(
 	const latestProject = useLatestProjectSnapshot();
 	let navigations = 0;
 	const snapshot = () => project()?.project;
-	const firstDrawing = () => {
-		const manifest = snapshot()?.manifest;
-		return manifest?.drawing ?? manifest?.drawings?.[0];
-	};
 	const files = createMemo(() => projectFiles(snapshot()));
 	const filtered = createMemo(() => {
 		const search = query().trim().toLowerCase();
@@ -806,89 +784,6 @@ export function ProjectFilesSidebar(
 							}}
 							class={railButton}
 						/>
-						<Show when={props.mcp}>
-							{(mcp) => (
-								<Switch
-									fallback={
-										<TooltipButton
-											aria-label="Enable MCP"
-											tooltip="Create a drawing to use MCP"
-											side="right"
-											disabled
-											class={railButton}
-											data-variant="ghost"
-											data-icon
-										>
-											<PlugZap size={18} aria-hidden="true" />
-										</TooltipButton>
-									}
-								>
-									<Match when={workspaceControls?.editor}>
-										{(editor) => (
-											<Show
-												when={editor().enableMcp}
-												fallback={
-													<TooltipButton
-														aria-label="MCP unavailable"
-														tooltip="MCP is unavailable in this editor"
-														side="right"
-														disabled
-														class={railButton}
-														data-variant="ghost"
-														data-icon
-													>
-														<PlugZap size={18} aria-hidden="true" />
-													</TooltipButton>
-												}
-											>
-												<Loading
-													fallback={
-														<button
-															type="button"
-															aria-label="Enable MCP"
-															disabled
-															class={railButton}
-															data-variant="ghost"
-															data-icon
-														>
-															<PlugZap size={18} aria-hidden="true" />
-														</button>
-													}
-												>
-													<SidebarMcpControls
-														store={editor().store}
-														connect={mcp()}
-														autoEnable={mcpRequested()}
-														registerActive={(active) =>
-															setRailMcpActive(() => active)
-														}
-													/>
-												</Loading>
-											</Show>
-										)}
-									</Match>
-									<Match when={firstDrawing()}>
-										{(drawing) => (
-											<TooltipTrigger tooltip="Enable MCP" side="right">
-												<ProjectLink
-													href="/editor"
-													aria-label="Enable MCP"
-													onClick={() => {
-														setMcpRequested(true);
-														project()?.selectEditorFile(drawing());
-													}}
-													class={railButton}
-													data-variant="ghost"
-													data-icon
-												>
-													<PlugZap size={18} aria-hidden="true" />
-												</ProjectLink>
-											</TooltipTrigger>
-										)}
-									</Match>
-								</Switch>
-							)}
-						</Show>
 						<div class="flex-1" />
 						<Show when={saveProject()}>
 							{(save) => (

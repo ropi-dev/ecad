@@ -88,7 +88,10 @@ globalThis.fetch = () => { throw new Error("Networking is unavailable"); };
 		}),
 	);
 	assert.equal((await client.listTools()).tools.length, 12);
-	const result = await client.callTool({ name: "undo", arguments: {} });
+	const result = await client.callTool({
+		name: "undo",
+		arguments: { path: fixture.path },
+	});
 	assert.notEqual(result.isError, true);
 	assert.deepEqual(JSON.parse(await readFile(fixture.path, "utf8")).shapes, []);
 });

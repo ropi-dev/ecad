@@ -1,4 +1,5 @@
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { access, readFile, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { dialogWindowPrefix } from "@ecad/core/components/ui/dialog-window.ts";
@@ -21,8 +22,7 @@ import {
 	displayChannels,
 	type InvokeChannel,
 	libraryChannels,
-	mcpChannels,
-	mcpEvents,
+	mcpClientChannels,
 	projectChannels,
 	projectEvents,
 	settingsChannels,
@@ -38,7 +38,7 @@ import {
 	ExternalLibraryApprovals,
 	type ExternalLibraryRequest,
 } from "#/main/library-approvals.ts";
-import { createDesktopMcpServer } from "#/main/mcp-server.ts";
+import { bundledMcpLaunch, createMcpClients } from "#/main/mcp-clients.ts";
 import { DesktopProjects } from "#/main/projects.ts";
 import { DesktopSettings } from "#/main/settings.ts";
 import { DesktopSymbolLibrary } from "#/main/symbol-library.ts";
@@ -95,13 +95,6 @@ const projects = new DesktopProjects(
 	},
 );
 let window: BrowserWindow | null = null;
-const mcp = createDesktopMcpServer({
-	send: (request) => {
-		if (!window || window.isDestroyed()) return false;
-		window.webContents.send(mcpEvents.request, request);
-		return true;
-	},
-});
 let updater: DesktopUpdater | null = null;
 let relaunchOnQuit = false;
 
@@ -384,13 +377,25 @@ function registerUpdateHandlers(channel: AppSettings["releaseChannel"]) {
 	});
 }
 
-function registerMcpHandlers() {
-	handle(mcpChannels.enable, () => mcp.enable());
-	handle(mcpChannels.disable, () => mcp.disable());
-	handle(mcpChannels.reply, (requestId, reply) => {
-		mcp.reply(requestId, reply);
+function registerMcpClientHandlers() {
+	const clients = createMcpClients({
+		launch: async () => {
+			const { script, ...launch } = bundledMcpLaunch({
+				packaged: app.isPackaged,
+				execPath: process.execPath,
+				appPath: app.getAppPath(),
+				tsxLoader: () =>
+					createRequire(join(app.getAppPath(), "package.json")).resolve("tsx"),
+			});
+			await access(script).catch(() => {
+				throw new Error(`This ECAD build has no CLI at ${script}.`);
+			});
+			return launch;
+		},
 	});
-	app.on("will-quit", () => void mcp.disable());
+	handle(mcpClientChannels.list, () => clients.list());
+	handle(mcpClientChannels.add, (id) => clients.add(id));
+	handle(mcpClientChannels.remove, (id) => clients.remove(id));
 }
 
 function registerDisplayHandlers() {
@@ -553,11 +558,8 @@ function createWindow() {
 	);
 	// Watcher events can be missed, for example on network filesystems.
 	window.on("focus", () => void projects.checkExternalChanges());
-	// A reloaded or closed page has no editor to run MCP commands.
-	window.webContents.on("did-start-loading", () => void mcp.disable());
 	window.on("closed", () => {
 		window = null;
-		void mcp.disable();
 	});
 	void window.loadURL(rendererUrl);
 }
@@ -598,7 +600,7 @@ void app.whenReady().then(async () => {
 	const initial = (await settings.load()).settings;
 	registerTelemetryHandlers();
 	registerUpdateHandlers(initial.releaseChannel);
-	registerMcpHandlers();
+	registerMcpClientHandlers();
 	handle(appChannels.quit, () => app.quit());
 	applyTheme(initial.theme);
 	nativeTheme.on("updated", () =>

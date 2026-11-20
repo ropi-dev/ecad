@@ -9,6 +9,7 @@ import {
 	Loading,
 	lazy,
 	Match,
+	onSettled,
 	Show,
 	Switch,
 	untrack,
@@ -22,10 +23,17 @@ import {
 	Library,
 	type LucideIcon,
 	Monitor,
+	PlugZap,
 } from "#/components/ui/icons.tsx";
 import { automaticAntialiasing } from "#/components/viewer/antialiasing.ts";
 import { setDebugStats } from "#/performance/useDebugStats.ts";
 import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
+import {
+	getMcpClientSetup,
+	type McpClientId,
+	type McpClientSetup,
+	type McpClientStatus,
+} from "#/settings/mcp-clients.ts";
 import {
 	type AntialiasingMode,
 	type ErcSeverityLevel,
@@ -56,6 +64,7 @@ export type SettingsSection =
 	| "display"
 	| "erc"
 	| "libraries"
+	| "mcp"
 	| "updates"
 	| "usage";
 
@@ -67,6 +76,7 @@ const sections: {
 	{ id: "display", label: "Display", icon: Monitor },
 	{ id: "erc", label: "Electrical rules", icon: CircuitBoard },
 	{ id: "libraries", label: "Symbol libraries", icon: Library },
+	{ id: "mcp", label: "MCP", icon: PlugZap },
 	{ id: "updates", label: "Updates", icon: CircleArrowUp },
 	{ id: "usage", label: "Usage data", icon: Activity },
 ];
@@ -87,6 +97,7 @@ export function SettingsDialog(props: {
 		sections.filter(
 			({ id }) =>
 				(id !== "updates" || status().updates) &&
+				(id !== "mcp" || !!getMcpClientSetup()) &&
 				(id !== "usage" || telemetryAvailable),
 		),
 	);
@@ -204,6 +215,9 @@ export function SettingsDialog(props: {
 								>
 									<SymbolLibrarySettings />
 								</Loading>
+							</Match>
+							<Match when={active() === "mcp" && getMcpClientSetup()}>
+								{(setup) => <McpClientSettings setup={setup()} />}
 							</Match>
 							<Match when={active() === "updates" && status().updates}>
 								<UpdateSettings />
@@ -330,6 +344,112 @@ function DisplaySettings() {
 					/>
 				)}
 			</SettingRow>
+		</section>
+	);
+}
+
+const mcpStates: Record<McpClientStatus["state"], string> = {
+	added: "Added.",
+	outdated:
+		"Has an ecad server that runs another command. Update it to run this copy of ECAD.",
+	absent: "Not added.",
+};
+
+const mcpActions: Record<
+	McpClientStatus["state"],
+	[label: string, preposition: string]
+> = {
+	added: ["Remove", "from"],
+	outdated: ["Update", "in"],
+	absent: ["Add", "to"],
+};
+
+function McpClientSettings(props: { setup: McpClientSetup }) {
+	const [clients, setClients] = createSignal<McpClientStatus[]>();
+	const [busy, setBusy] = createSignal<McpClientId>();
+	const [error, setError] = createSignal("");
+	onSettled(() => {
+		props.setup.list().then(
+			(list) => setClients(list),
+			(cause) =>
+				setError(errorMessage(cause, "Unable to read the MCP client configs.")),
+		);
+	});
+	const change = (client: McpClientStatus) => {
+		setBusy(() => client.id);
+		setError("");
+		const action =
+			client.state === "added" ? props.setup.remove : props.setup.add;
+		action(client.id)
+			.then(
+				(next) =>
+					setClients((list) =>
+						list?.map((entry) => (entry.id === next.id ? next : entry)),
+					),
+				(cause) =>
+					setError(
+						errorMessage(cause, `Unable to change the ${client.name} config.`),
+					),
+			)
+			.finally(() => setBusy(undefined));
+	};
+	return (
+		<section aria-label="MCP" class="flex flex-col">
+			<h3 class="ui-section-label m-0 mb-1">MCP</h3>
+			<p class="m-0 mb-2 text-xs text-fg-muted">
+				Adds the ECAD drawing tools to a coding agent for all your projects.
+				Each tool call names the drawing file it reads or edits. Agent sessions
+				that are already running keep their old tools until you restart them.
+			</p>
+			<Show
+				when={clients()}
+				fallback={
+					<Show when={!error()}>
+						<output class="text-sm text-fg-muted">Reading configs...</output>
+					</Show>
+				}
+			>
+				<div class="flex flex-col divide-y divide-line-subtle">
+					<For each={clients()}>
+						{(client) => (
+							<SettingRow
+								label={client.name}
+								description={
+									<>
+										<span class={client.error ? "text-danger" : undefined}>
+											{client.error ?? mcpStates[client.state]}
+										</span>
+										<span class="block font-mono break-all text-fg-faint">
+											{client.configPath}
+										</span>
+									</>
+								}
+							>
+								{(id) => (
+									<button
+										id={id}
+										type="button"
+										aria-label={`${mcpActions[client.state].join(" ")} ${client.name}`}
+										class="ui-button shrink-0"
+										data-variant={
+											client.state === "added" ? undefined : "primary"
+										}
+										disabled={busy() !== undefined || !!client.error}
+										onClick={() => change(client)}
+									>
+										{mcpActions[client.state][0]}
+									</button>
+								)}
+							</SettingRow>
+						)}
+					</For>
+				</div>
+			</Show>
+			<Show when={error()}>
+				<p role="alert" class="m-0 mt-2 text-xs text-danger">
+					{error()}
+				</p>
+			</Show>
 		</section>
 	);
 }

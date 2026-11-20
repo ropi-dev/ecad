@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { addAbortSignal, type Readable, type Writable } from "node:stream";
 import { parseArgs } from "node:util";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
@@ -10,10 +11,11 @@ Commands:
   tools                    List all drawing tools and their JSON schemas
   <tool> [json|-]           Call any tool by its MCP name
   call <tool> [json|-]      Call a tool whose name conflicts with a CLI command
-  mcp                      Start a standalone MCP stdio server
+  mcp                      Start an MCP stdio server for any drawing
 
 Options:
-  --drawing <path>         Drawing file, or ECAD_DRAWING, default drawing.ecaddraw
+  --drawing <path>         Default drawing file for tool commands, or
+                           ECAD_DRAWING, default drawing.ecaddraw
   --timeout <ms>           File lock timeout in milliseconds, default 30000
   -h, --help               Show this help
   -v, --version            Show the CLI version
@@ -21,8 +23,10 @@ Options:
 Commands read and edit a local drawing. A missing file starts an empty drawing.
 Successful edits save the drawing and its undo history across invocations.
 Tool arguments are a JSON object, defaulting to {}. Use - to read JSON from stdin.
+A "path" in the tool arguments overrides --drawing.
 Tool results are JSON on stdout. Failures set exit code 1; diagnostics use stderr.
-The mcp command reserves stdout for MCP messages.
+The mcp command takes no drawing: each tool call passes its drawing's absolute
+path. It reserves stdout for MCP messages.
 `;
 
 export interface CliOptions {
@@ -91,17 +95,27 @@ export async function runCli(args: string[], options: CliOptions = {}) {
 			throw new Error(
 				"The timeout must be a positive integer in milliseconds.",
 			);
-		const drawing = {
-			path: values.drawing ?? (env.ECAD_DRAWING || undefined),
-			lockTimeout: timeout,
-		};
 		if (command === "mcp") {
+			if (values.drawing !== undefined)
+				throw new Error(
+					"ecad mcp serves any drawing. Pass the drawing's path in each tool call instead of --drawing.",
+				);
 			const { serveStdioMcp } = await import("./stdio.ts");
-			await serveStdioMcp({ ...drawing, input, output, error, signal });
+			await serveStdioMcp({
+				lockTimeout: timeout,
+				input,
+				output,
+				error,
+				signal,
+			});
 			return 0;
 		}
+		const drawing = values.drawing ?? (env.ECAD_DRAWING || "drawing.ecaddraw");
+		if (!drawing.trim()) throw new Error("The drawing path must not be empty.");
+		const path = toolArguments.path ?? drawing;
+		if (typeof path === "string" && path) toolArguments.path = resolve(path);
 		const { createLocalClient } = await import("./local-client.ts");
-		const session = await createLocalClient(drawing);
+		const session = await createLocalClient({ lockTimeout: timeout });
 		const { client } = session;
 		try {
 			const tools = await client.listTools({}, { signal });

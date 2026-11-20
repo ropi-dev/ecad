@@ -30,9 +30,11 @@ const rectangle = {
 	lineWidth: 0.25,
 };
 
+const path = "/drawing.ecaddraw";
+
 async function session(context: TestContext) {
 	const store = createDrawingStore();
-	const server = createDrawingMcpServer((operation) =>
+	const server = createDrawingMcpServer((operation, _path) =>
 		executeDrawingOperation(operation).pipe(
 			Effect.provideService(DrawingStore, store),
 		),
@@ -49,7 +51,10 @@ async function session(context: TestContext) {
 		await server.close();
 	});
 	const call = async (name: string, args: Record<string, unknown> = {}) => {
-		const result = await client.callTool({ name, arguments: args });
+		const result = await client.callTool({
+			name,
+			arguments: { path, ...args },
+		});
 		return {
 			result,
 			reply: drawingReplySchema.parse(result.structuredContent),
@@ -88,7 +93,7 @@ test("MCP lists complete drawing tools and reads the provided store without UI s
 	const place = required(tools.find((tool) => tool.name === "placeRectangle"));
 	assert.deepEqual(
 		new Set(place.inputSchema.required),
-		new Set(Object.keys(rectangle)),
+		new Set(["path", ...Object.keys(rectangle)]),
 	);
 	assert.ok(place.outputSchema);
 	assert.equal(
@@ -132,7 +137,7 @@ test("MCP input schemas reject partial geometry and editor state before executin
 	]) {
 		const result = await client.callTool({
 			name: "placeRectangle",
-			arguments: args,
+			arguments: { path, ...args },
 		});
 		assert.equal(result.isError, true);
 		assert.strictEqual(store.getSnapshot(), before);
@@ -140,6 +145,7 @@ test("MCP input schemas reject partial geometry and editor state before executin
 	const text = await client.callTool({
 		name: "placeShapes",
 		arguments: {
+			path,
 			shapes: [{ kind: "text", text: "Still unmeasured", fontSize: 5 }],
 		},
 	});
@@ -231,7 +237,7 @@ test("MCP rotation uses explicit IDs and supports reverse rotation and history",
 	assert.strictEqual(store.getSnapshot(), snapshot);
 	const invalid = await client.callTool({
 		name: "rotateShapes",
-		arguments: { ids: [1], angle: "90" },
+		arguments: { path, ids: [1], angle: "90" },
 	});
 	assert.equal(invalid.isError, true);
 	assert.strictEqual(store.getSnapshot(), snapshot);
@@ -305,7 +311,7 @@ test("MCP surfaces command failures as structured tool errors without changing t
 	] as const) {
 		const result = await client.callTool({
 			name: "placeShapes",
-			arguments: { shapes: [shape] },
+			arguments: { path, shapes: [shape] },
 		});
 		assert.equal(result.isError, true);
 		assert.match(JSON.stringify(result.content), message);

@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import {
 	type ElectronApplication,
 	_electron as electron,
@@ -67,6 +67,8 @@ async function launch(home: string) {
 			...process.env,
 			HOME: home,
 			XDG_CONFIG_HOME: join(home, ".config"),
+			CLAUDE_CONFIG_DIR: "",
+			CODEX_HOME: "",
 		},
 	});
 	try {
@@ -289,44 +291,68 @@ test("the sidebar Exit button quits the desktop app after the unsaved-changes pr
 	}
 });
 
-test("Enable MCP in the sidebar opens the drawing and lets an MCP client edit it", async ({
+test("Settings adds ECAD to Claude Code and Codex, and the configured server edits the open project's drawing", async ({
 	browserName: _browserName,
 }, testInfo) => {
 	const home = testInfo.outputPath("home");
+	const parent = testInfo.outputPath("projects");
 	await mkdir(home, { recursive: true });
+	await mkdir(parent, { recursive: true });
 	const { app, page } = await launch(home);
 	const client = new Client({ name: "ecad-smoke-test", version: "1.0.0" });
 	try {
-		// Closing with the MCP edit unsaved would otherwise open a native prompt.
-		// The main process answers it, so Playwright must not dismiss it too.
-		page.on("dialog", () => {});
-		await app.evaluate(({ dialog }) => {
-			dialog.showMessageBoxSync = (() => 1) as typeof dialog.showMessageBoxSync;
-		});
 		await createCircuit(page, () => app.waitForEvent("window"));
 		await (await openProjectFiles(page))
-			.getByRole("link", { name: "Workspace home", exact: true })
-			.click();
-		await projectRail(page)
-			.getByRole("link", { name: "Enable MCP", exact: true })
+			.getByRole("link", { name: /^Open .+\.ecaddraw$/ })
+			.first()
 			.click();
 		await editorReady(page);
+		await chooseFolder(app, parent);
+		await projectRail(page)
+			.getByRole("button", { name: "Save project", exact: true })
+			.click();
 		await expect(
-			page.getByText("Connected to the open drawing", { exact: true }),
+			page.getByText("Project saved", { exact: true }),
 		).toBeVisible();
-		const url = await page.getByLabel("MCP URL", { exact: true }).inputValue();
-		const token = await page
-			.getByLabel("MCP bearer token", { exact: true })
-			.inputValue();
-		expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/);
-		await client.connect(
-			new StreamableHTTPClientTransport(new URL(url), {
-				requestInit: { headers: { Authorization: `Bearer ${token}` } },
-			}),
+		const [saved] = await readdir(parent);
+		const directory = join(parent, saved);
+		const [drawing] = (await readdir(directory, { recursive: true })).filter(
+			(file) => file.endsWith(".ecaddraw"),
 		);
+		const path = join(directory, drawing);
+
+		const opened = app.waitForEvent("window");
+		await projectRail(page)
+			.getByRole("button", { name: "Settings", exact: true })
+			.click();
+		const settings = await opened;
+		await settings.getByRole("tab", { name: "MCP", exact: true }).click();
+		for (const name of ["Claude Code", "Codex"]) {
+			await settings
+				.getByRole("button", { name: `Add to ${name}`, exact: true })
+				.click();
+			await expect(
+				settings.getByRole("button", {
+					name: `Remove from ${name}`,
+					exact: true,
+				}),
+			).toBeVisible();
+		}
+		await settings.screenshot({
+			path: testInfo.outputPath("mcp-settings.png"),
+		});
+		const codex = await readFile(join(home, ".codex", "config.toml"), "utf8");
+		expect(codex).toContain("[mcp_servers.ecad]");
+		const { command, args, env } = JSON.parse(
+			await readFile(join(home, ".claude.json"), "utf8"),
+		).mcpServers.ecad;
+		await settings.getByRole("button", { name: "Done", exact: true }).click();
+
+		await client.connect(new StdioClientTransport({ command, args, env }));
 		const placed = await client.callTool({
 			name: "placeRectangle",
 			arguments: {
+				path,
 				x: 20,
 				y: 30,
 				width: 40,
@@ -337,27 +363,8 @@ test("Enable MCP in the sidebar opens the drawing and lets an MCP client edit it
 		});
 		expect(placed.isError).not.toBe(true);
 		await expect(
-			projectRail(page).getByRole("button", {
-				name: "Save project",
-				exact: true,
-			}),
-		).toHaveAttribute("data-unsaved", "true");
-
-		await page
-			.getByRole("button", { name: "Disable MCP", exact: true })
-			.click();
-		await expect(
-			projectRail(page).getByRole("button", {
-				name: "Enable MCP",
-				exact: true,
-			}),
-		).toHaveAttribute("aria-pressed", "false");
-		await expect(
-			fetch(url, {
-				method: "POST",
-				headers: { Authorization: `Bearer ${token}` },
-			}),
-		).rejects.toThrow();
+			page.getByText("Reloaded changes from disk", { exact: true }),
+		).toBeVisible();
 	} finally {
 		await client.close().catch(() => {});
 		await app.close().catch(() => {});

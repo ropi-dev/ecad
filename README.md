@@ -179,7 +179,7 @@ The headless drawing model, commands, store, schemas, and MCP tool registration 
 
 Core imports use `#/components/editor/Editor2D.tsx` and other `#/` paths within the package. App packages import shared modules through `@ecad/core`, for example `@ecad/core/components/editor/Editor2D.tsx`.
 
-Web routes live in `packages/web/src/routes`, with the root document in `__root.tsx`. TanStack generates `packages/web/src/routeTree.gen.ts`; run `pnpm run generate-routes` after changing routes when needed. Server functions and API routes belong to the web package. MCP access to an open drawing is available in the web app; the desktop editor hides that control.
+Web routes live in `packages/web/src/routes`, with the root document in `__root.tsx`. TanStack generates `packages/web/src/routeTree.gen.ts`; run `pnpm run generate-routes` after changing routes when needed. Server functions and API routes belong to the web package.
 
 Tailwind styles live in `packages/core/src/styles.css`.
 
@@ -187,7 +187,7 @@ See the [drawing architecture guide](docs/architecture.md), [Effect integration 
 
 ## Run the CLI
 
-The CLI runs under Node and edits local `.ecaddraw` files. It shares its drawing commands with the web and desktop apps, and its MCP tools with the desktop app, through `@ecad/drawing-core`.
+The CLI runs under Node and edits local `.ecaddraw` files. It shares its drawing commands with the web and desktop apps, through `@ecad/drawing-core`.
 
 ```bash
 export ECAD_DRAWING="$PWD/drawing.ecaddraw"
@@ -198,11 +198,11 @@ pnpm --silent cli undo
 pnpm --silent cli mcp
 ```
 
-`--drawing <path>` overrides `ECAD_DRAWING`. The default is `drawing.ecaddraw` in the current directory. A missing file starts empty and saves after the first edit. All nine drawing MCP tools are available, including batch placement, replacement, rotation, removal, and history navigation. Arguments accept JSON or `-` for stdin. Results use the MCP JSON format, including `structuredContent` and `isError`; failures return exit code 1.
+`--drawing <path>` overrides `ECAD_DRAWING`. The default is `drawing.ecaddraw` in the current directory. A `path` in the tool arguments overrides both. A missing file starts empty and saves after the first edit. All nine drawing MCP tools are available, including batch placement, replacement, rotation, removal, and history navigation. Arguments accept JSON or `-` for stdin. Results use the MCP JSON format, including `structuredContent` and `isError`; failures return exit code 1.
 
 The drawing stays compatible with app project files. An adjacent `.history.json` file preserves undo branches between CLI calls and MCP restarts. Drawing history keeps at most 100 nodes, including the current state. CLI and MCP operations coordinate through a file lock and reread the drawing on each call.
 
-Build with `pnpm run build:cli`, then run `node packages/cli/bin/ecad.mjs`. The workspace also registers the `ecad` executable. `ecad mcp` starts the standalone stdio server. See the [MCP guide](docs/mcp.md#cli-and-stdio-access) for client configuration and file behavior.
+Build with `pnpm run build:cli`, then run `node packages/cli/bin/ecad.mjs`. The workspace also registers the `ecad` executable. `ecad mcp` starts the stdio MCP server. It takes no drawing, and each tool call names its drawing by absolute path. The desktop app adds it to Claude Code or Codex from **Settings > MCP**. See the [MCP guide](docs/mcp.md#cli-and-stdio-access) for client configuration and file behavior.
 
 ## Schematic export
 
