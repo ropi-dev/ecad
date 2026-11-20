@@ -609,7 +609,7 @@ describe("routing and the ratsnest", () => {
 		assert.ok(!isUnsafeMove(move(via, { x: 1, y: 0 })));
 	});
 
-	test("a track with no net can still be dragged onto a netted track", () => {
+	test("a track with no net can be dragged onto a netted track, but not across two nets", () => {
 		const netted = trackSegment(
 			1,
 			{ x: 0, y: 0 },
@@ -637,8 +637,95 @@ describe("routing and the ratsnest", () => {
 			trackRouting(shapes),
 		);
 		assert.ok(!isUnsafeMove(result));
+		const joined = applyMove(shapes, result).filter((item) => item.width > 0);
+		assert.ok(touching(joined));
+		const other = trackSegment(
+			9,
+			{ x: -2, y: 4 },
+			{ x: 4, y: 4 },
+			"F.Cu",
+			0.25,
+			"b",
+		);
+		const board = [...joined, other];
+		const bridge = required(joined.find((item) => item.id === loose.id));
 		assert.ok(
-			touching(applyMove(shapes, result).filter((item) => item.width > 0)),
+			isUnsafeMove(
+				dragTrackEnd(
+					bridge,
+					0,
+					{ x: 0, y: 4 },
+					board,
+					10,
+					0.1,
+					trackRouting(board),
+				),
+			),
+		);
+	});
+
+	test("a moved via stays joined to every track it rested on, and a track ending beside the moved copper keeps its end", () => {
+		const via = { ...createVia(1, { x: 2, y: 0.2 }), net: "a" };
+		const pair = [
+			via,
+			trackSegment(2, { x: 0, y: 0 }, { x: 6, y: 0 }, "F.Cu", 0.25, "a"),
+			trackSegment(3, { x: 0, y: 0.4 }, { x: 6, y: 0.4 }, "F.Cu", 0.25, "a"),
+		];
+		assert.ok(
+			touching(
+				applyMove(
+					pair,
+					moveShapes(
+						[via],
+						{ x: 2, y: -2 },
+						0,
+						via,
+						pair,
+						4,
+						false,
+						trackRouting(pair),
+					),
+				).filter((item) => item.width > 0),
+			),
+		);
+		const wide = trackSegment(
+			6,
+			{ x: 0, y: 0 },
+			{ x: 5, y: 0 },
+			"F.Cu",
+			0.5,
+			"a",
+		);
+		const branch = trackSegment(
+			7,
+			{ x: 0.35, y: 0 },
+			{ x: 0.35, y: 3 },
+			"F.Cu",
+			0.25,
+			"a",
+		);
+		const tapped = [
+			trackSegment(5, { x: -5, y: 0 }, { x: 0, y: 0 }, "F.Cu", 0.25, "a"),
+			wide,
+			branch,
+		];
+		const moved = applyMove(
+			tapped,
+			moveShapes(
+				[branch],
+				{ x: 2, y: 0 },
+				0,
+				branch,
+				tapped,
+				8,
+				false,
+				trackRouting(tapped),
+			),
+		).filter((item) => item.width > 0);
+		assert.ok(touching(moved));
+		assert.deepEqual(
+			roundedEnds(required(moved.find((item) => item.id === wide.id))),
+			roundedEnds(wide),
 		);
 	});
 

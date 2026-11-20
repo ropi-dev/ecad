@@ -13,6 +13,7 @@ import {
 	routeTrack,
 	type TrackRoute,
 	type TrackRouting,
+	touchingItems,
 	trackClear,
 } from "#/board/track-router.ts";
 import type { EditorShape, LineShape } from "#/drawing/schema.ts";
@@ -139,7 +140,7 @@ function branchesOn(index: BoardIndex, track: Track): TrackEnd[] {
 						found.push({ track: other, index: end as 0 | 1, point });
 			}
 		},
-		track.lineWidth / 2 + 1,
+		(track.lineWidth + index.widest) / 2,
 	);
 	return found;
 }
@@ -256,6 +257,14 @@ function slideAlong(
 
 type Ends = [Point | undefined, Point | undefined];
 
+interface Hold {
+	readonly holds: (to: Point) => boolean;
+	readonly start: Point;
+}
+
+const sameNet = (a: string | undefined, b: string | undefined) =>
+	a === undefined || b === undefined || a === b;
+
 class Rework {
 	result: EditorShape[] = [];
 	readonly ignore: Set<number>;
@@ -293,26 +302,62 @@ class Rework {
 		);
 	}
 
-	holdAt(
+	holdsAt(
 		point: Point,
 		layer: string,
 		reach = 0,
-	): { holds: (to: Point) => boolean; start: Point } | undefined {
+		net?: string,
+		pinned: readonly TrackEnd[] = [],
+	): Hold[] {
 		const anchor = this.anchorAt(point, layer, reach);
+		const holds: Hold[] = [];
 		if (anchor)
-			return {
+			holds.push({
 				holds: (to) => covers(anchor, to, layer, reach),
-				start: point,
-			};
-		const body = bodiesAt(this.index, point, reach).find(
-			(track) => track.layer === layer && !this.ignore.has(track.id),
+				start: covers(anchor, point, layer) ? point : anchor.centre,
+			});
+		const bodies = new Set(
+			anchor
+				? []
+				: bodiesAt(this.index, point, reach).filter(
+						(track) =>
+							track.layer === layer &&
+							!this.ignore.has(track.id) &&
+							sameNet(track.net, net),
+					),
 		);
-		if (!body) return undefined;
-		const [a, b] = lineEnds(body);
-		return {
-			holds: (to) => segmentDistance(to, a, b) <= reach + body.lineWidth / 2,
-			start: nearestOn([a, b], point),
-		};
+		for (const end of pinned)
+			if (!anchor || !covers(anchor, end.point, layer, end.track.lineWidth / 2))
+				bodies.add(end.track);
+		for (const body of bodies) {
+			const [a, b] = lineEnds(body);
+			holds.push({
+				holds: (to) => segmentDistance(to, a, b) <= reach + body.lineWidth / 2,
+				start: nearestOn([a, b], point),
+			});
+		}
+		return holds;
+	}
+
+	pinned(end: TrackEnd, from: Point, moving: ReadonlySet<number> = new Set()) {
+		if (near(end.point, from)) return false;
+		const { track, point } = end;
+		const half = track.lineWidth / 2;
+		const stays = (other: Track) =>
+			other.id !== track.id &&
+			other.layer === track.layer &&
+			!this.ignore.has(other.id) &&
+			!moving.has(other.id);
+		return (
+			this.anchorAt(point, track.layer, half) !== undefined ||
+			endsAt(
+				this.index,
+				point,
+				(other) => half + other.track.lineWidth / 2,
+				half + this.index.widest / 2,
+			).some((other) => stays(other.track)) ||
+			bodiesAt(this.index, point, half).some(stays)
+		);
 	}
 
 	joinedAt(point: Point, layer?: string, net?: string, reach = 0) {
@@ -361,9 +406,15 @@ class Rework {
 		reach = track.lineWidth / 2,
 		owner?: number,
 	) {
-		const hold = this.holdAt(from, track.layer, reach);
-		const free = joined.filter((end) => !end.track.locked);
-		for (const end of free) {
+		const unlocked = joined.filter((end) => !end.track.locked);
+		const moving = new Set(
+			unlocked
+				.filter((end) => near(end.point, from))
+				.map((end) => end.track.id),
+		);
+		const pinned = unlocked.filter((end) => this.pinned(end, from, moving));
+		for (const end of unlocked) {
+			if (pinned.includes(end)) continue;
 			this.record(this.reroutes, end, to);
 			if (owner !== undefined)
 				this.recordedBy.set(owner, [
@@ -371,8 +422,14 @@ class Rework {
 					end,
 				]);
 		}
-		if (hold ? hold.holds(to) : free.length === joined.length) return;
-		from = hold?.start ?? from;
+		const holds = this.holdsAt(from, track.layer, reach, track.net, pinned);
+		if (!holds.length && unlocked.length !== joined.length)
+			this.link(from, to, track, owner);
+		for (const hold of holds)
+			if (!hold.holds(to)) this.link(hold.start, to, track, owner);
+	}
+
+	private link(from: Point, to: Point, track: Track, owner?: number) {
 		if (
 			this.links.some(
 				(link) =>
@@ -459,9 +516,23 @@ class Rework {
 		return [[point, point]];
 	}
 
+	private spanned(from: Point, to: Point, track: Track) {
+		return this.result.some((shape) => {
+			if (!isBoardTrack(shape) || shape.layer !== track.layer) return false;
+			if (!sameNet(shape.net, track.net)) return false;
+			const copper = this.copperOf(shape.id);
+			const on = (point: Point) =>
+				copper.some(
+					([a, b]) => segmentDistance(point, a, b) <= shape.lineWidth / 2,
+				);
+			return on(from) && on(to);
+		});
+	}
+
 	private unplace(id: number) {
 		this.failed.delete(id);
-		for (const end of this.recordedBy.get(id) ?? []) {
+		const recorded = this.recordedBy.get(id) ?? [];
+		for (const end of recorded) {
 			const entry = this.reroutes.get(end.track.id);
 			if (entry) entry.ends[end.index] = undefined;
 		}
@@ -474,6 +545,7 @@ class Rework {
 				const [point] = lineEnds(shape);
 				this.added[index] = withEnds(shape, point, point);
 			}
+		return recorded.length > 0;
 	}
 
 	private carry(old: Track) {
@@ -527,13 +599,7 @@ class Rework {
 					(hull) => hullDistance({ points, radius: half }, hull) <= join,
 				),
 			);
-			if (!kept)
-				this.links.push({
-					from: centre,
-					to: nearest(centre),
-					track: old,
-					owner: old.id,
-				});
+			if (!kept) this.link(centre, nearest(centre), old, old.id);
 		}
 	}
 
@@ -559,14 +625,18 @@ class Rework {
 			}
 			return any;
 		};
-		for (let progressed = true; progressed; ) {
+		for (let pass = 0, progressed = true; progressed; pass++) {
+			if (pass > 64) {
+				this.unsafe = true;
+				break;
+			}
 			progressed = carryAll();
 			for (const { track, ends } of [...this.reroutes.values()]) {
 				if (this.stretches.has(track.id)) continue;
 				const key = keyOf(ends);
 				if (routed.get(track.id) === key) continue;
 				if (routed.has(track.id)) {
-					this.unplace(track.id);
+					if (this.unplace(track.id)) carried.clear();
 					carried.delete(track.id);
 					this.rigid.delete(track.id);
 				}
@@ -574,6 +644,7 @@ class Rework {
 				if (!ends[0] && !ends[1]) {
 					routed.delete(track.id);
 					this.reroutes.delete(track.id);
+					this.ignore.delete(track.id);
 					continue;
 				}
 				routed.set(track.id, key);
@@ -606,7 +677,8 @@ class Rework {
 			}
 		}
 		for (const { from, to, track } of this.links)
-			this.place(track, this.route(track, from, to), false);
+			if (!this.spanned(from, to, track))
+				this.place(track, this.route(track, from, to), false);
 		for (const shape of this.result) {
 			if (!this.rigid.has(shape.id) || isCollapsedTrack(shape)) continue;
 			const copper = {
@@ -616,25 +688,86 @@ class Rework {
 			};
 			let ignore: ReadonlySet<number> = this.ignore;
 			const before = this.index.byId.get(shape.id);
-			if (copper.net === undefined && before && this.routing) {
-				const own = shapeHulls(before);
+			if (copper.net === undefined && before && this.routing)
 				ignore = new Set([
 					...this.ignore,
-					...this.routing.items
-						.filter((item) =>
-							item.hulls.some((hull) =>
-								own.some((mine) => hullDistance(mine, hull) <= 1e-6),
-							),
-						)
-						.map((item) => item.shapeId),
+					...touchingItems(
+						{ hulls: shapeHulls(before), layers: copper.layers },
+						this.routing,
+					).map((item) => item.shapeId),
 				]);
-			}
 			if (!copperClear(copper, ignore, this.routing)) this.unsafe = true;
 		}
-		if (this.failed.size) this.unsafe = true;
+		if (this.failed.size || this.bridges()) this.unsafe = true;
 		const result = this.merged();
 		if (this.unsafe) markUnsafeMove(result);
 		return result;
+	}
+
+	private bridges() {
+		const { routing } = this;
+		if (!routing) return false;
+		type Copper = {
+			readonly hulls: readonly Hull[];
+			readonly layers: readonly string[];
+			readonly net?: string;
+		};
+		const copperOf = (shape: EditorShape): Copper => ({
+			hulls: shapeHulls(shape),
+			layers: isVia(shape) ? shapeLayers(shape) : [shape.layer ?? ""],
+			net: "net" in shape ? shape.net : undefined,
+		});
+		const placed = new Map<Copper, number>();
+		for (const shape of [...this.result, ...this.added])
+			if (isVia(shape) || (isBoardTrack(shape) && shape.width > join))
+				placed.set(copperOf(shape), this.owners.get(shape.id) ?? shape.id);
+		if (![...placed.keys()].some((piece) => piece.net === undefined))
+			return false;
+		if (!routing.items.some((item) => item.net !== undefined)) return false;
+		const touches = (a: Copper, b: Copper) =>
+			a.layers.some((layer) => b.layers.includes(layer)) &&
+			a.hulls.some((hull) =>
+				b.hulls.some((other) => hullDistance(hull, other) <= 1e-6),
+			);
+		const reached = (seed: Copper, moved: boolean) => {
+			const nets = new Set<string>();
+			const seen = new Set<Copper>([seed]);
+			const queue = [seed];
+			const visit = (copper: Copper) => {
+				if (seen.has(copper)) return;
+				seen.add(copper);
+				if (copper.net === undefined) queue.push(copper);
+				else nets.add(copper.net);
+			};
+			for (let piece = queue.pop(); piece; piece = queue.pop()) {
+				for (const item of touchingItems(piece, routing))
+					if (!moved || !this.ignore.has(item.shapeId)) visit(item);
+				if (!moved) continue;
+				for (const other of placed.keys())
+					if (!seen.has(other) && touches(piece, other)) visit(other);
+			}
+			return { nets, seen };
+		};
+		const checked = new Set<Copper>();
+		for (const piece of placed.keys()) {
+			if (piece.net !== undefined || checked.has(piece)) continue;
+			const after = reached(piece, true);
+			const owners = new Set<number>();
+			for (const copper of after.seen) {
+				checked.add(copper);
+				const owner = placed.get(copper);
+				if (owner !== undefined) owners.add(owner);
+			}
+			if (after.nets.size < 2) continue;
+			const known = new Set<string>();
+			for (const owner of owners) {
+				const before = this.index.byId.get(owner);
+				if (!before) continue;
+				for (const net of reached(copperOf(before), false).nets) known.add(net);
+			}
+			if ([...after.nets].some((net) => !known.has(net))) return true;
+		}
+		return false;
 	}
 
 	private merged(): EditorShape[] {
@@ -814,9 +947,11 @@ function slideTrack(rework: Rework, single: Track, delta: Point): boolean {
 			single.lineWidth / 2,
 		);
 		if (
-			rework.holdAt(point, single.layer, single.lineWidth / 2) ||
+			rework.holdsAt(point, single.layer, single.lineWidth / 2, single.net)
+				.length ||
 			joined.length !== 1 ||
-			joined[0].track.locked
+			joined[0].track.locked ||
+			rework.pinned(joined[0], point)
 		)
 			return { target, joined };
 		const slid = slideAlong(joined[0], target, direction);
@@ -894,10 +1029,6 @@ function moveTracks(
 			const from = { x: shape.x, y: shape.y };
 			const to = { x: from.x + delta.x, y: from.y + delta.y };
 			const byLayer = new Map<string, TrackEnd[]>();
-			const sameNet = (track: Track) =>
-				shape.net === undefined ||
-				track.net === undefined ||
-				track.net === shape.net;
 			for (const joined of rework.joinedAt(
 				from,
 				undefined,
@@ -915,7 +1046,7 @@ function moveTracks(
 				if (
 					!rework.ignore.has(body.id) &&
 					!byLayer.has(body.layer) &&
-					sameNet(body)
+					sameNet(body.net, shape.net)
 				) {
 					byLayer.set(body.layer, []);
 					templates.push(body);
@@ -926,7 +1057,7 @@ function moveTracks(
 				shapes.find(
 					(other): other is Track =>
 						isBoardTrack(other) &&
-						sameNet(other) &&
+						sameNet(other.net, shape.net) &&
 						lineEnds(other).some(
 							(end) =>
 								Math.hypot(end.x - from.x, end.y - from.y) <=
@@ -937,7 +1068,9 @@ function moveTracks(
 				for (const anchor of rework.index.anchors) {
 					if (rework.ignore.has(anchor.owner)) continue;
 					if (
-						!anchor.hulls.some((hull) => pointHullDistance(hull, from) <= join)
+						!anchor.hulls.some(
+							(hull) => pointHullDistance(hull, from) <= shape.width / 2 + join,
+						)
 					)
 						continue;
 					if (anchor.layers.some((layer) => byLayer.has(layer))) continue;
@@ -991,8 +1124,14 @@ export function dragTrackEnd(
 				track.net,
 				track.lineWidth / 2,
 			);
+			const moving = new Set(
+				joined
+					.filter((other) => near(other.point, dragged) && !other.track.locked)
+					.map((other) => other.track.id),
+			);
 			for (const other of joined)
-				if (!other.track.locked) rework.ignore.add(other.track.id);
+				if (!other.track.locked && !rework.pinned(other, dragged, moving))
+					rework.ignore.add(other.track.id);
 			rework.reroute(track, fixed, point, {
 				x: dragged.x - fixed.x,
 				y: dragged.y - fixed.y,

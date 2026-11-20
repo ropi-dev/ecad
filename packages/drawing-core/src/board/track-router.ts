@@ -199,6 +199,33 @@ function obstaclesFor(
 	return obstacles;
 }
 
+export function touchingItems(
+	copper: {
+		readonly hulls: readonly Hull[];
+		readonly layers: readonly string[];
+	},
+	routing: TrackRouting,
+): CopperItem[] {
+	if (!copper.hulls.length) return [];
+	const index = itemIndex(routing.items);
+	const seen = new Set<CopperItem>();
+	const found: CopperItem[] = [];
+	forBuckets(mergeBounds(copper.hulls.map(hullBounds)), (key) => {
+		for (const item of index.get(key) ?? []) {
+			if (seen.has(item)) continue;
+			seen.add(item);
+			if (!item.layers.some((layer) => copper.layers.includes(layer))) continue;
+			if (
+				item.hulls.some((hull) =>
+					copper.hulls.some((own) => hullDistance(own, hull) <= 1e-6),
+				)
+			)
+				found.push(item);
+		}
+	});
+	return found;
+}
+
 export function copperClear(
 	copper: {
 		readonly hulls: readonly Hull[];
