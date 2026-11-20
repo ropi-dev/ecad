@@ -117,6 +117,7 @@ interface Follower {
 	readonly ends: [Point | undefined, Point | undefined];
 	readonly rides: Set<Piece>;
 	path: readonly Point[];
+	backwards: boolean;
 	clear: boolean;
 	copper: Copper;
 }
@@ -144,6 +145,7 @@ function rework(
 			ends: [undefined, undefined],
 			rides: new Set(),
 			path: [],
+			backwards: false,
 			clear: true,
 			copper: item,
 		};
@@ -196,7 +198,8 @@ function rework(
 				const found = toB
 					? route(track, toA ?? a, toB, { x: b.x - a.x, y: b.y - a.y })
 					: route(track, b, toA ?? a, { x: a.x - b.x, y: a.y - b.y });
-				follower.path = toB ? found.points : [...found.points].reverse();
+				follower.path = found.points;
+				follower.backwards = !toB;
 				follower.clear = found.clear;
 			}
 		}
@@ -240,15 +243,15 @@ function rework(
 	const result: EditorShape[] = [...placed];
 	const added: Track[] = [];
 	let unsafe = false;
-	const place = (track: Track, path: readonly Point[], keep: boolean) => {
-		const [first, ...rest] = segments(path);
-		if (keep)
+	const place = (track: Track, path: readonly Point[], kept?: Follower) => {
+		const [first = [path[0], path[0]] as const, ...rest] = segments(path);
+		if (kept)
 			result.push(
-				first
-					? withEnds(track, first[0], first[1])
-					: withEnds(track, path[0], path[0]),
+				kept.backwards
+					? withEnds(track, first[1], first[0])
+					: withEnds(track, first[0], first[1]),
 			);
-		else if (first) rest.unshift(first);
+		else if (!near(first[0], first[1])) rest.unshift(first);
 		for (const [from, to] of rest)
 			added.push(
 				trackSegment(
@@ -262,7 +265,7 @@ function rework(
 			);
 	};
 	for (const follower of followers.values()) {
-		place(follower.track, follower.path, true);
+		place(follower.track, follower.path, follower);
 		if (!follower.clear) unsafe = true;
 	}
 
@@ -309,7 +312,7 @@ function rework(
 	}
 	for (const { from, to, track } of links) {
 		const found = route(track, from, to);
-		place(track, found.points, false);
+		place(track, found.points);
 		if (!found.clear) unsafe = true;
 	}
 
