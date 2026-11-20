@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+	lstat,
+	mkdir,
+	mkdtemp,
+	readFile,
+	rm,
+	symlink,
+	writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type TestContext, test } from "node:test";
@@ -62,10 +70,12 @@ test("Claude Code gets the ecad server without losing the rest of its config", a
 	assert.deepEqual(await read(), { theme: "dark", mcpServers: { other } });
 });
 
-test("Codex gets the ecad table without losing comments or other settings", async (context) => {
+test("Codex gets the ecad table without losing comments, other settings or a dotfile symlink", async (context) => {
 	const fixture = await setup(context);
 	const path = join(fixture.home, ".codex", "config.toml");
+	const dotfile = join(fixture.home, "dotfiles", "codex.toml");
 	await mkdir(join(fixture.home, ".codex"));
+	await mkdir(join(fixture.home, "dotfiles"));
 	const original = `# My Codex settings
 model = "o4"
 
@@ -79,10 +89,12 @@ OLD = "1"
 [mcp_servers.other]
 command = "other-server"
 `;
-	await writeFile(path, original);
+	await writeFile(dotfile, original);
+	await symlink(dotfile, path);
 
 	assert.equal((await fixture.clients.list())[1].state, "outdated");
 	assert.equal((await fixture.clients.add("codex")).state, "added");
+	assert.ok((await lstat(path)).isSymbolicLink());
 	const text = await readFile(path, "utf8");
 	assert.match(text, /^# My Codex settings$/m);
 	assert.deepEqual(toml(text), {

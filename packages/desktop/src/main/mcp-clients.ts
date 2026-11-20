@@ -1,5 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import {
+	mkdir,
+	readFile,
+	realpath,
+	rename,
+	rm,
+	stat,
+	writeFile,
+} from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type {
@@ -80,16 +88,18 @@ async function replaceFile(
 	content: string,
 ) {
 	await mkdir(dirname(path), { recursive: true });
-	const mode = previous === undefined ? 0o600 : (await stat(path)).mode & 0o777;
+	const target = previous === undefined ? path : await realpath(path);
+	const mode =
+		previous === undefined ? 0o600 : (await stat(target)).mode & 0o777;
 	const temporary = join(
-		dirname(path),
-		`.${basename(path)}.ecad-${randomUUID()}.tmp`,
+		dirname(target),
+		`.${basename(target)}.ecad-${randomUUID()}.tmp`,
 	);
 	try {
 		await writeFile(temporary, content, { mode, flag: "wx" });
 		if ((await readOptional(path)) !== previous)
 			throw new Error(`${path} changed while ECAD was editing it. Try again.`);
-		await rename(temporary, path);
+		await rename(temporary, target);
 	} finally {
 		await rm(temporary, { force: true });
 	}
