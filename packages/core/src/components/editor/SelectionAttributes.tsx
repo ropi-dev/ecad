@@ -89,7 +89,6 @@ import { canCarryNet, type SelectionEdit } from "#/drawing/selection-edit.ts";
 export const numberInputClassName = "ui-input w-28 pr-8 text-right";
 export const textInputClassName = "ui-input w-36";
 
-/** A number input with its unit shown inside the field's right edge. */
 function MixedOption(props: { when: boolean; value: string }) {
 	return (
 		<Show when={props.when}>
@@ -100,6 +99,7 @@ function MixedOption(props: { when: boolean; value: string }) {
 	);
 }
 
+/** A number input with its unit shown inside the field's right edge. */
 export function UnitField(props: { unit?: string; children: JSX.Element }) {
 	return (
 		<span class="relative inline-flex">
@@ -245,10 +245,6 @@ function SymbolDefinitionAction(props: {
 	);
 }
 
-/**
- * An input that commits its text on blur. It shows the committed value again
- * when that value changes or a different item is selected.
- */
 function CommitInput(props: {
 	label: string;
 	identity: string | number;
@@ -280,7 +276,6 @@ function CommitInput(props: {
 function AttributeInput(props: {
 	label: string;
 	value: number | "";
-	/** Shows the value again, as a remount would, when the selected item changes. */
 	identity?: string | number;
 	unit?: string;
 	positive?: boolean;

@@ -103,7 +103,6 @@ interface SymbolInstanceAttributeFormState {
 	editing(name: SymbolInstanceAttributeName): boolean;
 	error(name: SymbolInstanceAttributeName): string | undefined;
 	input(name: SymbolInstanceAttributeName, draft: Draft): void;
-	/** Validates the entered value and returns it when it should be committed. */
 	commit(
 		name: SymbolInstanceAttributeName,
 		entered: FieldValue,

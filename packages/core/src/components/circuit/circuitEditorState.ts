@@ -66,10 +66,6 @@ export interface CircuitGraphActions {
 	snap<T extends { x: number; y: number }>(position: T): T;
 }
 
-/**
- * A store with a `true` entry for each listed id. A node reads its own id, so
- * a selection change updates only the nodes that gain or lose an entry.
- */
 export function createIdFlags(
 	ids: () => readonly (string | null | undefined)[],
 ): Readonly<Record<string, boolean>> {

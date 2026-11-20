@@ -226,7 +226,6 @@ export function SceneViewport(props: SceneViewportProps) {
 			if (update && shownScene === scene) runtime?.update(update);
 		},
 	);
-	// A kept view swaps later scenes in place, in the effect below.
 	const mount = createMemo(
 		() => ({
 			options: {

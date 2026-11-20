@@ -247,7 +247,6 @@ function Toast(props: {
 			ref={element}
 			class="app-toast"
 			data-type={props.notification.type}
-			data-state="open"
 			role="status"
 			aria-live="off"
 			aria-atomic="true"

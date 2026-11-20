@@ -25,8 +25,8 @@ interface PlacementProps {
 }
 
 interface FocusProps {
-	onFocusOutside?: (event: CustomEvent<{ originalEvent: FocusEvent }>) => void;
-	onOpenAutoFocus?: (event: Event) => void;
+	keepOpenOnFocus?: (target: EventTarget | null) => boolean;
+	onOpenAutoFocus?: () => void;
 	onCloseAutoFocus?: (event: Event) => void;
 }
 
@@ -323,8 +323,6 @@ function place(
 	const main = start(side);
 	content.style.left = `${isVertical ? cross : main}px`;
 	content.style.top = `${isVertical ? main : cross}px`;
-	content.dataset.side = side;
-	content.dataset.align = options.align;
 }
 
 function float(
@@ -456,7 +454,7 @@ const contentKeys = [
 	"align",
 	"sideOffset",
 	"collisionPadding",
-	"onFocusOutside",
+	"keepOpenOnFocus",
 	"onOpenAutoFocus",
 	"onCloseAutoFocus",
 	"ref",
@@ -497,14 +495,11 @@ function Floating(props: {
 			close();
 		},
 		focusOutside(event) {
-			if (onTrigger(event.target)) return;
-			const outside = new CustomEvent("dismissableLayer.focusOutside", {
-				cancelable: true,
-				detail: { originalEvent: event },
-			});
-			event.target?.dispatchEvent(outside);
-			props.content.onFocusOutside?.(outside);
-			if (outside.defaultPrevented) return;
+			if (
+				onTrigger(event.target) ||
+				props.content.keepOpenOnFocus?.(event.target)
+			)
+				return;
 			interactedOutside = true;
 			close();
 		},
@@ -519,9 +514,8 @@ function Floating(props: {
 		);
 		const detach = attachLayer(layer, element);
 		focusGeneration++;
-		const opening = new Event("openAutoFocus", { cancelable: true });
-		props.content.onOpenAutoFocus?.(opening);
-		if (!opening.defaultPrevented) props.onOpen(element);
+		if (props.content.onOpenAutoFocus) props.content.onOpenAutoFocus();
+		else props.onOpen(element);
 		const onClose = props.content.onCloseAutoFocus;
 		return () => {
 			floating?.stop();
@@ -553,7 +547,6 @@ function Floating(props: {
 					role={props.role}
 					id={props.disclosure.contentId}
 					tabindex="-1"
-					data-state="open"
 					{...props.attributes}
 					{...rest}
 					ref={[(node: HTMLDivElement) => (element = node), props.content.ref]}
@@ -618,29 +611,19 @@ type TooltipProps = PlacementProps &
 export function Tooltip(props: TooltipProps) {
 	const provider = useContext(TooltipProviderContext) ?? defaultTooltipProvider;
 	const [open, setOpen] = createSignal(false);
-	const disclosure = createDisclosure(open, (next) => {
-		const active = document.activeElement;
-		if (
-			next &&
-			active instanceof HTMLElement &&
-			active.dataset.quietFocus === "true"
-		)
-			return;
-		setOpen(next);
-	});
-	const [state, setState] = createSignal<"delayed-open" | "instant-open">(
-		"delayed-open",
-	);
+	const disclosure = createDisclosure(open, setOpen);
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let content: HTMLElement | undefined;
-	const show = (next: "delayed-open" | "instant-open") => {
+	const show = () => {
 		clearTimeout(timer);
 		timer = undefined;
+		const active = document.activeElement;
+		if (active instanceof HTMLElement && active.dataset.quietFocus === "true")
+			return;
 		if (activeTooltip && activeTooltip !== root) activeTooltip.hide();
 		activeTooltip = root;
 		clearTimeout(provider.skipTimer);
 		provider.delayed = false;
-		setState(next);
 		disclosure.setOpen(true);
 	};
 	const root = {
@@ -673,14 +656,11 @@ export function Tooltip(props: TooltipProps) {
 					if (event.pointerType === "touch" || moved) return;
 					moved = true;
 					if (!provider.delayed) {
-						show("instant-open");
+						show();
 						return;
 					}
 					clearTimeout(timer);
-					timer = setTimeout(
-						() => show("delayed-open"),
-						provider.delayDuration,
-					);
+					timer = setTimeout(show, provider.delayDuration);
 				},
 				pointerleave(event: PointerEvent) {
 					moved = false;
@@ -695,7 +675,7 @@ export function Tooltip(props: TooltipProps) {
 					doc.addEventListener("pointerup", release, { once: true });
 				},
 				focus() {
-					if (!pressed) show("instant-open");
+					if (!pressed) show();
 				},
 				blur: root.hide,
 				click: root.hide,
@@ -764,7 +744,6 @@ export function Tooltip(props: TooltipProps) {
 					popover="manual"
 					role="tooltip"
 					id={disclosure.contentId}
-					data-state={state()}
 					{...rest}
 					ref={(node: HTMLDivElement) => (element = node)}
 					onPointerLeave={(event) => {

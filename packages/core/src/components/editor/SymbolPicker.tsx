@@ -434,10 +434,7 @@ export function SymbolPicker(props: {
 				sideOffset={8}
 				collisionPadding={COLLISION_PADDING}
 				aria-label={components() ? "Component library" : "Symbol library"}
-				onOpenAutoFocus={(event: Event) => {
-					event.preventDefault();
-					searchInput.focus();
-				}}
+				onOpenAutoFocus={() => searchInput.focus()}
 				onKeyDown={onKeyDown}
 				class="ui-popover z-50 flex max-h-[min(26rem,calc(100dvh-6rem))] w-[22.5rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden"
 			>
@@ -632,13 +629,8 @@ function PartPicker(props: {
 				sideOffset={props.submenuSide === "right" ? SUBMENU_OFFSET : 2}
 				collisionPadding={COLLISION_PADDING}
 				aria-label={`${props.entry.part} packagings`}
-				onOpenAutoFocus={(event: Event) => {
-					event.preventDefault();
-					props.onFocusSearch();
-				}}
-				onFocusOutside={(event) => {
-					if (props.isSearch(event.target)) event.preventDefault();
-				}}
+				onOpenAutoFocus={props.onFocusSearch}
+				keepOpenOnFocus={props.isSearch}
 				onCloseAutoFocus={(event: Event) => {
 					event.preventDefault();
 					props.onFocusSearch();

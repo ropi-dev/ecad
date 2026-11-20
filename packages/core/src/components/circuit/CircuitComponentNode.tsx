@@ -31,9 +31,7 @@ export function CircuitComponentNode(props: {
 	gridStep: number;
 	selected: boolean;
 	isEditing: boolean;
-	/** Pins drawn as selected: the selected, pending and drag-source pins. */
 	highlightedPins: Readonly<Record<string, boolean>>;
-	/** The pin a dragged connection would end on. */
 	targetPins: Readonly<Record<string, boolean>>;
 	actions: CircuitGraphActions;
 }) {

@@ -160,14 +160,13 @@ function PageDialogCard(props: AppDialogProps) {
 	});
 	return (
 		<Portal>
-			<div ref={scrim} class="ui-scrim" data-state="open" />
+			<div ref={scrim} class="ui-scrim" />
 			<div
 				ref={content}
 				role="dialog"
 				aria-modal="true"
 				aria-labelledby={titleId}
 				aria-describedby={description() ? descriptionId : undefined}
-				data-state="open"
 				tabindex="-1"
 				class={`ui-dialog fixed top-1/2 left-1/2 z-50 -translate-x-1/2 -translate-y-1/2 outline-none ${widths[props.size ?? "md"]}`}
 				onFocusIn={(event) => {
