@@ -131,6 +131,7 @@ type Ends = [Point | undefined, Point | undefined];
 class Rework {
 	readonly result: EditorShape[] = [];
 	readonly ignore: Set<number>;
+	private readonly selected: ReadonlySet<number>;
 	private readonly added: EditorShape[] = [];
 	private readonly reroutes = new Map<number, { track: Track; ends: Ends }>();
 	private readonly stretches = new Map<number, { track: Track; ends: Ends }>();
@@ -142,7 +143,8 @@ class Rework {
 		private readonly nextShapeId: number,
 		private readonly routing: TrackRouting | undefined,
 	) {
-		this.ignore = new Set(selected);
+		this.selected = new Set(selected);
+		this.ignore = new Set(this.selected);
 	}
 
 	anchorAt(point: Point, layer: string) {
@@ -257,7 +259,90 @@ class Rework {
 		}
 		for (const { from, to, track } of this.links)
 			this.place(track, this.route(track, from, to), false);
-		return [...this.result, ...this.added];
+		return this.merged();
+	}
+
+	private merged(): EditorShape[] {
+		const tracks = new Map<number, Track>();
+		for (const shape of [...this.result, ...this.added])
+			if (isBoardTrack(shape)) tracks.set(shape.id, shape);
+		const vias = this.result.filter(isVia);
+		const pinned = (point: Point, layer: string) =>
+			this.index.anchors.some(
+				(anchor) =>
+					!this.selected.has(anchor.owner) && covers(anchor, point, layer),
+			) ||
+			vias.some((via) =>
+				shapeHulls(via).some((hull) => pointHullDistance(hull, point) <= join),
+			);
+		const endingAt = (point: Point, layer: string) => {
+			const found: { track: Track; far: Point }[] = [];
+			const add = (track: Track) => {
+				if (track.layer !== layer || track.width <= join) return;
+				const [a, b] = lineEnds(track);
+				if (near(a, point)) found.push({ track, far: b });
+				else if (near(b, point)) found.push({ track, far: a });
+			};
+			for (const track of tracks.values()) add(track);
+			for (const { track } of endsAt(this.index, point))
+				if (!tracks.has(track.id)) add(track);
+			return found;
+		};
+		const queue = [...tracks.values()].flatMap((track) =>
+			lineEnds(track).map((point) => ({ point, layer: track.layer })),
+		);
+		for (let next = queue.pop(); next; next = queue.pop()) {
+			const { point, layer } = next;
+			const meeting = endingAt(point, layer);
+			if (meeting.length !== 2) continue;
+			const [first, second] = meeting;
+			if (
+				first.track.id === second.track.id ||
+				first.track.locked ||
+				second.track.locked ||
+				first.track.net !== second.track.net ||
+				Math.abs(first.track.lineWidth - second.track.lineWidth) > 1e-9 ||
+				pinned(point, layer)
+			)
+				continue;
+			const u = { x: first.far.x - point.x, y: first.far.y - point.y };
+			const v = { x: second.far.x - point.x, y: second.far.y - point.y };
+			const cross = u.x * v.y - u.y * v.x;
+			if (Math.abs(cross) > 1e-6 * Math.hypot(u.x, u.y) * Math.hypot(v.x, v.y))
+				continue;
+			const longer =
+				Math.hypot(u.x, u.y) >= Math.hypot(v.x, v.y) ? first : second;
+			const shorter = longer === first ? second : first;
+			const [keep, drop] =
+				first.track.id < second.track.id
+					? [first.track, second.track]
+					: [second.track, first.track];
+			tracks.set(drop.id, withEnds(drop, shorter.far, shorter.far));
+			const [a, b] = lineEnds(keep);
+			const forward =
+				(shorter.far.x - longer.far.x) * (b.x - a.x) +
+					(shorter.far.y - longer.far.y) * (b.y - a.y) >=
+				0;
+			tracks.set(
+				keep.id,
+				forward
+					? withEnds(keep, longer.far, shorter.far)
+					: withEnds(keep, shorter.far, longer.far),
+			);
+			queue.push({ point: longer.far, layer }, { point: shorter.far, layer });
+		}
+		const existing = new Set(this.result.map((shape) => shape.id));
+		const fresh = new Set(this.added.map((shape) => shape.id));
+		return [
+			...this.result.map((shape) => tracks.get(shape.id) ?? shape),
+			...[...tracks.values()].filter(
+				(track) => !existing.has(track.id) && !fresh.has(track.id),
+			),
+			...this.added.flatMap((shape) => {
+				const track = tracks.get(shape.id) ?? shape;
+				return track.width <= join ? [] : [track];
+			}),
+		];
 	}
 }
 

@@ -143,16 +143,14 @@ function pathClear(
 	return true;
 }
 
+const samePoint = (a: Point, b: Point) =>
+	Math.abs(a.x - b.x) < 1e-9 && Math.abs(a.y - b.y) < 1e-9;
+
 function simplify(path: readonly Point[]): Point[] {
 	const points: Point[] = [];
 	for (const point of path) {
 		const previous = points.at(-1);
-		if (
-			previous &&
-			Math.abs(previous.x - point.x) < 1e-9 &&
-			Math.abs(previous.y - point.y) < 1e-9
-		)
-			continue;
+		if (previous && samePoint(previous, point)) continue;
 		const before = points.at(-2);
 		if (
 			before &&
@@ -160,13 +158,13 @@ function simplify(path: readonly Point[]): Point[] {
 			Math.abs(
 				(previous.x - before.x) * (point.y - previous.y) -
 					(previous.y - before.y) * (point.x - previous.x),
-			) < 1e-9 &&
-			(previous.x - before.x) * (point.x - previous.x) +
-				(previous.y - before.y) * (point.y - previous.y) >
-				0
-		)
-			points[points.length - 1] = point;
-		else points.push(point);
+			) < 1e-9
+		) {
+			points.pop();
+			if (!samePoint(before, point)) points.push(point);
+			continue;
+		}
+		points.push(point);
 	}
 	return points;
 }
