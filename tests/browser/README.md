@@ -1,7 +1,22 @@
-# Browser coverage
+# Browser tests
 
-Run `pnpm run test:browser` for the browser cases. CI runs the same suite across two shards, with no retries. Keep browser tests for browser APIs, rendered output, input handling, or interactions between the editor, project provider, and storage. Test document transformations and command edge cases in unit tests.
+Run `pnpm run test:browser` from the repository root (CI splits the suite across two Chromium shards with two workers each and no retries).
 
-The specs are grouped by area: the schematic editor (`editor*.spec.ts`, `schematic-*.spec.ts`), the circuit view (`circuit.spec.ts`), the linked schematic, circuit and PCB (`linked-*.spec.ts`, `net-symbol-merging.spec.ts`, `pcb.spec.ts`), footprints (`footprint*.spec.ts`), projects and conflicts (`projects*.spec.ts`, `project-errors.spec.ts`, `empty-project.spec.ts`), symbols (`edit-symbol.spec.ts`, `symbol-import.spec.ts`), imports, viewers and exports (`kicad-import.spec.ts`, `viewer.spec.ts`, `shared-viewer.spec.ts`, `step.spec.ts`, `drawing-export.spec.ts`, `export-png.spec.ts`), and the shell around them (shortcuts, toolbar, sidebar, theme, debug stats, toasts, telemetry).
+Reserve browser tests for browser APIs, WebGL/SVG rendering, pointer/keyboard interactions, and editor/project/storage integration. Keep document math and command edge cases in Node unit tests (`tests/*.test.ts`).
 
-Add a browser case only when a unit test or an existing browser workflow cannot catch the failure, and follow "Tests" in `AGENTS.md`. Keep save races explicit with a held write, wait for save completion before comparing persisted documents, drive toast and other timer checks with `page.clock` instead of fixed sleeps, and scroll lazy thumbnails into view before checking their SVG output.
+## Spec groups
+
+- **Schematic editor**: `editor*.spec.ts`, `schematic-*.spec.ts`
+- **Circuit & linked PCB**: `circuit.spec.ts`, `linked-*.spec.ts`, `net-symbol-merging.spec.ts`, `pcb.spec.ts`
+- **Footprints**: `footprint*.spec.ts`
+- **Projects & symbols**: `projects*.spec.ts`, `project-errors.spec.ts`, `empty-project.spec.ts`, `edit-symbol.spec.ts`, `symbol-import.spec.ts`
+- **Imports, viewers & exports**: `kicad-import.spec.ts`, `viewer.spec.ts`, `shared-viewer.spec.ts`, `step.spec.ts`, `drawing-export.spec.ts`, `export-png.spec.ts`
+- **App shell**: shortcuts, toolbar, sidebar, theme, debug stats, toasts, telemetry
+
+## Authoring tips
+
+Follow **Tests** in [AGENTS.md](../../AGENTS.md) and [docs/browser-tests.md](../../docs/browser-tests.md):
+
+- Make save races explicit with a held write and wait for save completion before asserting persisted state.
+- Use `page.clock` instead of fixed sleeps for toast and timer behavior.
+- Scroll lazy symbol thumbnails into view before asserting on their SVG output.

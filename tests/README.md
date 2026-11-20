@@ -1,11 +1,18 @@
 # Test ownership
 
-Run `pnpm test` at the workspace root. The root owns the core, drawing-core and CLI unit tests in `tests/*.test.ts`, including the engine tests. Those packages intentionally have no separate `test` script. The root command also runs the package-owned suites in web, desktop and default-symbols through `pnpm -r --if-present run test`.
+Run `pnpm test` from the repository root. The root suite owns unit tests for `@ecad/core`, `@ecad/drawing-core`, and `@ecad/cli` (`tests/*.test.ts`), and also invokes package-owned test suites (`pnpm -r --if-present run test` for web, desktop, default-symbols, default-footprints, and default-models).
 
-Keep shared fakes in `tests/helpers` and sample documents in `tests/fixtures`. New core, drawing-core and CLI unit tests belong in `tests`, rather than beside production modules. Package-owned tests use their package's `tests` directory.
+## Layout and import aliases
 
-The root package's `imports` maps `#/` to `packages/core/src/` and `#web/` to `packages/web/src/`. A root test importing `#/engine/camera` therefore loads core code, regardless of which package the test describes. Package-local `#/` aliases resolve relative to that package's `package.json`, so desktop tests use `#/main/ipc.ts` for desktop code and `@ecad/core/...` for core code. Shared root helpers should use the root aliases or workspace package imports.
+- Keep shared fakes in `tests/helpers/` and sample documents in `tests/fixtures/`.
+- New core, drawing-core, and CLI unit tests belong in `tests/`; package-owned tests live under each package's `tests/` directory.
+- Root `package.json` maps `#/` → `packages/core/src/` and `#web/` → `packages/web/src/`. Inside a package (such as desktop), `#/` resolves to that package's own `src/`, while core modules import via `@ecad/core/...`.
 
-Browser coverage and commands are in [browser/README.md](browser/README.md). Local performance scenarios each have a spec in `tests/performance`, with parameterized variants kept together. Shared browser metrics and workload builders live in `app-helpers.ts`; `app-fixture.ts` registers cache, CPU throttling and development warmup hooks. Run one scenario with `ECAD_BROWSER_PORT=5480 ECAD_PERF_PORT=5481 pnpm exec playwright test --config tests/performance/playwright.config.ts --grep editor-component-move --workers=2` after building the web app. See [performance.md](../docs/performance.md) for measurement and baseline rules.
+## Suites
 
-`tests/smoke` checks the production builds against their real hosts, with `pnpm run test:smoke`. The `web` project builds the web app and serves it with `vite preview`. It opens a drawing from the start page, draws a shape, reloads, and edits the drawing through editor MCP. The `desktop` project launches `packages/desktop/dist` in Electron, saves a project to disk, relaunches, and reopens it. Only the native folder picker is replaced. Run `pnpm run build:desktop` first. Electron needs its binary (`node install.js` in the electron package directory) and a display (`xvfb-run -a` on Linux). Without them, the desktop test is skipped locally and fails in CI.
+- **Unit tests (`pnpm test`)** — Fast Node tests covering geometry, serialization, validation, commands, ERC/DRC, formats, storage, and CLI/MCP.
+- **Browser tests (`pnpm run test:browser`)** — Playwright user-workflow specs in `tests/browser/`. See [browser/README.md](browser/README.md) and [docs/browser-tests.md](../docs/browser-tests.md).
+- **Smoke tests (`pnpm run test:smoke`)** — Verifies production builds against their real hosts in `tests/smoke/`:
+  - `web` — Serves the built web app with `vite preview`, creates a circuit, draws and saves a shape, toggles debug stats, and verifies persistence across reload.
+  - `desktop` — Launches `packages/desktop/dist` in real Electron (only the native folder picker is stubbed), saves/reloads a project, and tests stdio MCP integration. Requires `pnpm run build:desktop`, the Electron binary (`node install.js` in the electron package), and a display (`xvfb-run -a` on Linux). Skips locally if prerequisites are missing; fails in CI.
+- **Performance scenarios (`pnpm run perf`)** — Local benchmark specs in `tests/performance/` using shared helpers in `app-helpers.ts` and `app-fixture.ts`. See [docs/performance.md](../docs/performance.md).

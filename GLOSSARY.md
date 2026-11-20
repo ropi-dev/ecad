@@ -1,118 +1,118 @@
-# Schematic editing
+# Glossary
 
-These terms describe electrical connections in a schematic.
+Canonical terms used across ECAD's UI, code, and documentation.
 
-## Language
+## Schematics and circuits
 
-**Component**:
+**Component**
 An instance of an electrical part that owns its pins.
 
-**Symbol definition**:
-A reusable description of a component's graphical representation and pins.
+**Symbol definition**
+A reusable description of a component's graphical representation, pins, default attributes, and optional default footprint.
 
-**Symbol attribute**:
-A named text value on a component, such as its reference, value, manufacturer or datasheet link. Every component has a name, reference and value. A symbol definition adds its own attributes with default values, and each placement keeps its own copy.
+**Symbol attribute**
+A named text value on a component, such as its reference, value, manufacturer, or datasheet link. Every component has a name, reference, and value; a symbol definition can add custom attributes with default values, and each placement keeps its own copy.
 _Avoid_: Field, property
 
-**Pin**:
+**Pin**
 An electrical connection point owned by a component, identified by its name and package number.
 
-**Electrical type**:
-A pin's electrical role, such as input, output, passive or power input, using KiCad's pin types. The electrical rules check uses it to decide which pins drive a net.
+**Electrical type**
+A pin's electrical role (`input`, `output`, `bidirectional`, `tri-state`, `passive`, `free`, `unspecified`, `power-in`, `power-out`, `open-collector`, `open-emitter`, or `no-connect`), matching KiCad's pin types. ERC uses it to determine which pins drive a net and detect conflicts.
 
-**Active level**:
-Whether a pin's signal is asserted high or low. Pins are active high unless marked active low, which draws a line over the pin name and an inversion bubble where the lead meets the body.
+**Active level**
+Whether a pin's signal is asserted high or low. Pins are active high by default; active-low pins draw an overbar over the pin name and an inversion bubble where the lead meets the body.
 
-**Terminal**:
+**Terminal**
 The exposed end of a pin where a wire connects.
 
-**Lead**:
-The visible segment from a pin's terminal toward the component body.
+**Lead**
+The visible segment running from a pin's terminal toward the component body.
 
-**Net**:
-An electrical connection shared by a set of pins. A net can be named before any pins are assigned, and individual pin-to-pin connections within the set have no separate electrical meaning.
+**Net**
+An electrical connection shared by a set of pins. A net can be named before any pins are assigned, and individual pin-to-pin edges within the set have no separate electrical meaning.
 
-**Connections graph**:
-A representation of electrical connectivity with pins as nodes and connections between pins as edges. Only net membership has electrical meaning, so different edge arrangements can describe the same circuit.
+**Connections graph**
+A representation of electrical connectivity with pins as nodes and net memberships as edges. Only net membership has electrical meaning, so different edge arrangements can describe the same circuit.
 
-**Schematic**:
-An editable document that presents a circuit through component symbols, wires, labels, and annotations.
+**Schematic**
+An editable document presenting a circuit through component symbols, wires, labels, and annotations.
 
-**Page**:
-One named sheet of a schematic. Wires and pins connect only within a page; net labels with the same name connect across pages.
+**Page**
+One named sheet of a schematic. Wires and pins connect only within a page; net labels, supply labels, and net symbols with the same name connect across pages.
 
-**Sheet settings**:
-The paper size and title block text of a schematic: title, date, revision, company and comment lines. Every page of the schematic uses them. The title block also shows the file name, the page name and the page number, which come from the schematic itself.
+**Sheet settings**
+The paper size and title block text shared by every page of a schematic: title, date, revision, company, and comment lines. The title block also displays the file name, page name, and page number automatically.
 
-### Footprints
+## Footprints
 
-**Footprint**:
-The copper, markings and outlines one component needs on a board, drawn on board layers.
+**Footprint**
+The copper, markings, holes, and outlines one component needs on a board, drawn on board layers.
 _Avoid_: Package, land pattern
 
-**Layer**:
-One sheet of the board stack that a footprint item sits on, such as front copper or front silkscreen.
+**Layer**
+One sheet of the board stack that a footprint or board item sits on, such as front copper (`F.Cu`) or front silkscreen (`F.SilkS`).
 
-**Pad**:
-A copper area of a footprint that one component lead solders to, identified by its number. A surface mount pad is on one side of the board. A through-hole pad has a drilled hole and copper on both sides.
+**Pad**
+A copper area of a footprint that one component lead solders to, identified by its pad number. A surface mount pad sits on one outer copper layer; a through-hole pad has a drilled hole and copper on every copper layer.
 _Avoid_: Pin, land
 
-**Via**:
+**Via**
 A plated hole in a footprint or on a board that joins every copper layer. Nothing solders to it, so it has no number.
 _Avoid_: Through-hole pad, hole
 
-**Footprint wire**:
-A straight stroke on one layer of a footprint. It forms no net, unlike a wire in a schematic.
+**Footprint wire**
+A straight stroke on one layer of a footprint. Unlike a schematic wire, it forms no net.
 _Avoid_: Track, trace
 
-**Assigned footprint**:
-The footprint a placed symbol names for its component. Its pads match the symbol's pins by number, and a pin without a number counts by its position.
+**Assigned footprint**
+The footprint a placed symbol names for its component. Pads match symbol pins by number (unnumbered pins match by 1-based position).
 _Avoid_: Footprint link, footprint property
 
-**Default footprint**:
-The footprint a symbol definition gives each new placement. Several definitions may share one.
+**Default footprint**
+The footprint a symbol definition gives each new placement. Multiple definitions may share one.
 
-**3D model**:
-The solid body of a component, drawn on its footprint's pads in the realistic board view. A footprint links at most one, from the built-in 3D model library.
+**3D model**
+The solid body of a component drawn on its footprint's pads in the realistic board view. A footprint links at most one model from the built-in 3D model library.
 _Avoid_: Package model, STEP model
 
-**Built-in footprint**:
-A read-only footprint that ships with the app. A project footprint copied from one does not follow it.
+**Built-in footprint**
+A read-only footprint bundled with ECAD. Copying one to a project creates an independent project footprint.
 
-### Boards
+## Boards (PCBs)
 
-**PCB**:
-The board view of a circuit: its components' footprints placed on a board and joined by copper. A project has at most one PCB per circuit.
+**PCB**
+The board view of a circuit: its components' footprints placed on a board and joined by copper. Each circuit has at most one PCB.
 _Avoid_: Layout, board file
 
-**Placed footprint**:
-A footprint on a PCB that stands for one circuit component. Its pads take the nets of the component's pins with the same numbers.
+**Placed footprint**
+A footprint on a PCB representing one circuit component. Its pads inherit the nets of the component's matching pins.
 
-**Inner copper layer**:
-A copper layer between front and back copper, on a board with more than two copper layers. KiCad's names number them from the front: In1.Cu, In2.Cu and so on. Vias and through-hole pads reach every one; pads and footprints have no copper on them.
+**Inner copper layer**
+A copper layer between front and back copper on boards with 4 to 32 copper layers, named from front to back (`In1.Cu`, `In2.Cu`, …). Vias and through-hole pads connect to all copper layers; surface mount pads and footprints have no inner copper.
 _Avoid_: Plane, internal layer
 
-**Track**:
-A straight copper line on one copper layer of a PCB, on a net.
+**Track**
+A straight copper line on one copper layer of a PCB, assigned to a net.
 _Avoid_: Trace, footprint wire
 
-**Zone**:
-A copper area on a PCB that fills a rectangle or a polygon on one net, keeping clear of other nets' copper. Where zones on different nets overlap, the one with the higher priority keeps the copper.
+**Zone**
+A rectangular or polygonal copper area on one copper layer and net that fills inside the board outline while keeping clear of other nets' copper. When zones on different nets overlap, the higher priority keeps the copper.
 _Avoid_: Pour, polygon
 
-**Thermal relief**:
-How a zone joins a pad on its net: a gap around the pad crossed by a few narrow spokes, so the pad heats evenly when soldered. A zone set to solid pad connection fills up to the pad instead.
-_Avoid_: Thermal pad (that is a footprint's exposed pad)
+**Thermal relief**
+A pad-to-zone connection using a gap around the pad bridged by narrow spokes so the pad heats evenly during soldering. Zones can alternatively use solid pad connections.
+_Avoid_: Thermal pad (that refers to a footprint's exposed pad)
 
-**Spoke**:
-One of the narrow copper bridges of a thermal relief between a pad and the zone around it.
+**Spoke**
+One of the narrow copper bridges in a thermal relief connecting a pad to its surrounding zone fill.
 _Avoid_: Bridge, tie
 
-**Ratsnest**:
-The lines that join copper on one net that is not yet connected.
+**Ratsnest**
+Straight guide lines joining unconnected copper groups that belong to the same net.
 
-**Board outline**:
-The shape of the board, drawn on the Edge.Cuts layer.
+**Board outline**
+The physical perimeter of the board, drawn on the `Edge.Cuts` layer.
 
-**Design rules**:
-A PCB's clearances, new track width and via size. The design rules check reports copper that breaks them and connections not yet routed.
+**Design rules**
+A PCB's clearances, default track width, via dimensions, solder mask margin, thermal relief sizes, and copper layer count. Design rules check (DRC) flags copper that breaks these rules as well as unrouted connections.

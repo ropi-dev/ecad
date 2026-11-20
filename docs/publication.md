@@ -1,21 +1,32 @@
-# Before making the repository public
+# Publication checklist
 
-The build includes license notices and matching STEP importer source archives. Publishing still requires a review of ownership and material outside the current checkout.
+Production builds automatically bundle license notices and matching STEP importer source archives. Publishing the repository or distributing compiled builds still requires verifying ownership and artifacts outside the working tree.
 
-- Confirm that employer, client, NDA, and contributor agreements permit release of the code and designs. Keep evidence of permission for manually copied material.
-- Scan the complete history of every branch and tag that will become public. Revoke any exposed credential before removing it from history. A clean secret scan cannot prove that every sensitive value is absent.
-- Review commit author names and email addresses. Changing Git settings affects future commits only. Removing old identities requires a coordinated history rewrite, which these licensing changes do not perform.
-- Review pull requests, issues, release assets, Actions logs, and uploaded artifacts for credentials, private designs, screenshots, and personal information. Those are outside a local Git scan.
-- Keep the third-party license files and attribution in source distributions. Deploy or package all generated license files and STEP source archives with compiled applications. Do not deploy only the JavaScript and WebAssembly assets.
-- Describe ECAD as experimental. Check the README's claims against what the app currently supports, especially persistence and export behavior.
-- Use ECAD's own branding and avoid implying endorsement by upstream projects or component manufacturers.
+## Before making a repository public
 
-A public repository is discoverable and can be cloned or forked without an announcement. Returning it to private cannot recall copies already made.
+- **Ownership and permissions** — Confirm that employer, client, NDA, and contributor agreements permit releasing all code and designs. Keep records for any manually copied reference material.
+- **Git history audit** — Scan the full history of every branch and tag to be published. Revoke any exposed credential before rewriting history. (A clean secret scan does not guarantee absence.)
+- **Author metadata** — Review commit author names and emails. Changing Git config affects only future commits; removing historical identities requires a coordinated history rewrite.
+- **External platform artifacts** — Review pull requests, issues, release assets, Actions logs, and uploaded artifacts for credentials, private designs, screenshots, or personal information.
+- **Attribution and branding** — Keep third-party license files and attribution in source distributions. Use ECAD's own branding and do not imply endorsement by upstream projects or component manufacturers.
+- **Accurate claims** — Describe ECAD as experimental and verify that `README.md` matches current persistence, import, and export behavior.
 
-## Verify a distribution
+A public repository can be cloned or forked immediately; returning it to private does not recall existing copies.
 
-Build with `pnpm run build:web`, `pnpm run build:desktop`, and `pnpm run build:cli`. Check `packages/web/dist/client`, `packages/desktop/dist/renderer`, and `packages/cli/dist` for `LICENSE.txt` and `THIRD_PARTY_NOTICES.txt`.
+## Verifying a distribution
 
-Web and desktop outputs must also contain `licenses/STEP-SOURCE.md`, `licenses/step-sources.json`, and both archives under `licenses/sources`. Verify the deployed notice and archive URLs return the actual files rather than the SPA HTML fallback. Preserve them in release archives too. The desktop renderer directory and desktop main-process files form one distribution.
+Build all targets:
 
-The CLI still requires its external runtime dependencies. If you distribute those dependencies, include their own license files.
+```bash
+pnpm run build:web
+pnpm run build:desktop
+pnpm run build:cli
+```
+
+Confirm the following files exist in the build outputs:
+
+- `packages/web/dist/client/`, `packages/desktop/dist/renderer/`, and `packages/cli/dist/` each contain `LICENSE.txt` and `THIRD_PARTY_NOTICES.txt`.
+- Web and desktop outputs also contain `licenses/STEP-SOURCE.md`, `licenses/step-sources.json`, and both source archives under `licenses/sources/`.
+- For web deployments, verify that notice and archive URLs serve the actual files rather than the SPA HTML fallback.
+- Preserve all license files and source archives in release packages. The desktop renderer directory and main-process files form a single distribution.
+- `@ecad/cli` relies on external runtime dependencies; if you bundle or redistribute them, include their license files as well.

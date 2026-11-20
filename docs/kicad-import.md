@@ -1,20 +1,29 @@
 # Importing KiCad schematics
 
-Open or create a project. In the Files sidebar, choose Add KiCad schematic files and select a modern `.kicad_sch` file. ECAD creates and opens a separate drawing. Existing drawings remain available. A symbol, wire, junction, label or marker that cannot be converted is skipped, and the rest of the schematic imports. The notice names each skipped item and the reason. A document that cannot be read, or one where every item is skipped, creates no drawing. Repeated imports create separate files.
+In an open project, choose **Add KiCad schematic files** in the Files sidebar and select a modern `.kicad_sch` file. ECAD converts it into a new drawing in the project while keeping existing drawings intact.
 
-Schematics up to 32 MiB can be imported. A larger file is rejected before it is read, with a message giving the limit. The 535 KB RP2350A fixture is less than 2% of the limit. Parsing and conversion run in a Web Worker, so the editor stays responsive during a large import. An import that takes longer than 60 seconds stops with a timeout message and creates no drawing.
+## Limits and import report
 
-After import, download the import report before dismissing the notice. It contains component UUIDs, library identifiers, units, original rotations and mirrors, all component properties, embedded symbol definitions, sheet metadata, label anchors, conversion warnings and the skipped items with their reasons. The report is a separate JSON download. ECAD drawing files cannot store KiCad electrical and simulation metadata. Keep the original schematic and report with the drawing.
+- **File size & timeout** — Files up to **32 MiB** (`MAX_KICAD_FILE_BYTES`) are accepted (checked before reading). Parsing and conversion run in a Web Worker (`packages/core/src/formats/kicad/parse.worker.ts`) with a **60-second** timeout.
+- **Partial recovery** — Unconvertible symbols, wires, junctions, labels, or markers are skipped and listed in the import notice while the rest of the schematic imports. Unreadable files or files where every item is skipped create no drawing.
+- **Import report** — Download the JSON import report from the post-import notice before dismissing it. It preserves KiCad metadata that `.ecaddraw` does not store: component UUIDs, library IDs, unit info, original rotations/mirrors, all properties, footprint associations, DNP flags, simulation metadata, embedded symbol definitions, sheet metadata, conversion warnings, and skipped items.
 
-The built-in converter lives in `packages/core/src/formats/kicad`. `parseKiCadFile` in `packages/core/src/formats/parseKiCadFile.ts` checks the size limit (`MAX_KICAD_FILE_BYTES`) and runs `importKiCadSchematic` in `kicad/parse.worker.ts`. The worker reads the file itself and returns the converted shapes and report. It reads embedded library definitions, selects the placed unit and body style, converts millimetres to Cartesian coordinates centered on the source paper, and bakes instance rotations and mirrors into editable symbol children. Components retain their reference, value, pin names, package numbers and terminal coordinates. Reference and value fields use editable attribute labels with rotation overrides. Other visible properties become text children. Wires retain their endpoints; junctions become filled markers; no-connect markers become crossed lines. Visible local, global and hierarchical labels become native electrical net labels at their exact source anchors. Power symbols also emit standalone supply labels at their transformed terminal, while retaining their original geometry and source Value attribute. The standalone supply name replaces the power symbol's Value display to avoid duplicate visible names. Power flags keep their visible Value property and do not declare a net name. Ordinary text remains electrically inert.
+## How conversion works
 
-Current limits:
+`parseKiCadFile` (`packages/core/src/formats/parseKiCadFile.ts`) invokes `importKiCadSchematic` in `packages/core/src/formats/kicad/`:
 
-- Matching net and supply names connect disconnected sections throughout the drawing. KiCad hierarchical sheet scopes and local supply scopes are not represented.
-- Pin names and numbers use native `showName` and `showNumber` fields. Each field records the source visibility independently. ECAD places these labels with its native pin-label layout rather than detached text children.
-- No-connect marks do not suppress electrical checks. Pin electrical types are applied to the imported pins, with KiCad names such as `power_in` written as `power-in`. Pins drawn with KiCad's `inverted`, `inverted_clock`, `input_low`, `clock_low` or `output_low` styles import as active low. So does a pin with a `~{…}` overbar anywhere in its name. The markup is removed and the whole name draws with an overbar: `~{CS}` imports as `CS` and `~{WP}_IO2` as `WP_IO2`. Net labels and text keep `~{…}` markup and draw it as an overbar. Footprint associations, DNP flags and simulation metadata are available in the report only.
-- Nested sheets, buses, bus entries, images and other unsupported sheet constructs produce warnings. The report retains their source expressions. Symbols with missing or inherited embedded definitions, power symbols without exactly one pin, and items with malformed coordinates or geometry are skipped. Each converted item is validated against the drawing schema where it is produced. Malformed expressions, documents that are not `.kicad_sch` files, and unsupported paper sizes reject the import.
-- Arcs use line segments at intervals of at most ten degrees. Filled polylines use outlines. Font metrics, text mirroring, colors, line patterns, label outlines and pin decoration shapes are approximations. Rectangle and circle fills use ECAD's fill rendering.
-- The worksheet remains ECAD's A3 worksheet. Coordinate conversion honors the KiCad paper dimensions, but ECAD does not yet change its worksheet to match other paper sizes.
+- Reads embedded library definitions, selects the placed unit and body style, converts millimetres to Cartesian coordinates centered on the source paper, and bakes instance rotations/mirrors into editable symbol children.
+- Preserves references, values, visible properties, pin names, package numbers, terminal coordinates, wire endpoints, junctions, and no-connect markers.
+- Maps KiCad pin electrical types (e.g., `power_in` → `power-in`) and active-low styles (`inverted`, `inverted_clock`, `input_low`, `clock_low`, `output_low`, or `~{…}` in pin names) to native `electricalType` and `activeLow` fields.
+- Converts local, global, and hierarchical labels to native electrical net labels at their exact source anchors. Power symbols become `netSymbol: true` symbols with standalone supply labels at their transformed terminals; power flags stay electrically inert.
 
-The RP2350A fixture includes its original third-party license in `tests/fixtures/kicad`. Tests compare all 272 terminals against the independently generated reference inventory, all wire endpoints against the source, and reference/value pairs against source properties. The imported native net graph matches the independently derived reference pin groups. No ERC or PCB validation is claimed.
+## Known limits
+
+- All label names are drawing-wide; KiCad hierarchical sheet scopes and local supply scopes are not modeled.
+- Nested sheets, buses, bus entries, images, and other unsupported constructs produce warnings and keep their source S-expressions in the report.
+- Arcs tessellate to line segments (≤ 10°); filled polylines import as outlines; font metrics, colors, line patterns, and pin decorations are approximate.
+- Imported drawings currently keep ECAD's default A3 worksheet regardless of source paper size.
+
+## Reference fixture
+
+The licensed Raspberry Pi RP2350A minimal schematic (`tests/fixtures/kicad/RPI-RP2350A-MINIMAL_R4-S1.kicad_sch`) is used by import tests to verify all 87 instances, 272 terminals, 346 wires, 83 junctions, 94 visible labels, and derived net groups against independent reference inventories.

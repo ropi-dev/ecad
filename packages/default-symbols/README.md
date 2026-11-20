@@ -1,33 +1,29 @@
-# Default schematic symbols
+# `@ecad/default-symbols`
 
-`@ecad/default-symbols` generates the schematic editor's 66 built-in symbols. It has no runtime dependencies and works offline in web, desktop, and Node builds.
+Offline generator for ECAD's **66 built-in schematic symbols**. It has zero runtime dependencies and runs in web, desktop, and Node builds.
 
 ```ts
 import { generateDefaultSymbols } from "@ecad/default-symbols";
 
 const symbols = generateDefaultSymbols();
-// Each entry has a `category`, portable .ecadsym `file`, and instance `texts`.
+// Each entry has `category`, portable `.ecadsym` `file`, instance `texts`, and optional `packaging`.
 ```
 
-The picker groups symbols into Passives, Diodes, Transistors, Switches, Power, Connectors, Amplifiers, Microcontrollers, Other components, and Annotations. Imported and project symbols appear under Custom symbols. Empty groups stay hidden. Chips whose pin numbers depend on the package appear as one row per part. Clicking the row, or pressing Enter or Right Arrow while it is highlighted, opens a submenu with that part's packagings. Up and Down Arrow move through the submenu, Enter places the highlighted packaging, and Left Arrow or Escape closes the submenu. nRF54L15 lists QDAA, QFAA, QGAA, and CAAA, nRF54L10 and nRF54L05 list QDAA, QFAA, and QGAA, nPM2100 lists QEAA and CAAA, RP2350 lists RP2350A and RP2350B, and RP2040 lists RP2040. Each submenu row shows the packaging name and package outline. Symbols without package pin numbers stay ungrouped. Opening the picker focuses its search field, which filters names, descriptions, values, reference prefixes, IDs, categories, part names, and packaging. Library upload and configuration controls stay on Projects. Categories and packaging are editor metadata and do not change the portable file format. Each generated entry with packaging has a `packaging` object with the `part`, the packaging `name`, and its `description`.
+Every call returns fresh arrays and objects. Most entries declare a default footprint from [`@ecad/default-footprints`](../default-footprints/README.md) in `file.footprint`.
 
-Most entries name a default footprint from [`@ecad/default-footprints`](../default-footprints/README.md) in `file.footprint`, and new placements start with it. Symbols that share a package share a footprint.
+## Catalog and packaging
 
-Every call returns new arrays and objects. The editor converts the portable files to its drawing shapes and uses the reference and value labels for placement. Existing drawings keep their embedded geometry.
+The symbol picker groups built-in symbols into **Passives**, **Diodes**, **Transistors**, **Switches**, **Power**, **Connectors**, **Amplifiers**, **Microcontrollers**, **Other components**, and **Annotations** (custom libraries appear under **Custom symbols**).
 
-The library includes IEC and US resistors, variable resistors, potentiometers, thermistors, photoresistors, capacitors, polarized and variable capacitors, inductors, ferrite beads, transformers, crystals, fuses, rectifier and Schottky diodes, Zener and TVS diodes, LEDs, photodiodes, NPN and PNP transistors, N-channel and P-channel MOSFETs and JFETs, SPST and SPDT switches, push buttons, batteries, ground and supply symbols, connectors with 2, 3, 4, 8 or 20 pins, a four-pin crystal, a USB Micro-B receptacle, a W25Q128JVS QSPI flash, an AMS1117-3.3 regulator, an operational amplifier, a speaker, a buzzer, an antenna, RP2040, RP2350A, and RP2350B microcontrollers, nRF54L15, nRF54L10, and nRF54L05 microcontrollers in every package Nordic sells, and the nPM2100 power management IC in QFN and WLCSP.
-
-Box is an annotation with a rectangle border and editable text. Its origin is the rectangle's top-left corner. The rectangle defines the symbol's dimensions and stays unselectable, including when Select locked items is on.
-
-Select Box to change its dimensions, line style, or line width. Dragging the border moves the whole Box. Resize handles keep the text's local offset and font size. Moving the top or left edge carries the text with that corner; moving the bottom-right handle leaves the corner and text fixed.
-
-Text starts 1 mm inside the top-left corner, at local X = 1 and Y = -1, with left and top alignment. Select the text block to edit its content, position, size, or alignment. Box has no pins or visible reference and value labels. Each placement saves its own edits.
+- **Catalog highlights** — IEC/US resistors, variable resistors, potentiometers, thermistors, photoresistors, capacitors (standard, polarized, variable), inductors, ferrite beads, transformers, crystals (2-pin and 4-pin), fuses, rectifier/Schottky/Zener/TVS diodes, LEDs, photodiodes, NPN/PNP BJTs, N/P-channel MOSFETs and JFETs, SPST/SPDT/push-button switches, batteries, ground/supply symbols, 2/3/4/8/20-pin connectors, USB Micro-B, W25Q128JVS QSPI flash, AMS1117-3.3 regulator, LM321-style op amp, speaker, buzzer, antenna, RP2040, RP2350A/B, Nordic nRF54L15/nRF54L10/nRF54L05 (all packages), nPM2100 (QFN & WLCSP), and **Box**.
+- **Package submenus** — Multi-package chips group into one picker row with a keyboard-navigable submenu (`Enter`/`Right Arrow` to open, `Left Arrow`/`Escape` to close): `nRF54L15` (QDAA, QFAA, QGAA, CAAA), `nRF54L10`/`nRF54L05` (QDAA, QFAA, QGAA), `nPM2100` (QEAA, CAAA), `RP2350` (RP2350A, RP2350B), and `RP2040`.
+- **Box annotation** — Unpinned rectangle border + editable multiline text (origin at top-left corner; text anchored at `(1, -1)` mm). Border defines dimensions; dragging the border moves the box while resize handles preserve text offset and font size.
 
 ## Attributes
 
-Each component symbol defines four attributes in `file.attributes`: Manufacturer, Part number, Datasheet and Distributor part number. Symbols for one maker's part fill in the first three. These are RP2040, RP2350A, RP2350B, the nRF54L15, nRF54L10 and nRF54L05 packages, the nPM2100 packages, W25Q128JVS, AMS1117-3.3 and the Molex USB Micro-B receptacle. Generic parts such as resistors, transistors and connectors leave all four empty, and so does the LM321-style op amp, because none of them names one maker's part. Distributor part numbers are empty on every symbol. The ground and supply symbols and Box define no attributes. A source entry sets its values in `attributes`. The generator adds the four names to every entry that isn't a net symbol and fills in any value the entry leaves out with an empty string.
+Every non-net component symbol defines four attributes in `file.attributes`: `Manufacturer`, `Part number`, `Datasheet`, and `Distributor part number`. Single-vendor parts (RP2040, RP2350A/B, nRF54L/nPM2100, W25Q128JVS, AMS1117-3.3, Molex USB Micro-B) prefill the first three; generic parts leave them empty. Ground/supply symbols and Box define no extra attributes.
 
-## Export files
+## Exporting `.ecadsym` files
 
 From the repository root:
 
@@ -35,18 +31,14 @@ From the repository root:
 pnpm run symbols:generate /absolute/path/to/output
 ```
 
-Without a directory argument, the command writes to `packages/default-symbols/generated`. It writes one JSON `.ecadsym` file per symbol and copies the license and attribution documents. It refuses to overwrite existing files. Use a new directory when regenerating a collection.
+Without a path, writes to `packages/default-symbols/generated`. Writes one `.ecadsym` per symbol plus license/attribution files, refusing to overwrite existing files. To import an edited copy as a custom symbol, change its reserved built-in `id` (e.g., `custom.diode`).
 
-Generated files use reserved built-in IDs. To import an edited copy as a custom symbol, change its ID to a unique name such as `custom.diode`. Version 1 `.ecadsym` files preserve geometry and pin names but cannot store the instance labels in `texts`.
+## Source, geometry, and extending
 
-## Geometry and source
+- Sources live in `src/catalog.ts`, `src/microcontrollers.ts` (pinned KiCad symbol commits), `src/nordic.ts` (Nordic datasheets), and `src/reference-parts.ts`; see [NOTICE.md](NOTICE.md).
+- 50 mils converts to 1 mm so terminals land on the editor grid; two-terminal passives rotate horizontal; arcs tessellate at ≤ 15°. Active-low pins set `activeLow: true` and strip `/`, `_N`, or `n` prefixes.
+- To add a symbol: add an entry with grid-aligned terminals and source metadata, update [NOTICE.md](NOTICE.md), and run `pnpm --filter @ecad/default-symbols test` and `pnpm test`.
 
-The checked-in [catalog](src/catalog.ts) and [microcontrollers](src/microcontrollers.ts) contain a subset of the KiCad symbol libraries at pinned commits. The KiCad libraries have no nRF54L or nPM2100 symbols, so the [Nordic definitions](src/nordic.ts) copy the pin assignment tables from Nordic's datasheets. [NOTICE.md](NOTICE.md) lists the sources and adaptations. No KiCad installation or download is needed to generate symbols.
+## License
 
-The generator converts 50 mils to 1 mm so terminals land on the editor's 1 mm grid. It rotates two-terminal passive symbols to a horizontal orientation. Picker thumbnails load near the visible part of the scroll list and show a fixed-size skeleton while waiting. The SVG renderer loads on demand. Thumbnails omit pin markers and text smaller than one pixel. Placed symbols keep their complete geometry and labels. The original `resistor`, `capacitor`, and `ground` definitions retain their existing order, dimensions, values, and label positions.
-
-The editor's version 1 format has no arcs or filled polygons. The generator approximates arcs with line segments spanning at most 15 degrees, draws polygons as outlines, and stores each terminal's KiCad pin name, without the `/`, `_N` or `n` marker of an active-low pin. Unnamed terminals use the source pin number as their name. Microcontrollers and the nPM2100 preserve package pin numbers, including the exposed ground pad. Pin numbering differs between packages, so each Nordic package has its own symbol named by its order code, such as `nRF54L15-QFAA` for QFN48 and `nRF54L15-CAAA` for the 47-ball CSP. Ball-grid packages use ball names such as `A1` as pin numbers. Chip bodies have an opaque dark blue-grey fill behind their teal outlines and labels. Each chip pin owns its exposed terminal, 2 mm lead, name, and package number. The chips contain one body rectangle and one pin item per package pin, with 2 mm between rows. The editor centers each 1.27 mm name label on its pin inside the body and places the 1 mm package number above the lead outside the body. The operational amplifier uses the LM321 pin layout and adds drawn input polarity marks beside its pin labels. Active-low pins draw an inversion bubble and a line over the name, so their names drop the source's `/`, `_N` or `n` marker: the W25Q128JVS `CS`, the Raspberry Pi `QSPI_SS` and the nRF54L `RESET`. The nPM2100 ship-hold input `SHPHLD` is active low too.
-
-To extend the collection, add a source entry with a stable ID and grid-aligned terminals to `src/catalog.ts`. Keep its KiCad source in the entry's `source` field and update the attribution. Run `pnpm --filter @ecad/default-symbols test`, the repository tests, and the `default-symbols` performance scenario.
-
-The symbol collection uses the KiCad library license, CC BY-SA 4.0 with its electronic-design exception. See [LICENSE.md](LICENSE.md) and [CC-BY-SA-4.0.txt](CC-BY-SA-4.0.txt).
+KiCad-derived symbols are licensed under **CC BY-SA 4.0** with KiCad's electronic-design exception. See [LICENSE.md](LICENSE.md), [CC-BY-SA-4.0.txt](CC-BY-SA-4.0.txt), and [NOTICE.md](NOTICE.md).

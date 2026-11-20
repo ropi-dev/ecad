@@ -1,69 +1,88 @@
-ECAD is a Gerber and STEP viewer with a 2D drawing editor. The web and Electron desktop apps share the same Solid editor, drawing model, and Three.js engine.
+# ECAD
 
-ECAD is experimental. Features, file formats, and UI behavior may change. Keep backups of project files and verify exports before using them for fabrication.
+ECAD is a Gerber and STEP viewer paired with a 2D/3D schematic, circuit, footprint, and PCB editor. The web and Electron desktop apps share the same Solid 2.0 UI, headless drawing model, and Three.js rendering engine.
 
-Original application code is under the [MIT license](LICENSE). Third-party code and assets retain their own licenses, including the KiCad-derived symbols, Inter font, and LGPL STEP importer. See [third-party notices](THIRD_PARTY_NOTICES.md) and the [publication checklist](docs/publication.md). Production builds include dependency notices and matching STEP importer source archives. The first web or desktop build downloads about 53 MB of source archives; see [source caching and rebuild instructions](licenses/STEP-SOURCE.md).
+> **Experimental software:** Features, file formats, and UI behavior may change. Keep backups of your project files and verify all exports before sending them to fabrication.
 
-| Package | Contents |
+## Packages
+
+| Package | Description |
 | --- | --- |
-| [`@ecad/core`](packages/core) | Shared Solid editor and viewers, symbol validation, parsers, workers, and rendering. |
-| [`@ecad/drawing-core`](packages/drawing-core) | Headless drawing model, store, Effect commands, schemas, and MCP tools. |
-| [`@ecad/default-symbols`](packages/default-symbols) | Offline generators for 45 KiCad-derived schematic symbols and portable library exports. |
-| [`@ecad/default-footprints`](packages/default-footprints) | Offline generators for 56 KiCad-derived footprints that built-in symbols use by default. |
-| [`@ecad/web`](packages/web) | TanStack Start app, browser project directories, symbol storage, routes, and HTTP services. |
-| [`@ecad/desktop`](packages/desktop) | Electron app, filesystem projects, and symbol storage. |
-| [`@ecad/cli`](packages/cli) | Standalone drawing commands, local file persistence, and an MCP stdio server. |
+| [`@ecad/core`](packages/core) | Shared Solid 2.0 editors and viewers, symbol/footprint/board UI, format parsers, Web Workers, and Three.js renderer. |
+| [`@ecad/drawing-core`](packages/drawing-core) | Headless drawing, circuit, footprint, and board models, Effect commands, ERC/DRC, schemas, and MCP tool definitions. |
+| [`@ecad/default-symbols`](packages/default-symbols) | Offline generator for 66 built-in schematic symbols (KiCad-derived and Nordic datasheets). |
+| [`@ecad/default-footprints`](packages/default-footprints) | Offline generator for 64 built-in footprints used by default symbols and the RP2350A reference design. |
+| [`@ecad/default-models`](packages/default-models) | Built-in library of 62 binary glTF 3D component models for the realistic board view. |
+| [`@ecad/web`](packages/web) | TanStack Start web app, Origin Private File System (OPFS) projects, browser symbol storage, routes, and HTTP services. |
+| [`@ecad/desktop`](packages/desktop) | Electron desktop app, local filesystem projects, file watching, and native symbol directory storage. |
+| [`@ecad/cli`](packages/cli) | Standalone Node CLI and stdio MCP server for editing local `.ecaddraw` files. |
 
-Use Node.js 24.14.0 or newer in the Node 24 line, or Node.js 25.4.0 or newer. Run `nvm use` to select Node 24 if you use nvm. pnpm rejects unsupported Node versions.
+## Prerequisites
 
-Install dependencies from the repository root with pnpm. The root `pnpm-lock.yaml` covers all workspaces.
+- **Node.js**: `^24.14.0` or `>=25.4.0` (run `nvm use` if you use nvm; pnpm rejects unsupported versions).
+- **pnpm**: `10.34.9` (managed via Corepack).
 
 ```bash
 corepack enable
 pnpm install
 ```
 
-## Run the web app
+## Running the apps
+
+### Web app
 
 ```bash
 pnpm run dev
 ```
 
-The dev server answers requests for `localhost` and IP addresses. To reach it under another hostname, such as a Tailscale machine name, list the hostnames in `ECAD_ALLOWED_HOSTS`, separated by commas. Set the variable in your shell or in a `.env.local` file at the repository root. `pnpm run preview` uses the same list.
+Open `http://localhost:3000/editor` for the editor. The dev server (and `pnpm run preview`) accepts `localhost` and IP addresses by default. To allow additional hostnames (such as a Tailscale hostname), set `ECAD_ALLOWED_HOSTS` in your shell or root `.env.local`:
 
 ```bash
 ECAD_ALLOWED_HOSTS=devbox.example.ts.net pnpm run dev
 ```
 
-Open `http://localhost:3000/editor` for the drawing editor. Manage symbol libraries under **Projects → Symbol libraries**, where you can upload files or directories into user or project libraries. User libraries live in project-independent localStorage. Project libraries save with the project. Uploading a directory copies its current symbols; it does not keep access to that directory.
-
-The Symbols picker includes 45 built-in components. Export their standalone `.ecadsym` files with `pnpm run symbols:generate /absolute/path/to/output`. See the [default-symbol package](packages/default-symbols/README.md) for the catalog, source attribution, and generation API. Most built-in symbols name a default footprint from the 56 built-in footprints, which you can change per placement in Attributes. The [PCB editor](docs/pcb.md) places those footprints on a board with tracks, vias, copper zones and design rule checks, and exports Gerber files. Export the footprints as `.ecadfp` files with `pnpm run footprints:generate /absolute/path/to/output`.
-
-## Run the desktop app
+### Desktop app
 
 ```bash
 pnpm run dev:desktop /absolute/project-directory
 ```
 
-The project directory argument is optional. Open **Settings** from the gear at the bottom of the sidebar, or **Project → Symbol libraries...**, to manage libraries. **Add library directory** adds a directory source, and **Reload libraries** rereads files after external edits. User settings live in `~/.config/ecad` on Linux, `~/Library/Application Support/ecad` on macOS and `%APPDATA%\ecad` on Windows. Uploaded and created symbols can be saved without opening a directory first. Built-in symbols are enabled by default.
+The project path argument (a project directory or `.ecadprj` file) is optional; without it, ECAD restores the last opened project.
 
-The desktop app reads configured directories from disk. The web app's **Upload library directory** imports a snapshot into browser storage.
-
-If Electron exits with a `chrome-sandbox` permissions error on Linux, configure the system sandbox. For local development on that host, the launch command also accepts `--no-sandbox`:
+If Electron exits with a `chrome-sandbox` permissions error on Linux, configure the system sandbox or pass `--no-sandbox` for local development:
 
 ```bash
 pnpm run dev:desktop --no-sandbox /absolute/project-directory
 ```
 
-## Projects
+### CLI and MCP server
 
-The separate **Projects** page manages the active project and its files. Reach it using **Projects** from any workspace. Enter a name and choose **Create project** to save the current drawing, custom symbols, and imported files together. A new project starts empty, with no drawings or circuits. Creating a project from the unsaved Untitled workspace moves that work into it. Creating one while a saved project is open leaves the saved project as it is. **Open project** in the sidebar switches projects: on desktop it asks for a project directory, and on web it lists the saved projects. Add Gerber, STEP, and symbol files on this page, then use **Open** to view a file in its workspace. File lists and import controls stay on the Projects page. The active project is shared across the app, and drawing undo history survives navigation between pages. Drawings save automatically after edits; **Save project** saves immediately. Reopening a project restores its drawing and symbols and loads its Gerber or STEP source files when you visit that viewer. Undo history starts again when you reopen a project or reload the app.
+The CLI edits local `.ecaddraw` files using the same `@ecad/drawing-core` commands as the apps:
 
-On desktop, creating a project asks for a parent directory and creates a subdirectory named after the project. Each project has a TOML file named `.ecadprj`. A new project contains only that file. Each drawing you add is saved next to it as `<name>.ecaddraw`. Builds from before empty projects reject an `.ecadprj` without a `drawing` entry or with a `symbolLibraries` entry, because their manifest schema is strict. You can pass either the project directory or its `.ecadprj` file when launching the desktop app. Without an argument, the last opened project is restored. User symbol libraries are configured separately in `symbol-libraries.json` in the configuration directory and remain available across projects.
+```bash
+export ECAD_DRAWING="$PWD/drawing.ecaddraw"
+pnpm --silent cli tools
+pnpm --silent cli getDrawing
+pnpm --silent cli placeRectangle '{"x":20,"y":30,"width":40,"height":15,"rotation":0,"lineWidth":0.2}'
+pnpm --silent cli undo
+pnpm --silent cli mcp
+```
 
-On web, projects use directories in the browser's Origin Private File System, with the project name as the directory name. Assets stay on the device and belong to this browser and site. Browser storage must support local filesystem directories; clearing site data removes saved projects. The active project's name is remembered in localStorage. User symbol libraries remain in project-independent localStorage and are available alongside each project's own libraries.
+- `--drawing <path>` overrides `ECAD_DRAWING` (default: `./drawing.ecaddraw`); a `path` inside tool arguments overrides both.
+- All 12 drawing MCP tools are available by name. Arguments accept JSON or `-` for stdin; results use MCP JSON format (`structuredContent` and `isError`), with exit code `1` on failure.
+- An adjacent `<drawing>.history.json` file preserves up to 100 undo nodes across CLI calls and MCP restarts. Concurrent access is coordinated with a file lock.
+- `ecad mcp` starts the stdio MCP server (every tool call requires an absolute `path`). In the desktop app, **Settings → MCP** configures it automatically for Claude Code and Codex.
 
-The project file points to a drawing, portable `.ecadsym` files, and copied source files using relative paths:
+See [docs/mcp.md](docs/mcp.md) for the full tool reference, locking details, and client configuration.
+
+## Projects and storage
+
+The **Projects** page manages projects and their files (schematics, circuits, PCBs, footprints, custom symbols, and imported Gerber/STEP assets). Creating a project starts empty; creating one from an unsaved Untitled workspace moves that work into the new project. Edits autosave and undo history survives switching views within a session.
+
+- **Desktop projects** live in a folder with a TOML `.ecadprj` manifest, `<name>.ecaddraw` files, `symbols/`, `footprints/`, and `assets/`. Writes are atomic, external edits are watched and reloaded (or flagged as conflicts when local edits are pending), and user settings live in `~/.config/ecad` (Linux), `~/Library/Application Support/ecad` (macOS), or `%APPDATA%\ecad` (Windows).
+- **Web projects** live in the browser's Origin Private File System (OPFS), publishing each save by replacing `.ecadprj`. User symbol libraries live separately in `localStorage`.
+
+Example `.ecadprj` manifest:
 
 ```toml
 format = "ecad-project"
@@ -78,138 +97,68 @@ name = "board.gbr"
 kind = "gerber"
 ```
 
-Desktop projects store the drawing directly in the project directory, custom symbols in `symbols`, and imported Gerber files, archives, and STEP models in `assets`. These paths stay the same across saves. Imports retain their filenames and add a numbered suffix when a name already exists. The whole project directory can be moved together.
+## Built-in libraries and exports
 
-Desktop writes replace each file atomically and restore earlier files if a later write fails. A process interruption during a save can still leave files from different saves. External changes to `.ecadprj` stop saves until the project is reopened. Desktop also checks the saved drawing and symbol files for external edits before saving or importing. **Reload project** is available after a save error and discards unsaved drawing changes.
+- **Symbols (66)** — Manage libraries under **Settings → Symbol libraries** (or **Projects → Symbol libraries**). Export standalone `.ecadsym` files with `pnpm run symbols:generate /absolute/path/to/output`. See [packages/default-symbols/README.md](packages/default-symbols/README.md) and [docs/symbol-format.md](docs/symbol-format.md).
+- **Footprints (64) & 3D models (62)** — Most built-in symbols reference a default footprint, editable per placement in Attributes. Export standalone `.ecadfp` files with `pnpm run footprints:generate /absolute/path/to/output`, and rebuild models with `pnpm run models:build`. See [packages/default-footprints/README.md](packages/default-footprints/README.md), [packages/default-models/README.md](packages/default-models/README.md), and [docs/footprints.md](docs/footprints.md).
+- **Schematic, footprint, and board export** — **Export drawing** (or **Export** in the PCB editor) writes PNG (up to 16,384 px/side and 100 MP; default 9600 × 6400), vector SVG (editable JetBrains Mono text), or 1:1 scale vector PDF (embedded JetBrains Mono glyph outlines; one page per populated board layer with drill knockouts, solder mask openings, and bookmarks). The PCB editor also exports Gerber X2 and Excellon drill ZIP archives. See [docs/pcb.md](docs/pcb.md#fabrication-files).
 
-Web projects keep revision folders in browser storage and publish each revision by replacing `.ecadprj`.
-
-## Build and verify
+## Build and verification
 
 ```bash
+# Build individual packages or everything
 pnpm run build:web
 pnpm run build:desktop
-# Build all packages:
-pnpm run build
 pnpm run build:cli
+pnpm run build
 
-# Launch the built desktop app:
+# Preview built web app or launch built desktop app
+pnpm run preview
 pnpm run start:desktop /absolute/project-directory
 
+# Format, lint, typecheck, and test
+pnpm run format
+pnpm run lint
+pnpm run check
 pnpm run typecheck
 pnpm test
 pnpm run test:browser
 ```
 
-### Debian package
-
-`pnpm run package:deb` builds `dist/deb/ecad_<version>_<arch>.deb` on Linux. It needs `dpkg-deb`. Next to the package it writes the two files that incremental updates read: `.files.zst` holds every file in the package as its own zstd frame, and `.files.json` lists each path with its mode, size, SHA-256 digest and byte range in the pack, plus the package's directories, links and control files. The package installs the desktop app in `/usr/lib/ecad` and adds two commands. `ecad-desktop [project-directory]` starts the app, which also gets a launcher entry. `ecad` runs the CLI. The CLI runs on the Node.js runtime inside the app's Electron binary, so it doesn't need a separate Node.js install. Pass `--arch arm64` or `--arch armv7l` to build for another architecture. Pass `--version` to replace the default version, which is `<package version>+git<commit time>.<commit>`, so each build upgrades the one before it. Set `DEBFULLNAME` and `DEBEMAIL` to change the maintainer.
-
-```bash
-pnpm run package:deb
-sudo apt install ./dist/deb/ecad_*_amd64.deb
-```
-
-The package depends on the libraries Electron links, and lists both names of the libraries that Debian 13 and Ubuntu 24.04 renamed to `t64`. It installs on Debian 12 and Ubuntu 26.04. `chrome-sandbox` is installed setuid root, so Chromium's sandbox also works where unprivileged user namespaces are restricted. Only the release workflow builds and publishes the package, on the release and in the [apt repository](#apt-repository). Pushes to `main` run the checks but build no `.deb`.
-
-#### Releases
-
-Run the **Release** workflow from the Actions tab on `main`. It asks for a channel and an optional version:
-
-- `stable` publishes `vMAJOR.MINOR.PATCH` and marks it as the latest release. Without a version it raises the patch version of the newest stable tag, so `v0.1.0` becomes `v0.1.1`. The first release is `v0.1.0`.
-- `nightly` publishes a pre-release named after the next stable version and today's UTC date, such as `v0.1.1-nightly.20261116`. A version you give replaces the next patch version, so `0.2.0` gives `v0.2.0-nightly.20261116`. Running it again on the same day replaces that day's nightly. The workflow keeps the 14 newest nightlies and deletes older ones with their tags.
-
-A version you give must be newer than the latest stable release. Write it as `0.2.0` or `v0.2.0`. A run from another branch fails before it builds anything. The publish job also deploys to the `release` environment, whose deployment branch policy allows only `main`, so GitHub refuses the publish job on any other branch or tag. GitHub enforces that policy outside the workflow file. A branch that deletes both the check and the `environment` line could still publish with its own `GITHUB_TOKEN`, so the guarantee ends with who has write access to the repository.
-
-Two tag rulesets protect the release tags, with no bypass for anyone, admins included. **Release tags: never move** rejects moving any `v*` tag. **Stable release tags: never delete** rejects deleting any `v*` tag except `v*-nightly.*`, which the workflow deletes when it prunes or replaces nightlies. To remove a stable tag, disable that ruleset in the repository settings first. Tag creation stays open, because GitHub doesn't accept the GitHub Actions app as a ruleset bypass actor, so a creation rule would also block the workflow's `GITHUB_TOKEN`.
-
-The workflow runs the CI checks and builds the package with the release's version in its control file, in the desktop app and in `ecad --version`. It installs the package and runs the CLI before publishing. A nightly's Debian version is `0.1.1~nightly.20261116`, so dpkg sorts it after `0.1.0` and before `0.1.1`. GitHub replaces `~` in asset names, so the nightly's files are named after the tag instead: `ecad_0.1.1-nightly.20261116_amd64.deb`. Release notes list the pull requests since the previous stable release, or since the previous release of either kind for a nightly. The package and its update files also stay on the run as the `ecad-deb` artifact for seven days.
-
-#### Apt repository
-
-Each channel is a flat apt repository stored as the assets of a pre-release that stays in place: `apt-stable` and `apt-nightly`. The stable channel holds the three newest stable releases. The nightly channel holds the three newest nightlies and the newest stable release, so someone on a nightly still gets a stable release that comes out before the next nightly. apt installs whichever version is highest. To install from the stable channel:
-
-```bash
-sudo curl -fsSLo /usr/share/keyrings/ecad-archive-keyring.gpg \
-  https://github.com/ropi-dev/ecad/releases/download/apt-stable/ecad-archive-keyring.gpg
-sudo tee /etc/apt/sources.list.d/ecad.sources <<'EOF'
-Types: deb
-URIs: https://github.com/ropi-dev/ecad/releases/download/apt-stable/
-Suites: ./
-Signed-By: /usr/share/keyrings/ecad-archive-keyring.gpg
-EOF
-sudo apt update && sudo apt install ecad
-```
-
-Replace `apt-stable` with `apt-nightly` in the `URIs` line to get nightlies. The key's fingerprint is `F39E 7F46 0B26 1123 3681  DEFF C723 FF59 1786 C814`.
-
-After each release, the Release workflow calls the **Apt repository** workflow. You can also run it on its own from the Actions tab on `main`, which rebuilds both channels from the current releases. `scripts/release/apt.ts` downloads each channel's packages from their releases, writes `Packages`, `Packages.gz` and a `Release` file with their SHA-256 digests, and signs it as `InRelease` and `Release.gpg`. It uploads the packages the channel doesn't have yet, or whose digest changed because a nightly was replaced. Then it uploads the indexes, then `InRelease`, and deletes packages that left the channel. GitHub replaces an asset by deleting it first, so an `apt update` during those few seconds can fail. It works on the next try. Run `node scripts/release/apt.ts --no-publish --directory <dir>` to build both channels locally without uploading anything. It signs with the only secret key in your GnuPG keyring, or the one `--key <fingerprint>` names, and publishes only that key's public half as the keyring.
-
-The workflow signs with the `APT_SIGNING_KEY` secret in the `release` environment, an ASCII-armored ed25519 secret key with no passphrase and no expiry. To replace it, generate a new key, export it with `gpg --armor --export-secret-keys <fingerprint>`, store it with `gh secret set APT_SIGNING_KEY --env release`, run the Apt repository workflow, and update the fingerprint above. Everyone who installed the old key has to download the new keyring.
-
-#### Updates
-
-The installed desktop app checks GitHub's latest release 10 seconds after it starts and every six hours after that. The update button sits in the sidebar footer next to Settings, and hovering it shows the latest release's changes. Clicking it checks for updates right away. When the release has a newer package for the machine's architecture, the icon turns amber and a click installs it. ECAD downloads the release's `.files.json` manifest and checks it against its SHA-256 digest from GitHub. It copies each installed file whose digest matches the manifest, fetches the rest from the `.files.zst` pack with HTTP range requests, and checks each one's digest. Then it builds the package locally with `dpkg-deb`. A release that changes only the app code downloads a few hundred kilobytes instead of the whole 148 MB package. If the release has no update files, the server ignores the range, a digest doesn't match, or the missing files add up to more than the package, ECAD downloads the whole package and checks its size and digest instead. Either way it runs `pkexec apt-get install --no-remove` on the package, so the system asks for an administrator password and apt stops rather than remove other packages. The next click restarts ECAD into the new version. Unsaved changes still ask before the window closes, and choosing **Keep working** cancels the restart. A failed installation turns the icon red, its tooltip shows the error, and a click reads the latest release again before retrying. A locally built package differs byte for byte from the published one, so apt installs it on the strength of the per-file digests. The digests come from the same GitHub response as the download, so they catch a damaged download but not a bad release: anyone who can publish releases to the repository can ship code that runs as root after the password prompt.
-
-Only the app installed from the package checks for updates: `pnpm run package:deb` marks the app's `package.json` with `"updates": {"format": "deb"}` and sets its version to the package version. `pnpm run dev:desktop` and `pnpm run start:desktop` never check. Set `ECAD_UPDATE_FEED_URL` to read the releases from another URL that answers like GitHub's [list releases API](https://docs.github.com/en/rest/releases/releases#list-releases). The update installs the release with the highest version and lists the changes from every release newer than the installed one. The **Release channel** setting under **Settings → Updates** picks which releases count. Stable, the default, skips pre-releases. Nightly also reads the nightly pre-releases, the ones tagged `vX.Y.Z-nightly.YYYYMMDD`, and still ignores the `apt-*` pre-releases. Changing the channel checks again right away. ECAD never downgrades, so after switching back to stable an installed nightly stays until a newer stable release comes out. The section only appears in the app installed from the package. The package URLs it lists must use HTTPS or the feed's own origin.
-
-Use `pnpm run preview` to preview the web build. Biome provides `pnpm run format`, `pnpm run lint`, and `pnpm run check`. It respects `.gitignore`, so generated builds and test reports stay out of lint results.
-
-### Deploy with the Vercel GitHub app
-
-The `ecad` project in the `ropis-projects` Vercel team connects to `ropi-dev/ecad` through the Vercel GitHub app. Pushes to `main` deploy to production at `app.ecad.ropi.dev`, and `ecad.ropi.dev` redirects there. Other branches and pull requests don't deploy, because `git.deploymentEnabled` in `packages/web/vercel.json` turns off every branch except `main`.
-
-Use the TanStack Start framework preset, Node.js 24, and `packages/web` as the project root. Keep the default install, build, and output settings, and allow the build to include files outside the root directory so it can use the shared workspace packages. Vercel sets `VERCEL`, which enables the Nitro adapter in the web Vite config.
-
-Manage the repository connection and automatic deployments in the project's [Git settings](https://vercel.com/ropis-projects/ecad/settings/git). Builds and deployment status appear in Vercel and on GitHub pull requests. Deployment does not use a GitHub Actions workflow or require `VERCEL_TOKEN`, `VERCEL_ORG_ID`, or `VERCEL_PROJECT_ID` in GitHub.
-
-GitHub Actions runs on pull requests, pushes to `main`, merge queues, and manual dispatches. The CI workflow runs lint, type checking, unit tests, and the web, desktop, and CLI builds as separate checks. The release workflow calls it before it publishes. The browser workflow splits tests across four Chromium jobs, each with one worker and the existing software rendering settings. It prints per-test progress. Download `chromium-results-1` through `chromium-results-4` from the workflow run for each job's HTML report and failure traces. Reports expire after seven days. Report uploads are optional, so storage quota failures do not change the test result.
-
-Both workflows run on GitHub-hosted Ubuntu 26.04 LTS runners. Both workflows use Node 24 from `.nvmrc`, install the locked dependencies with `pnpm install --frozen-lockfile`, and cache the pnpm store. Browser tests use headless Chromium, with WebGL rendered through the SwiftShader Vulkan driver bundled with Chromium, so the jobs install no system graphics packages. They download only Chromium's headless shell and skip Playwright's `--with-deps` apt step: the runner image already has Chromium's libraries, and that step only added CJK and X fonts. CI skips downloading the Electron binary because these checks build the desktop app without launching it. Action revisions are pinned, and Dependabot checks for action updates weekly. The workflows need no repository secrets. The release workflow's publish job alone gets `contents: write` for the built-in token.
-
-The 2D hover and selection tests check hover counts, selection attributes, and clearing behavior. They omit full-canvas image comparisons because software-renderer captures vary on hosted runners.
-
-Performance budgets stay local. CI excludes `gerber-performance.spec.ts` and does not run `pnpm run perf`. The other browser specs, including rendering and performance diagnostics behavior, still run. CI gates on `pnpm run lint`. Formatting and import organization are available through `pnpm run check`.
-
-Feature threads do not run the timing benchmarks. `pnpm run perf:main` checks main once per batch of merged commits, and `pnpm run perf --grep <scenario>` compares named scenarios against the merge base for performance work. `pnpm run perf:dev` measures development builds. Live diagnostics are available at `window.__ecadPerformance` in development, or with `?perf=1` in production. See the [performance guide](docs/performance.md) for reports, controls, and measurement limits.
+For Debian `.deb` packaging, APT repositories, GitHub Releases, desktop auto-updates, Vercel deployment, and CI workflows, see [docs/releases.md](docs/releases.md).
 
 ## Working in the packages
 
-The headless drawing model, commands, store, schemas, and MCP tool registration live in `@ecad/drawing-core`. The CLI depends on that package. Existing drawing and command imports through `@ecad/core` remain available as re-exports.
+- Import headless drawing, circuit, footprint, board, ERC, and MCP modules directly from `@ecad/drawing-core/...`.
+- Within `@ecad/core`, use `#/...` subpath imports (for example `#/components/editor/Editor2D.tsx`). Other workspace packages import shared code through `@ecad/core/...`.
+- Web routes live in `packages/web/src/routes` (root document in `__root.tsx`). Run `pnpm run generate-routes` after changing routes when needed.
+- Shared Tailwind styles live in `packages/core/src/styles.css`.
 
-Core imports use `#/components/editor/Editor2D.tsx` and other `#/` paths within the package. App packages import shared modules through `@ecad/core`, for example `@ecad/core/components/editor/Editor2D.tsx`.
+## Documentation
 
-Web routes live in `packages/web/src/routes`, with the root document in `__root.tsx`. TanStack generates `packages/web/src/routeTree.gen.ts`; run `pnpm run generate-routes` after changing routes when needed. Server functions and API routes belong to the web package.
+### User and feature guides
+- [Glossary](GLOSSARY.md) — Canonical terms for schematics, footprints, and PCBs
+- [Viewers and canvas rendering](docs/viewer.md) — Schematic canvas, Gerber and STEP viewers, 2D/3D engine
+- [PCB editor](docs/pcb.md) — Multi-layer boards, routing, copper zones, thermal reliefs, DRC, fabrication export
+- [Footprint editor](docs/footprints.md) — Pads, slots, vias, unplated holes, 3D editing, realistic view, `.ecadfp` format
+- [Symbol files](docs/symbol-format.md) — Libraries, `.ecadsym` format, attributes, pin types, references, locks
+- [Named electrical nets](docs/named-nets.md) — Net/supply labels, net symbols, multi-page schematics
+- [Electrical rules check (ERC)](docs/erc.md) — Built-in rules, pin conflict matrix, custom rule API
+- [Importing KiCad schematics](docs/kicad-import.md) — `.kicad_sch` converter, import reports, limits
+- [MCP and CLI access](docs/mcp.md) — Claude Code/Codex setup, CLI commands, stdio MCP protocol, locking
+- [Settings](docs/settings.md) — Global and project settings, themes, board units, storage
 
-Tailwind styles live in `packages/core/src/styles.css`.
+### Architecture and contributor guides
+- [Drawing architecture](docs/architecture.md) — Package boundaries, Effect commands, workers, dialogs, circuits
+- [Effect integration](docs/effect.md) — Scoped imports, resource lifetimes, storage errors, HTTP/server services
+- [Browser tests](docs/browser-tests.md) and [Test ownership](tests/README.md) — Unit, browser, and smoke suites
+- [Performance measurements](docs/performance.md) — A/B runs, main checks, budgets, live diagnostics, field data
+- [Parallel development](docs/parallel-development.md) — Rootless Podman sandbox and host benchmark lock
+- [Releases, packaging, and CI](docs/releases.md) — Debian packages, APT channels, desktop updates, Vercel, GitHub Actions
+- [Publication checklist](docs/publication.md) — Pre-public audit and distribution license verification
 
-See the [drawing architecture guide](docs/architecture.md), [Effect integration guide](docs/effect.md), [viewer guide](docs/viewer.md), and [MCP guide](docs/mcp.md). The [footprint guide](docs/footprints.md) covers the footprint editor and its file format. The [symbol format guide](docs/symbol-format.md) explains portable symbol files; the [example directory](packages/web/public/examples/symbols) contains a small library for either app.
+## Licensing
 
-## Run the CLI
+Original application code is licensed under the [MIT license](LICENSE). Third-party code and assets retain their own licenses, including KiCad-derived symbols/footprints/models (CC BY-SA 4.0 with electronic-design exception), the Inter and JetBrains Mono fonts, and the LGPL STEP importer (`occt-import-js`).
 
-The CLI runs under Node and edits local `.ecaddraw` files. It shares its drawing commands with the web and desktop apps, through `@ecad/drawing-core`.
-
-```bash
-export ECAD_DRAWING="$PWD/drawing.ecaddraw"
-pnpm --silent cli tools
-pnpm --silent cli getDrawing
-pnpm --silent cli placeRectangle '{"x":20,"y":30,"width":40,"height":15,"rotation":0,"lineWidth":0.2}'
-pnpm --silent cli undo
-pnpm --silent cli mcp
-```
-
-`--drawing <path>` overrides `ECAD_DRAWING`. The default is `drawing.ecaddraw` in the current directory. A `path` in the tool arguments overrides both. A missing file starts empty and saves after the first edit. All nine drawing MCP tools are available, including batch placement, replacement, rotation, removal, and history navigation. Arguments accept JSON or `-` for stdin. Results use the MCP JSON format, including `structuredContent` and `isError`; failures return exit code 1.
-
-The drawing stays compatible with app project files. An adjacent `.history.json` file preserves undo branches between CLI calls and MCP restarts. Drawing history keeps at most 100 nodes, including the current state. CLI and MCP operations coordinate through a file lock and reread the drawing on each call.
-
-Build with `pnpm run build:cli`, then run `node packages/cli/bin/ecad.mjs`. The workspace also registers the `ecad` executable. `ecad mcp` starts the stdio MCP server. It takes no drawing, and each tool call names its drawing by absolute path. The desktop app adds it to Claude Code or Codex from **Settings > MCP**. See the [MCP guide](docs/mcp.md#cli-and-stdio-access) for client configuration and file behavior.
-
-## Schematic export
-
-Choose **Export drawing** in the editor toolbar to download a PNG, SVG or PDF without capturing the browser. The PCB editor has the same command under **Export**. The default is a 9600 × 6400 PNG on white. For PNG and SVG, set width and height explicitly. Every format takes a white, dark, or transparent background. Export fits the content into those dimensions without stretching.
-
-**Full sheet and drawing** includes the worksheet and expands to include objects outside the page. **Drawing only** fits the drawing with a 3 mm margin and omits the worksheet. Both modes omit the grid, selection, previews, and editor controls. The existing **View tools > Export PNG** command still captures the current viewport.
-
-SVG uses the shared drawing geometry and editable text, with no embedded screenshot. Its text names JetBrains Mono, so it looks the same only where that font is installed. Geometry uses the editor's curve tessellation. PNG draws the SVG at the selected resolution rather than enlarging the viewport capture. Output is limited to 16,384 pixels per side and 100 megapixels.
-
-PDF is one vector page at 1:1 scale, one drawing unit to a millimetre, so a full sheet prints at its sheet size and a board prints at its real size. A page that would pass 200 inches, the PDF limit, shrinks to fit. Text is set in a font built from JetBrains Mono's outlines and embedded in the file, so it looks the same in every viewer and can be searched and copied. Characters outside Latin, Latin Extended and Greek are left blank. A transparent background leaves the page unpainted, which viewers show as white. A PDF of a board or footprint puts each layer that has items on its own page, in the order of the Layers panel, drawn in that layer's colour. Every page has the board outline and the same size, so the pages line up when stacked. Each page names its layer in its top-left corner and in the PDF's bookmarks. Solder mask pages open the mask at each pad and unplated hole, as the mask Gerber does. Copper zones appear as their fills, with clearances cut out, in every format. Every page marks each drilled hole at the position and size the Excellon drill files give it. A hole is white where the page draws its pad, via or mask opening, so it knocks that shape out, and black where the page draws nothing under it, as KiCad's PDF export does. Vias are marked only on the copper pages. PNG and SVG stack every layer, so they cut every hole in the background colour, or in white on a transparent background.
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and [docs/publication.md](docs/publication.md). Production web and desktop builds bundle dependency notices and matching STEP importer source archives; the first build downloads roughly 53 MB of source archives (see [licenses/STEP-SOURCE.md](licenses/STEP-SOURCE.md)).

@@ -1,51 +1,55 @@
 # Settings
 
-Open **Settings** from the gear at the bottom of the project sidebar. **Project → Symbol libraries...** opens the same dialog on its libraries section.
+Open **Settings** from the gear icon at the bottom of the sidebar. **Project → Symbol libraries...** opens the same dialog directly on the **Symbol libraries** section.
 
-Each setting is global, per project, or both:
+## Available settings
 
-| Setting | Global | Project |
-| --- | --- | --- |
-| Theme (System, Light, Dark) | yes | no |
-| Antialiasing (Automatic, On, Off) | yes | no |
-| Show debug stats (off by default, Ctrl+Shift+D toggles) | yes | no |
-| Send performance data (off by default, builds with a PostHog key only, stored on its own; see `docs/performance.md`) | yes | no |
-| Electrical rule levels (Error, Warning, Off per rule) | yes | yes |
-| Symbol libraries | user libraries | project libraries |
+| Section | Setting | Global | Project | Availability |
+| --- | --- | --- | --- | --- |
+| Display | Theme (`System`, `Light`, `Dark`) | Yes | No | All builds |
+| Display | Antialiasing (`Automatic`, `On`, `Off`) | Yes | No | All builds |
+| Display | Show debug stats (`Ctrl+Shift+D`, default off) | Yes | No | All builds |
+| Editor toolbar | Board & footprint units (`mm`, `mil`) | Yes | No | PCB & footprint editors |
+| Electrical rules | ERC rule levels (`Error`, `Warning`, `Off` per rule) | Yes | Yes | All builds |
+| Symbol libraries | Enabled libraries, embedded symbols, directories | User | Project | All builds |
+| MCP | Claude Code & Codex stdio MCP configuration | Yes | No | Desktop app |
+| Updates | Release channel (`Stable`, `Nightly`) | Yes | No | `.deb`-installed desktop app |
+| Usage data | Send performance data (opt-in, default off) | Yes | No | Builds with `VITE_POSTHOG_KEY` |
 
-A project value wins over the global value. Rule levels merge rule by rule, so a project can turn off one rule and keep the global levels for the rest. In the dialog, **All projects** edits the global levels and **This project** edits the open project's.
+For settings that support both scopes (ERC rule levels), project overrides merge rule by rule on top of global levels: **All projects** edits global defaults, and **This project** edits the active project.
 
 ## Theme
 
-**System** follows the device's light or dark setting and switches with it. **Light** and **Dark** stay put. The theme covers the interface and every canvas: schematic, symbol, footprint, PCB, circuit graph, Gerber and STEP. Open views recolour in place and keep their camera and selection. Exported drawings ignore it. **Export drawing** has its own white, dark and transparent backgrounds.
+**System** tracks OS light/dark changes automatically; **Light** and **Dark** stay fixed. Theme changes recolor the UI and all canvases (schematic, symbol, footprint, PCB, circuit graph, Gerber, STEP) in place while preserving camera and selection. Drawing exports ignore UI theme and use their own background option.
 
-Interface colours are `light-dark()` pairs in `packages/core/src/styles.css`, picked by the root's `color-scheme`. Canvas colours are the light and dark palettes in `packages/core/src/drawing/schematic-theme.ts`. `settings/theme.ts` resolves the setting, writes `data-theme` on the root element and tells the canvases. `tests/theme.test.ts` checks that the accent, paper, desk and app background tokens match the canvas palettes, and that every canvas colour has at least 3:1 contrast against its paper.
+- UI colors use `light-dark()` tokens in `packages/core/src/styles.css` controlled by `color-scheme`.
+- Canvas palettes live in `packages/core/src/drawing/schematic-theme.ts` and are applied via `packages/core/src/settings/theme.ts` (`data-theme` on `<html>`). `tests/theme.test.ts` enforces token parity and at least 3:1 contrast against canvas paper.
+- Web injects an inline script before first paint to prevent theme flash; desktop reads settings in Electron's main process before window creation and sets `nativeTheme.themeSource`.
+- In light theme, unfocused Gerber layers use normal blending with a darker film tone instead of additive blending.
 
-The web app names the theme in an inline script before the first paint, so a saved theme does not flash the other one. The desktop main process reads the setting before it opens the window and sets Electron's `nativeTheme.themeSource`, which the page sees as the system setting.
+## Board units
 
-In the light theme, unfocused Gerber layers blend normally in a darker film tone. The dark theme adds their light to the backdrop, which would wash out on a light one.
+The `mm`/`mil` toggle beside the **2D** button in the PCB and footprint toolbars switches rulers, grid snapping, cursor readout, Attributes fields, Board setup rules, and DRC messages between millimetres and mils (decimal mil steps: `1, 2, 10, 20, 100 mil`). The preference is saved globally as `boardUnit` and applies to both editors. Schematics keep their 50 mil (`1.27 mm`) grid.
 
-## Where they are stored
+## Storage and schema compatibility
 
-Global settings live in one JSON file, `{"version": 1, ...}`, read by `appSettingsSchema` in `packages/core/src/settings/schema.ts`. A different build may have written the file, so reads are lenient: unknown keys pass through and are saved again, and an invalid value drops only its own field. Saves are strict about the fields this build knows, so a bad value is reported instead of dropped. Project settings follow the same rules. ERC levels are read rule by rule, so a level this build doesn't know drops only that rule's entry.
+Global settings are stored as UTF-8 JSON (`{"version": 1, ...}`) validated by `appSettingsSchema` in `packages/core/src/settings/schema.ts`:
 
-Add new settings as new optional fields and keep `version` at 1. A build fails to read a file with any other version, and the next change overwrites it, so bumping it would erase settings for anyone who runs an older build.
+- **Reads are lenient** — Unknown keys are preserved across saves, and an invalid field drops only that field (ERC levels drop only invalid individual rules).
+- **Saves are strict** — Invalid values for known fields fail rather than silently dropping.
+- **Keep `version` at `1`** — Add new settings as optional fields; changing `version` would cause older builds to reject and overwrite the file.
 
-- Web: `localStorage` under `ecad.settings.v1`. Other tabs pick up changes through the `storage` event.
-- Desktop: `settings.json` in the platform configuration directory, `$XDG_CONFIG_HOME/ecad` or `~/.config/ecad` on Linux, `~/Library/Application Support/ecad` on macOS and `%APPDATA%\ecad` on Windows. The main process writes it atomically with mode 0600. A damaged file loads as defaults, the dialog shows the error, and the next change replaces the file.
+### Storage locations
 
-The desktop symbol library configuration (`symbol-libraries.json`) and approved outside library directories (`approved-libraries.json`) sit in the same directory. Files that older versions wrote to `~/.ecad` are still read until the new file exists.
-
-Project settings live in the `[settings]` table of the project's `.ecadprj`:
+- **Web** — `localStorage` under `ecad.settings.v1` (synced across tabs via `storage` events). If absent, legacy `ecad.antialias` is migrated on next save. Opt-in telemetry consent lives separately under `ecad.telemetry.v1` (see [docs/performance.md](performance.md#field-data)).
+- **Desktop** — Platform config directory (`$XDG_CONFIG_HOME/ecad` or `~/.config/ecad` on Linux, `~/Library/Application Support/ecad` on macOS, `%APPDATA%\ecad` on Windows):
+  - `settings.json` — Atomic writes with mode `0600`. Damaged files fall back to defaults with an error notice until saved.
+  - `telemetry.json` — Standalone opt-in telemetry consent file.
+  - `symbol-libraries.json` and `approved-libraries.json` — User symbol libraries and approved external project library directories. (Legacy `~/.ecad/` files are still read until replaced.)
+- **Project settings** — Stored in the `[settings]` table of `.ecadprj` (for example `[settings.ercSeverity]`). Saving project settings rewrites only `.ecadprj` and enforces standard external-edit conflict checks.
 
 ```toml
 [settings.ercSeverity]
 unconnected-pin = "off"
 similar-net-names = "error"
 ```
-
-Builds from before the settings dialog reject an `.ecadprj` with a `[settings]` table, because the manifest schema was strict then. Later builds read unknown settings keys as described above.
-
-Saving project settings rewrites only `.ecadprj`. It fails with a conflict when another program changed the project since it was opened, like any other project save.
-
-The desktop renderer loads global settings before its first render, so viewers create their WebGL context with the saved antialiasing choice. The browser reads `localStorage` synchronously. Without `ecad.settings.v1`, the browser uses the old `ecad.antialias` key, and the next save removes it. The desktop app does not carry that key over; its antialiasing starts on Automatic.

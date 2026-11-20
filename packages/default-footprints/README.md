@@ -1,33 +1,28 @@
-# Default footprints
+# `@ecad/default-footprints`
 
-`@ecad/default-footprints` generates the 62 built-in footprints that symbols can use. Like `@ecad/default-symbols`, it has no runtime dependencies and works offline.
+Offline generator for ECAD's **64 built-in footprints**. It has zero runtime dependencies and loads on demand when the editor inspects or places footprints.
 
 ```ts
 import { generateDefaultFootprints } from "@ecad/default-footprints";
 
 const footprints = generateDefaultFootprints();
-// Each entry has the KiCad library name as its `category` and a portable .ecadfp `file`.
+// Each entry has the KiCad library name as `category` and a portable `.ecadfp` `file`.
 ```
 
-Every call returns new arrays and objects. The files use the [footprint file format](../../docs/footprints.md#file-format), so `footprintFileSchema` in `packages/core/src/footprint/format.ts` accepts them unchanged. A footprint's ID is its KiCad name in lower case, such as `r_0805_2012metric`. The editor loads the collection on demand, the first time the Attributes panel shows a component's footprint.
+Every call returns fresh arrays and objects conforming to the [footprint file format](../../docs/footprints.md#file-format-ecadfp). Footprint IDs are lowercased KiCad names (for example `r_0805_2012metric`).
 
-The collection covers the default footprint of every built-in symbol that has one, plus common alternatives:
+## Catalog
 
-- 0402, 0603, 0805 and 1206 chip resistors and capacitors, 0603, 0805 and 1206 inductors, a 1206 fuse, and 0603 and 0805 LEDs
-- an axial resistor, radial and disc capacitors, an SMD electrolytic capacitor and a trimmer capacitor
-- SOD-123, SOD-323 and SMA diodes, a DO-41 diode, and 3 mm and 5 mm LEDs
-- SOT-23, SOT-23-5, SOT-89-3, SOT-223, TO-92 and TO-220 packages
-- an HC49 crystal, a 3215 watch crystal, a 3225 four-pin crystal, a SOIC-8 208 mil package, a USB Micro-B receptacle, a trimmer potentiometer, a photoresistor, a buzzer, two coin cell holders, three switches and 2, 3, 4, 8 and 20 pin headers
-- QFN-16, QFN-40, QFN-48, QFN-52, QFN-56, QFN-60 and QFN-80 packages with exposed pads
-- the vendor parts of Raspberry Pi's RP2350A minimal design: an Amphenol Micro-B receptacle, a Samtec 2x18 header, a JST SH 3-pin connector, a Würth tactile switch, a SOT-223 with the tab as pad 4 and an Abracon 2016 inductor
+Covers default footprints for built-in symbols plus common alternatives and RP2350A reference parts:
 
-Symbols name their default footprint by ID in `src/catalog.ts`, `src/microcontrollers.ts`, `src/nordic.ts` and `src/legacy.ts` of `@ecad/default-symbols`. Several symbols share one footprint. The diodes all use SOD-123, the battery symbols share a coin cell holder, and the speaker uses the 2-pin header. Pads match pins by number. A pin without a number takes its position among the symbol's pins, counting from 1, as circuit components do, so the diode's K and A pins are pads 1 and 2. `tests/symbol-footprints.test.ts` checks that every default footprint has exactly one pad number for each pin.
+- **SMD passives & LEDs** — 0402, 0603, 0805, 1206 resistors/capacitors; 0603/0805/1206 inductors; 1206 fuse; 0603/0805 LEDs.
+- **Through-hole & special passives** — Axial resistor, radial/disc/SMD electrolytic/trimmer capacitors, HC49/3215/3225 crystals, trimmer pot, photoresistor, buzzer.
+- **Diodes & discrete semiconductors** — SOD-123, SOD-323, SMA, DO-41, 3 mm/5 mm LEDs, SOT-23, SOT-23-5, SOT-89-3, SOT-223, TO-92, TO-220.
+- **ICs, connectors & mechanical** — SOIC-8 (208 mil), QFN-16/40/48/52/56/60/80 (with exposed pads), USB Micro-B, coin cell holders, switches, 2/3/4/8/20-pin headers, M2.5/M3 unplated mounting holes, and Raspberry Pi RP2350A vendor parts (Amphenol Micro-B, Samtec 2×18 header, JST SH 3-pin, Würth tactile switch, SOT-223 with tab pad 4, Abracon 2016 inductor).
 
-The bipolar transistor symbols have pins B, C and E in that order, so they default to SOT-89-3, which has that pinout in parts such as the BCX56. The MOSFET symbols are G, S and D, the order of a SOT-23 MOSFET. The JFET symbols, the transformer, the antenna, the variable resistor, the power and ground symbols and Box have no default, because no standard package fits their pins. The nRF54L15 CSP and the nPM2100 WLCSP have none either. Their ball maps are specific to Nordic, which does not publish land patterns.
+Pads match symbol pins by number (or 1-based position for unnumbered pins), verified by `tests/symbol-footprints.test.ts`. Nordic QFN packages use generic KiCad footprints matching body/pitch/pin count—verify against Nordic's package drawings before fabrication. JFETs, transformers, antennas, variable resistors, power/net symbols, Box, and Nordic CSP/WLCSP packages have no default footprint.
 
-The Nordic QFN parts use KiCad's generic footprints for the same body, pitch and pin count: QFN-40 5 x 5 mm with a 3.6 mm exposed pad and QFN-48 6 x 6 mm with a 4.6 mm pad, the sizes KiCad's own nRF52 symbols use, VQFN-52 6 x 6 mm with a 4.7 mm pad, and, for the nPM2100, QFN-16 4 x 4 mm at 0.65 mm pitch with a 2.1 mm pad. Check these against Nordic's package drawings before ordering boards. The Raspberry Pi chips use the footprints KiCad's RP2040, RP2350A and RP2350B symbols name.
-
-## Export files
+## Exporting `.ecadfp` files
 
 From the repository root:
 
@@ -35,14 +30,15 @@ From the repository root:
 pnpm run footprints:generate /absolute/path/to/output
 ```
 
-Without a directory argument, the command writes to `packages/default-footprints/generated`. It writes one JSON `.ecadfp` file per footprint and copies the license and attribution documents. It refuses to overwrite existing files.
+Without a path, writes to `packages/default-footprints/generated` along with license/attribution files, refusing to overwrite existing files.
 
-## Source and conversion
+## Source, conversion, and extending
 
-[`src/catalog.ts`](src/catalog.ts) holds the footprints in KiCad's units and axes: millimetres, Y down, angles in degrees. A one-off script turned the `.kicad_mod` files at the commit in [NOTICE.md](NOTICE.md) into these entries, and the generator turns them into editor shapes. It flips the Y axis and converts angles to radians.
+- `src/catalog.ts` and `src/raspberry-pi-minimal.ts` store footprints in KiCad units (mm, Y down, degrees); the generator flips Y and converts angles to radians.
+- Each footprint (except the two mounting holes) links its 3D model from [`@ecad/default-models`](../default-models/README.md) via `src/models.ts`.
+- Exposed pad paste windows export as explicit `F.Paste` rectangles; custom pads expand to multi-rectangle pads sharing a pad number; arcs tessellate at ≤ 15°; text is omitted.
+- To add a footprint: add a catalog entry, link its model if applicable, update [NOTICE.md](NOTICE.md), and run `pnpm --filter @ecad/default-footprints test` and `pnpm exec tsx --test tests/symbol-footprints.test.ts`.
 
-Rounded rectangle and oval pads become square-cornered rectangles, or circles when an oval is round, and oval holes are round. The Raspberry Pi USB Micro-B receptacle is the exception: its shell legs are oval pads with slots, as in its source. Editor pads can have rounded corners, but the catalog does not record KiCad's corner ratios, so carrying them over means converting the `.kicad_mod` files again. A custom pad, such as the SOT-89 tab or the chamfered corner pads of a QFN, becomes one rectangle per part with the same pad number. Pads keep no KiCad mask margins, because ECAD opens the mask around every pad itself. Surface mount pads keep their paste setting. Where KiCad splits an exposed pad's paste into windows, the pad has no paste and the windows become filled rectangles on F.Paste. Arcs become lines of at most 15 degrees each. Filled pin 1 triangles become triangle shapes, and other polygons become outlines. Text is left out. Instead of KiCad's model path, each footprint links a model from [`@ecad/default-models`](../default-models/README.md), listed in `src/models.ts`.
+## License
 
-To add a footprint, convert its `.kicad_mod` file into a catalog entry with the same item kinds (a `tht` item takes an `oval` shape, which becomes fully rounded corners, and KiCad's longer `drill oval` size as its slot), add it to NOTICE.md, and run `pnpm --filter @ecad/default-footprints test` and `tests/symbol-footprints.test.ts`.
-
-The collection uses the KiCad library license, CC BY-SA 4.0 with its electronic-design exception. The Raspberry Pi footprints in `src/raspberry-pi-minimal.ts` are under Raspberry Pi's MIT license instead, reproduced in NOTICE.md. See [LICENSE.md](LICENSE.md) and [CC-BY-SA-4.0.txt](CC-BY-SA-4.0.txt).
+KiCad-derived footprints use **CC BY-SA 4.0** with KiCad's electronic-design exception; Raspberry Pi footprints (`src/raspberry-pi-minimal.ts`) use Raspberry Pi's **MIT license**. See [LICENSE.md](LICENSE.md), [CC-BY-SA-4.0.txt](CC-BY-SA-4.0.txt), and [NOTICE.md](NOTICE.md).

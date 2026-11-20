@@ -1,25 +1,28 @@
 # Browser tests
 
-`pnpm run test:browser` runs the same scenarios locally and in CI. There is no separate smoke or extended suite. CI divides them across two shards with two workers each.
+`pnpm run test:browser` runs the full Playwright browser suite locally and in CI (CI splits it across two shards with two workers each and no retries).
 
-Each browser test is one workflow a user goes through, such as drawing shapes, wiring pins, routing a track, importing a KiCad schematic or exporting a PDF. One test costs 4 to 15 seconds on CI, so the suite stays at about 80 tests. Geometry, normalization, serialization, validation and command combinations belong in the Node tests under `tests/*.test.ts`, which run in milliseconds.
+Each browser test covers one user-facing workflow—such as drawing shapes, wiring pins, routing a track, importing a KiCad schematic, or exporting a PDF. Because each browser test takes 4–15 seconds on CI, keep geometry, normalization, serialization, validation, and command edge cases in Node unit tests (`tests/*.test.ts`).
 
-Before adding a browser test, read "Tests" in `AGENTS.md`. Extend an existing scenario when the new behaviour is a step in a workflow that already has one. Use one representative input instead of repeating an interaction for every shape, symbol, viewport or platform. A PCB test that needs no routed copper opens the seeded project's empty board with `openEmptyBoard` in `pcb.spec.ts`. Loading the RP2350A example costs about 8 seconds a test, and every edit on it waits for the whole board to be analysed again.
+## Guidelines
 
-Run a feature or scenario directly:
+- Follow the **Tests** rules in [AGENTS.md](../AGENTS.md) before adding a test.
+- Extend an existing scenario when new behavior fits an existing workflow, and use one representative input rather than repeating across every shape or viewport.
+- For PCB tests that do not need routed copper, use `openEmptyBoard` in `tests/browser/pcb.spec.ts` instead of loading the RP2350A reference design (~8 seconds per test).
 
-```sh
+## Running tests and artifacts
+
+```bash
+pnpm run test:browser
 pnpm run test:browser tests/browser/pcb.spec.ts
 pnpm run test:browser --grep 'circuit'
 pnpm test
 ```
 
-Screenshots used by pixel assertions always run. Tests also capture a screenshot automatically on failure. To save review images and attachments:
+Playwright automatically saves failure screenshots. To also save review screenshots and attachments (output defaults to `test-results/`; pass `--output=/tmp/ecad-browser-results` to keep them in `/tmp`):
 
-```sh
-ECAD_BROWSER_ARTIFACTS=1 pnpm run test:browser tests/browser/projects-design.spec.ts
+```bash
+ECAD_BROWSER_ARTIFACTS=1 pnpm run test:browser tests/browser/projects-design.spec.ts --output=/tmp/ecad-browser-results
 ```
 
-Images saved with `testInfo.outputPath()` go to Playwright's output directory, `test-results/` by default. Add `--output=/tmp/ecad-browser-results` to keep them under `/tmp`.
-
-Keep workload timing and allocation budgets in the separate local performance suite described in [performance.md](performance.md). `pnpm run perf` retains its single-worker configuration.
+Workload timing and allocation budgets live in the separate local performance suite; see [docs/performance.md](performance.md).
