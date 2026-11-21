@@ -253,6 +253,40 @@ export function boardSelectionFromComponents(
 	};
 }
 
+export function netOfBoardSelection(
+	shapes: readonly EditorShape[],
+	circuit: Circuit,
+	selection: SchematicSelection,
+): string | null {
+	if (!selection.shapeIds.length) return null;
+	const selected = new Set(selection.shapeIds);
+	const netIds = new Set(circuit.nets.map((net) => net.id));
+	const foundNets = new Set<string>();
+	for (const shape of shapes) {
+		if (!selected.has(shape.id)) continue;
+		if (isBoardFootprint(shape) && shape.component) return null;
+		if ("net" in shape && shape.net && netIds.has(shape.net))
+			foundNets.add(shape.net);
+	}
+	return foundNets.size === 1 ? [...foundNets][0] : null;
+}
+
+export function boardSelectionFromNet(
+	shapes: readonly EditorShape[],
+	netId: string,
+): SchematicSelection {
+	return {
+		shapeIds: shapes
+			.filter(
+				(shape) =>
+					!isBoardFootprint(shape) && "net" in shape && shape.net === netId,
+			)
+			.map((shape) => shape.id)
+			.sort((a, b) => a - b),
+		childKey: null,
+	};
+}
+
 export function schematicSelectionFromComponents(
 	shapes: readonly EditorShape[],
 	circuit: Circuit,

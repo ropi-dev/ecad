@@ -4,9 +4,12 @@ import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { type Accessor, createMemo } from "solid-js";
 import {
 	boardSelectionFromComponents,
+	boardSelectionFromNet,
+	circuitSelectionFromSchematic,
 	componentsOfBoardSelection,
 	componentsOfCircuitSelection,
 	componentsOfSchematicSelection,
+	netOfBoardSelection,
 	type SchematicSelection,
 	sameSchematicSelection,
 	schematicSelectionFromCircuit,
@@ -14,6 +17,8 @@ import {
 	type ViewSelection,
 } from "#/circuit/selection-sync.ts";
 import type { EditorSession } from "#/components/editor/editorSession.ts";
+import { fromExternalStore } from "#/lib/external-store.ts";
+import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
 import { useViewSelectionSync } from "#/projects/useViewSelectionSync.ts";
 
 const byId = (a: number, b: number) => a - b;
@@ -30,15 +35,21 @@ function schematicFrom(
 			source.store.getSnapshot().circuit,
 			source.selection,
 		);
-	if (source.view === "pcb" && circuit)
-		return schematicSelectionFromComponents(
-			shapes,
-			circuit,
-			componentsOfBoardSelection(
-				source.store.getSnapshot().shapes,
-				source.selection,
-			),
+	if (source.view === "pcb" && circuit) {
+		const boardShapes = source.store.getSnapshot().shapes;
+		const components = componentsOfBoardSelection(
+			boardShapes,
+			source.selection,
 		);
+		if (components.length)
+			return schematicSelectionFromComponents(shapes, circuit, components);
+		const netId = netOfBoardSelection(boardShapes, circuit, source.selection);
+		if (netId)
+			return schematicSelectionFromCircuit(shapes, circuit, {
+				item: { kind: "net", id: netId },
+				checkedPins: [],
+			});
+	}
 	return nothing;
 }
 
@@ -47,16 +58,41 @@ function boardFrom(
 	source: ViewSelection,
 	circuit: Circuit | undefined,
 ): SchematicSelection {
-	const components =
-		source.view === "circuit"
-			? componentsOfCircuitSelection(
-					source.store.getSnapshot().circuit,
-					source.selection,
-				)
-			: source.view === "schematic" && circuit
-				? componentsOfSchematicSelection(circuit, source.selection)
-				: [];
-	return boardSelectionFromComponents(shapes, components);
+	if (source.view === "circuit") {
+		if (source.selection.item?.kind === "net")
+			return boardSelectionFromNet(shapes, source.selection.item.id);
+		return boardSelectionFromComponents(
+			shapes,
+			componentsOfCircuitSelection(
+				source.store.getSnapshot().circuit,
+				source.selection,
+			),
+		);
+	}
+	if (source.view === "schematic" && circuit) {
+		const components = componentsOfSchematicSelection(
+			circuit,
+			source.selection,
+		);
+		if (components.length)
+			return boardSelectionFromComponents(shapes, components);
+		const subject = circuitSelectionFromSchematic(
+			source.store.getSnapshot().shapes,
+			{
+				circuit,
+				graph: {
+					format: "ecad-circuit-graph",
+					version: 1,
+					circuitId: circuit.id,
+					positions: [],
+				},
+			},
+			source.selection,
+		);
+		if (subject?.kind === "net")
+			return boardSelectionFromNet(shapes, subject.id);
+	}
+	return nothing;
 }
 
 export function useDrawingSelectionSync(
@@ -71,39 +107,70 @@ export function useDrawingSelectionSync(
 		childKey: string | null;
 	}>,
 ) {
-	const current = createMemo(() => {
-		const { shapeIds, childKey } = selection();
-		return { shapeIds: [...shapeIds].sort(byId), childKey };
+	const current = createMemo(
+		() => {
+			const { shapeIds, childKey } = selection();
+			return { shapeIds: [...shapeIds].sort(byId), childKey };
+		},
+		{ equals: sameSchematicSelection },
+	);
+	const shapesSource = createMemo(() => {
+		const currentStore = options().store;
+		return fromExternalStore(
+			currentStore.subscribe,
+			() => currentStore.getSnapshot().shapes,
+		);
 	});
-	useViewSelectionSync(() => {
-		const { enabled, view: shown, store: drawing, session: editor } = options();
-		return {
-			enabled,
-			view: shown,
-			store: drawing,
-			equal: sameSchematicSelection,
-			receive: (source: ViewSelection, circuit: Circuit | undefined) =>
-				(shown === "pcb" ? boardFrom : schematicFrom)(
-					drawing.getSnapshot().shapes,
-					source,
-					circuit,
-				),
-			apply(next: SchematicSelection) {
-				editor.reveal(new Set(next.shapeIds));
-				const selected = editor.getState().selection;
-				editor.selectChild(
-					next.shapeIds.length === 1 &&
-						selected.size === 1 &&
-						selected.has(next.shapeIds[0])
-						? next.childKey
-						: null,
-				);
-				const state = editor.getState();
-				return {
-					shapeIds: [...state.selection].sort(byId),
-					childKey: state.childKey,
-				};
-			},
-		};
-	}, current);
+	const projectCircuits = useProjectSelection(
+		({ project }) => project?.circuits,
+	);
+	const revision = createMemo(
+		() => ({
+			shapes: shapesSource()(),
+			circuits: projectCircuits(),
+		}),
+		{
+			equals: (a, b) => a.shapes === b.shapes && a.circuits === b.circuits,
+		},
+	);
+	useViewSelectionSync(
+		() => {
+			const {
+				enabled,
+				view: shown,
+				store: drawing,
+				session: editor,
+			} = options();
+			return {
+				enabled,
+				view: shown,
+				store: drawing,
+				equal: sameSchematicSelection,
+				receive: (source: ViewSelection, circuit: Circuit | undefined) =>
+					(shown === "pcb" ? boardFrom : schematicFrom)(
+						drawing.getSnapshot().shapes,
+						source,
+						circuit,
+					),
+				apply(next: SchematicSelection) {
+					editor.reveal(new Set(next.shapeIds));
+					const selected = editor.getState().selection;
+					editor.selectChild(
+						next.shapeIds.length === 1 &&
+							selected.size === 1 &&
+							selected.has(next.shapeIds[0])
+							? next.childKey
+							: null,
+					);
+					const state = editor.getState();
+					return {
+						shapeIds: [...state.selection].sort(byId),
+						childKey: state.childKey,
+					};
+				},
+			};
+		},
+		current,
+		revision,
+	);
 }

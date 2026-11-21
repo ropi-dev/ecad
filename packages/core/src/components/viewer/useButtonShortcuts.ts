@@ -348,6 +348,7 @@ function listen() {
 			"role",
 			"open",
 			"inert",
+			"data-shortcut-scope",
 		],
 	};
 	window.addEventListener("keydown", keydown, true);

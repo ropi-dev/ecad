@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
+import { createBoardFile } from "#/board/format.ts";
 import { createEmptySymbolFile } from "#/components/editor/symbolFormat.ts";
 import { toastManager } from "#/components/ui/toast.ts";
 import { ProjectConflict } from "#/projects/errors.ts";
@@ -287,4 +288,100 @@ test("an open circuit takes the external circuit, keeps its node positions and s
 	await new Promise((resolve) => setTimeout(resolve, 20));
 	assert.equal(f.calls.saves, 1);
 	stop();
+});
+
+test("external reload deleting a focused view in split view promotes a surviving view and exits cleanly at one", async () => {
+	const base = snapshot();
+	const primaryBase: ProjectSnapshot = {
+		...base,
+		manifest: {
+			...base.manifest,
+			circuits: [{ circuit: "main.ecadckt" }],
+		},
+		circuits: [createCircuit("Main", primaryPcbId)],
+		boards: [createBoardFile("Main PCB", primaryPcbId)],
+	};
+	const f1 = fixture(primaryBase);
+	const stop1 = f1.session.connect();
+	await loaded(f1.session);
+	await f1.session
+		.getSnapshot()
+		.setSplitEditorViews(["schematic", "circuit", "pcb"], "schematic");
+	assert.deepEqual(f1.session.getSnapshot().splitViews, [
+		"schematic",
+		"circuit",
+		"pcb",
+	]);
+	f1.changeOnDisk(
+		{
+			...primaryBase,
+			manifest: { ...primaryBase.manifest, drawing: undefined },
+		},
+		[".ecadprj"],
+	);
+	await until(() => f1.session.getSnapshot().splitViews.length === 2);
+	assert.deepEqual(f1.session.getSnapshot().splitViews, ["circuit", "pcb"]);
+	assert.equal(
+		f1.session.getSnapshot().editorCircuit,
+		f1.session.getSnapshot().editorViews?.circuit,
+	);
+	assert.equal(f1.session.getSnapshot().editorBoard, null);
+	stop1();
+
+	const secDrawing = {
+		id: "sec",
+		circuitId: "sec",
+		name: "Secondary",
+		shapes: [],
+	};
+	const secBase: ProjectSnapshot = {
+		...base,
+		manifest: {
+			...base.manifest,
+			drawings: ["sec.ecaddraw"],
+			circuits: [{ circuit: "sec.ecaddraw" }],
+		},
+		drawings: [secDrawing],
+		circuits: [createCircuit("Secondary", "sec")],
+		boards: [createBoardFile("Secondary PCB", "sec")],
+	};
+	const f2 = fixture(secBase);
+	const stop2 = f2.session.connect();
+	await loaded(f2.session);
+	await f2.session.getSnapshot().selectEditorFile("sec.ecaddraw");
+	await f2.session
+		.getSnapshot()
+		.setSplitEditorViews(["schematic", "circuit", "pcb"], "pcb");
+	assert.ok(f2.session.getSnapshot().editorBoard);
+
+	// Delete PCB while PCB is focused: promote schematic and keep split at 2 views.
+	f2.changeOnDisk(
+		{
+			...secBase,
+			boards: [],
+		},
+		[".ecadprj"],
+	);
+	await until(() => f2.session.getSnapshot().splitViews.length === 2);
+	assert.deepEqual(f2.session.getSnapshot().splitViews, [
+		"schematic",
+		"circuit",
+	]);
+	assert.equal(f2.session.getSnapshot().editorBoard, null);
+	assert.equal(f2.session.getSnapshot().editorDrawing?.file.id, "sec");
+
+	// Delete circuit down to 1 remaining view: exit split view onto schematic.
+	f2.changeOnDisk(
+		{
+			...secBase,
+			manifest: { ...secBase.manifest, circuits: [] },
+			circuits: [],
+			boards: [],
+		},
+		[".ecadprj"],
+	);
+	await until(() => f2.session.getSnapshot().splitViews.length === 0);
+	assert.equal(f2.session.getSnapshot().editorCircuit, null);
+	assert.equal(f2.session.getSnapshot().editorDrawing?.file.id, "sec");
+	stop2();
 });

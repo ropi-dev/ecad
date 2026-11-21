@@ -7,6 +7,7 @@ import {
 import { ProjectFilesSidebar } from "@ecad/core/projects/ProjectFilesSidebar.tsx";
 import type { ProjectLinkProps } from "@ecad/core/projects/ProjectLink.tsx";
 import {
+	type EditorView,
 	ProjectProvider,
 	useProject,
 } from "@ecad/core/projects/ProjectProvider.tsx";
@@ -24,6 +25,7 @@ import {
 	createSignal,
 	onSettled,
 	Show,
+	untrack,
 } from "solid-js";
 import { createWebProjectStorage } from "#/projects/storage.ts";
 import { createWebSymbolLibraryStorage } from "#/symbol-library/storage.ts";
@@ -89,15 +91,28 @@ function useProjectFileUrl() {
 	const pathname = useLocation({ select: (location) => location.pathname });
 	const file = useSearch({ from: "__root__", select: (search) => search.file });
 	const view = useSearch({ from: "__root__", select: (search) => search.view });
+	const split = useSearch({
+		from: "__root__",
+		select: (search) => search.split,
+	});
 	const navigate = useNavigate();
 	const navigating = useRouterState({
 		select: (state) => state.status !== "idle" || state.isLoading,
 	});
 	let previous: { href: string; session: number } | null = null;
-	let pending: { id: string } | null = null;
+	let pending: { id: string; split?: string } | null = null;
+	const [pendingSplit, setPendingSplit] = createSignal<{
+		target: string | undefined;
+		view: EditorView;
+	} | null>(null);
 	const [failedRestoration, setFailedRestoration] = createSignal<{
 		id: string;
 	} | null>(null);
+	const canSplit = (entry: { id: string } | undefined) =>
+		!!entry &&
+		!entry.id.startsWith("symbol:") &&
+		!entry.id.startsWith("footprint:") &&
+		!entry.id.startsWith("asset:");
 
 	createEffect(
 		() => ({
@@ -105,10 +120,21 @@ function useProjectFileUrl() {
 			location: { href: href(), pathname: pathname() },
 			file: file(),
 			view: view(),
+			split: split(),
 			navigating: navigating(),
 			failedRestoration: failedRestoration(),
+			pendingSplit: pendingSplit(),
 		}),
-		({ context, location, file, view, navigating, failedRestoration }) => {
+		({
+			context,
+			location,
+			file,
+			view,
+			split,
+			navigating,
+			failedRestoration,
+			pendingSplit: pendingSplitToken,
+		}) => {
 			if (!context?.project || context.busy || navigating) return;
 			const {
 				project,
@@ -117,12 +143,14 @@ function useProjectFileUrl() {
 				editorSymbol,
 				editorFootprint,
 				editorBoard,
+				splitViews,
 			} = context;
 			const { manifest } = project;
 			const path = location.pathname;
 			if (path !== "/editor" && path !== "/step" && path !== "/gerber") {
 				previous = null;
 				pending = null;
+				if (pendingSplitToken !== null) setPendingSplit(null);
 				return;
 			}
 			const selections = projectFileSelections(project);
@@ -144,6 +172,10 @@ function useProjectFileUrl() {
 						? `asset:${context.selectedAsset.path}`
 						: undefined;
 			const active = selections.find((entry) => entry.id === activeId);
+			const activeSplit =
+				path === "/editor" && splitViews.length >= 2
+					? splitViews.join(",")
+					: undefined;
 			const requested = file
 				? selections.find(
 						(entry) =>
@@ -160,19 +192,61 @@ function useProjectFileUrl() {
 				: undefined;
 			const restorationFailed =
 				pending !== null && pending === failedRestoration;
-			if (restorationFailed) pending = null;
+			if (restorationFailed) {
+				pending = null;
+				if (pendingSplitToken !== null) setPendingSplit(null);
+			}
 			const changedLocation = previous?.href !== location.href;
 			const changedProject = previous?.session !== context.session;
 			const initial = previous === null || changedProject;
 			previous = { href: location.href, session: context.session };
+			const applySplit = (targetSplit: string | undefined) => {
+				const targetView: EditorView =
+					requested?.file === active?.file
+						? (requested?.view ?? "schematic")
+						: (active?.view ?? "schematic");
+				const token = { target: targetSplit, view: targetView };
+				setPendingSplit(token);
+				const wanted: EditorView[] = targetSplit
+					? (targetSplit.split(",") as EditorView[])
+					: [targetView];
+				void context.setSplitEditorViews(wanted, targetView).finally(() => {
+					setPendingSplit((current) => (current === token ? null : current));
+				});
+			};
 			if (changedLocation || changedProject) {
 				pending = null;
+				if (pendingSplitToken !== null) setPendingSplit(null);
 				if (!file && path !== "/editor" && context.selectedAsset) {
 					context.selectAsset(null);
 					return;
 				}
+				if (
+					changedLocation &&
+					!changedProject &&
+					path === "/editor" &&
+					requested &&
+					active &&
+					requested.file === active.file &&
+					canSplit(active) &&
+					(activeSplit !== undefined || split !== undefined)
+				) {
+					const targetView: EditorView = requested.view ?? "schematic";
+					if (split !== activeSplit) {
+						applySplit(split);
+						return;
+					}
+					if (
+						activeSplit !== undefined &&
+						context.splitViews.includes(targetView)
+					) {
+						if (targetView !== (active.view ?? "schematic"))
+							context.focusSplitView(targetView);
+						return;
+					}
+				}
 				if (requested && requested.id !== active?.id) {
-					const request = { id: requested.id };
+					const request = { id: requested.id, split };
 					pending = request;
 					if (path === "/editor") {
 						const selection =
@@ -195,22 +269,57 @@ function useProjectFileUrl() {
 					}
 					return;
 				}
+				if (path === "/editor" && canSplit(active) && split !== activeSplit) {
+					applySplit(split);
+					return;
+				}
 			}
 			if (pending && pending.id !== active?.id) return;
+			if (pending?.split) {
+				const targetSplit = pending.split;
+				pending = null;
+				if (
+					canSplit(active) &&
+					targetSplit !== activeSplit &&
+					path === "/editor"
+				) {
+					applySplit(targetSplit);
+					return;
+				}
+			}
 			pending = null;
-			if (active?.file !== file || active?.view !== view) {
-				void navigate({
-					to: path,
-					search: (previous) => ({
-						...previous,
-						file: active?.file,
-						view: active?.view,
-					}),
-					replace:
-						initial ||
-						!file ||
-						requested?.id === active?.id ||
-						restorationFailed,
+			if (pendingSplitToken !== null) {
+				const currentView: EditorView = active?.view ?? "schematic";
+				if (
+					pendingSplitToken.target === activeSplit &&
+					pendingSplitToken.view === currentView
+				)
+					setPendingSplit(null);
+				else return;
+			}
+			if (
+				active?.file !== file ||
+				active?.view !== view ||
+				activeSplit !== split
+			) {
+				untrack(() => {
+					void navigate({
+						to: path,
+						search: (previous) => ({
+							...previous,
+							file: active?.file,
+							view: active?.view,
+							split: activeSplit,
+						}),
+						replace:
+							initial ||
+							!file ||
+							requested?.id === active?.id ||
+							restorationFailed ||
+							(path === "/editor" &&
+								active?.file === file &&
+								(activeSplit !== undefined || split !== undefined)),
+					});
 				});
 			}
 		},

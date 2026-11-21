@@ -1,7 +1,8 @@
 .circuit-editor {
+	container-type: inline-size;
 	position: relative;
-	height: 100dvh;
-	min-height: 360px;
+	height: 100%;
+	min-height: 0;
 	overflow: hidden;
 	color: var(--color-fg);
 	font-size: var(--text-sm);
@@ -194,10 +195,19 @@
 .circuit-error p {
 	margin: 0;
 }
-@media (min-width: 761px) {
-	.circuit-error[data-beside-panel="true"] {
-		left: calc(var(--chrome-gap) + 18.5rem);
-		max-width: min(560px, calc(100% - 2 * var(--chrome-gap) - 18.5rem));
+@media (width >= 760px) {
+	@container (width < 761px) {
+		.circuit-error[data-beside-panel="true"] {
+			top: auto;
+			bottom: calc(var(--chrome-dock) + env(safe-area-inset-bottom));
+			z-index: 6;
+		}
+	}
+	@container (width >= 761px) {
+		.circuit-error[data-beside-panel="true"] {
+			left: calc(var(--chrome-gap) + 18.5rem);
+			max-width: min(560px, calc(100% - 2 * var(--chrome-gap) - 18.5rem));
+		}
 	}
 }
 .circuit-editor .circuit-node-button,

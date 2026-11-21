@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { isBoardFootprint } from "@ecad/drawing-core/board/footprints.ts";
 import { trackSegment } from "@ecad/drawing-core/board/geometry.ts";
 import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
 import {
@@ -11,6 +12,7 @@ import {
 } from "@ecad/drawing-core/commands/drawing-commands.ts";
 import { createEditorSession } from "#/components/editor/editorSession.ts";
 import { createEmptySymbolFile } from "#/components/editor/symbolFormat.ts";
+import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { InvalidFile } from "#/formats/import-effects.ts";
 import {
 	MAX_GERBER_ARCHIVE_BYTES,
@@ -527,5 +529,174 @@ test("undoing the removal of inner copper gives the board its copper layers back
 		board.store.getSnapshot().shapes.some((shape) => shape.id === track.id),
 	);
 	assert.equal(board.rules.get().copperLayers, 6);
+	stop();
+});
+
+test("split view loads circuit views together, focuses panes, broadcasts selection, and clears on file open", async () => {
+	const initial = snapshot();
+	const { session } = fixture({
+		...initial,
+		manifest: { ...initial.manifest, circuits: [{ circuit: "main.ecaddraw" }] },
+		circuits: [createCircuit("Main", primaryPcbId)],
+	});
+	const stop = session.connect();
+	await loaded(session);
+	const project = () => session.getSnapshot();
+	await project().setSplitEditorViews(
+		["pcb", "schematic", "circuit"],
+		"circuit",
+	);
+	assert.deepEqual(project().splitViews, ["schematic", "circuit", "pcb"]);
+	const views = required(project().editorViews);
+	assert.equal(views.schematic, "main");
+	assert.ok(views.circuit);
+	assert.ok(views.board);
+	assert.equal(project().editorCircuit, views.circuit);
+	assert.equal(project().editorBoard, null);
+
+	const schematicSelection = {
+		view: "schematic" as const,
+		store: project().store,
+		selection: { shapeIds: [1], childKey: null },
+	};
+	project().rememberViewSelection(schematicSelection);
+	const firstSynced = required(project().getViewSelection());
+	assert.equal(firstSynced.version, 1);
+	assert.equal(firstSynced.circuitId, primaryPcbId);
+	assert.equal(firstSynced.source, schematicSelection);
+	// Handoff echoes with origin must not overwrite the live synced selection.
+	project().rememberViewSelection({
+		view: "pcb",
+		store: required(views.board).store,
+		selection: { shapeIds: [2], childKey: null },
+		origin: schematicSelection,
+	});
+	const afterEcho = required(project().getViewSelection());
+	assert.equal(afterEcho.version, 1);
+	assert.equal(afterEcho.source, schematicSelection);
+
+	project().focusSplitView("pcb");
+	assert.deepEqual(project().splitViews, ["schematic", "circuit", "pcb"]);
+	assert.equal(project().editorBoard, views.board);
+	assert.equal(project().editorCircuit, null);
+
+	await project().setSplitEditorViews(["pcb"]);
+	assert.deepEqual(project().splitViews, []);
+	assert.equal(project().editorBoard, views.board);
+
+	await project().setSplitEditorViews(["schematic", "circuit"]);
+	assert.deepEqual(project().splitViews, ["schematic", "circuit"]);
+	project().selectEditorFile("main.ecaddraw");
+	assert.deepEqual(project().splitViews, []);
+	assert.equal(project().getViewSelection(), null);
+
+	stop();
+});
+
+test("exiting split view to the focused view cancels an in-flight split open", async () => {
+	const initial = snapshot();
+	const f = fixture({
+		...initial,
+		manifest: { ...initial.manifest, circuits: [{ circuit: "main.ecaddraw" }] },
+		circuits: [createCircuit("Main", primaryPcbId)],
+	});
+	const origSave = f.storage.save.bind(f.storage);
+	let notifySaveEntered: (() => void) | undefined;
+	const saveEntered = new Promise<void>((resolve) => {
+		notifySaveEntered = resolve;
+	});
+	let releaseSave: (() => void) | undefined;
+	let holdSave = false;
+	f.storage.save = async (...args) => {
+		if (holdSave) {
+			notifySaveEntered?.();
+			await new Promise<void>((resolve) => {
+				releaseSave = resolve;
+			});
+		}
+		return origSave(...args);
+	};
+	const stop = f.session.connect();
+	await loaded(f.session);
+	f.session
+		.getSnapshot()
+		.store.transact((current) => [
+			undefined,
+			{ ...current, shapes: [rectangle] },
+		]);
+	holdSave = true;
+	const opening = f.session
+		.getSnapshot()
+		.setSplitEditorViews(["schematic", "circuit", "pcb"], "schematic");
+	await saveEntered;
+	await f.session.getSnapshot().setSplitEditorViews(["schematic"]);
+	holdSave = false;
+	releaseSave?.();
+	await opening;
+	assert.deepEqual(f.session.getSnapshot().splitViews, []);
+	stop();
+});
+
+test("editing the schematic in split view updates the visible PCB pane without undoing board edits", async () => {
+	const initial = snapshot();
+	const f = fixture({
+		...initial,
+		manifest: { ...initial.manifest, circuits: [{ circuit: "main.ecaddraw" }] },
+		circuits: [createCircuit("Main", primaryPcbId)],
+	});
+	const origSave = f.storage.save.bind(f.storage);
+	f.storage.save = async (...args) => structuredClone(await origSave(...args));
+	const stop = f.session.connect();
+	await loaded(f.session);
+	const project = () => f.session.getSnapshot();
+	await project().setSplitEditorViews(["schematic", "pcb"], "schematic");
+	const board = required(project().editorViews?.board);
+	assert.deepEqual(
+		board.store.getSnapshot().shapes.filter(isBoardFootprint),
+		[],
+	);
+
+	const resistorDef = required(
+		symbolDefinitions.find((def) => def.id === "resistor") ??
+			symbolDefinitions[0],
+	);
+	const schematicEditor = createEditorSession(project().store);
+	const r1 = createSymbol(1, resistorDef, { x: 20, y: 20 }, "R1");
+	schematicEditor.place([r1], "Place resistor");
+	await project().save();
+	assert.deepEqual(
+		board.store
+			.getSnapshot()
+			.shapes.filter(isBoardFootprint)
+			.map((fp) => fp.attributes.reference),
+		["R1"],
+	);
+	assert.deepEqual(
+		required(project().project?.boards?.[0])
+			.shapes.filter(isBoardFootprint)
+			.map((fp) => fp.attributes.reference),
+		["R1"],
+	);
+
+	// PCB-only undo must stay intact and not trigger a re-sync from the schematic.
+	const boardEditor = createEditorSession(board.store);
+	boardEditor.restore(undoEffect);
+	await project().save();
+	assert.deepEqual(
+		board.store.getSnapshot().shapes.filter(isBoardFootprint),
+		[],
+	);
+
+	const r2 = createSymbol(2, resistorDef, { x: 60, y: 20 }, "R2");
+	schematicEditor.place([r2], "Place second resistor");
+	await project().save();
+	assert.deepEqual(
+		board.store
+			.getSnapshot()
+			.shapes.filter(isBoardFootprint)
+			.map((fp) => fp.attributes.reference)
+			.sort(),
+		["R1", "R2"],
+	);
 	stop();
 });

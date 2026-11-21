@@ -1,11 +1,11 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 export async function screenPointOfMillimetres(
-	page: Page,
+	target: Page | Locator,
 	x: number,
 	y: number,
 ) {
-	const rulers = page.getByRole("img", {
+	const rulers = target.getByRole("img", {
 		name: "Drawing rulers in millimetres",
 	});
 	await expect(rulers.locator("[data-axis]")).not.toHaveCount(0);

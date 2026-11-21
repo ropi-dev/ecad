@@ -9,6 +9,7 @@ import { isProjectError } from "#/projects/errors.ts";
 import type { ProjectDrawing, ProjectSnapshot } from "#/projects/format.ts";
 import { primaryPcbId } from "#/projects/pcb.ts";
 import type { createProjectAssets } from "#/projects/project-assets.ts";
+import { projectIndex } from "#/projects/project-index.ts";
 import type { ProjectSessionState } from "#/projects/project-session-state.ts";
 import type { ConfiguredSymbolLibrary } from "#/symbol-library/config.ts";
 import type { SymbolLibraryStorage } from "#/symbol-library/storage.ts";
@@ -210,6 +211,32 @@ export function createProjectAutosave(
 		}
 
 		state.synchronizing = false;
+		const previousIndex = projectIndex(previous);
+		const mainEdited = mainShapes !== state.savedMainShapes;
+		const editedDrawingIds = new Set(
+			[...drawingDocuments.values()]
+				.filter(
+					(entry) =>
+						drawingEdits.get(entry.file.id)?.shapes !== entry.savedShapes,
+				)
+				.map((entry) => entry.file.id),
+		);
+		const editedCircuitIds = new Set(
+			[...circuitDocuments.values()]
+				.filter(
+					(entry) =>
+						circuitInputs.get(entry.file.circuit.id) !==
+						entry.savedFile.circuit,
+				)
+				.map((entry) => entry.file.circuit.id),
+		);
+		const sharedAssetsChanged =
+			footprintEdits.size > 0 ||
+			nextFootprints !== undefined ||
+			edits.length > 0 ||
+			nextSymbols !== undefined ||
+			nextLibraries !== undefined ||
+			state.libraryRevision !== savingLibraryRevision;
 		state.savedMainShapes = savedMainShapes;
 		for (const file of document.circuits ?? []) {
 			const edit = circuitDocuments.get(file.circuit.id);
@@ -270,6 +297,75 @@ export function createProjectAutosave(
 			setDirty(state.needsSave);
 			setError("");
 		}
+		const splitBoard = state.splitViews.includes("pcb")
+			? state.editorViews?.board
+			: null;
+		const splitCircuitId = splitBoard
+			? state.editorViews?.circuitId
+			: undefined;
+		if (state.mounted && splitBoard && splitCircuitId) {
+			const documentCircuit = document.circuits?.find(
+				(file) => file.circuit.id === splitCircuitId,
+			)?.circuit;
+			const inputCircuit =
+				circuitInputs.get(splitCircuitId) ??
+				previousIndex.circuitsById.get(splitCircuitId)?.file.circuit;
+			const circuitChanged =
+				editedCircuitIds.has(splitCircuitId) ||
+				synchronizedCircuits.has(splitCircuitId) ||
+				nextCircuits !== undefined ||
+				(documentCircuit !== undefined && documentCircuit !== inputCircuit);
+			const drawingForCircuit =
+				splitCircuitId === primaryPcbId
+					? undefined
+					: (document.drawings?.find(
+							(drawing) => drawing.circuitId === splitCircuitId,
+						) ?? previousIndex.drawingsByCircuit.get(splitCircuitId)?.file);
+			const schematicChanged =
+				splitCircuitId === primaryPcbId
+					? mainEdited || externalDrawings.has(primaryPcbId)
+					: nextDrawings !== undefined ||
+						(drawingForCircuit !== undefined &&
+							(editedDrawingIds.has(drawingForCircuit.id) ||
+								externalDrawings.has(drawingForCircuit.id)));
+			if (sharedAssetsChanged || circuitChanged || schematicChanged) {
+				const syncGeneration = state.generation;
+				try {
+					const { announceBoardSync, boardContext, synchronizeBoardStore } =
+						await import("#/board/sync-document.ts");
+					if (
+						state.mounted &&
+						syncGeneration === state.generation &&
+						state.splitViews.includes("pcb") &&
+						state.editorViews?.board === splitBoard
+					) {
+						const report = await synchronizeBoardStore(
+							splitBoard.store,
+							boardContext(state.active, splitCircuitId),
+						);
+						if (report) {
+							const warningKey = `${report.stale}:${report.missing.join("\0")}`;
+							const previousWarning = state.boardSyncWarnings.get(
+								splitBoard.store,
+							);
+							state.boardSyncWarnings.set(splitBoard.store, warningKey);
+							const warningChanged =
+								(report.missing.length > 0 || report.stale > 0) &&
+								warningKey !== previousWarning;
+							if (
+								report.placed ||
+								report.updated ||
+								report.removed ||
+								warningChanged
+							)
+								announceBoardSync(report);
+						}
+					}
+				} catch (cause) {
+					showError(cause, "Unable to update the board from its schematic.");
+				}
+			}
+		}
 	};
 	const autosave = (onlyIfDirty = false): Promise<void> => {
 		if (onlyIfDirty && (state.conflict || state.synchronizing))
@@ -305,8 +401,10 @@ export function createProjectAutosave(
 		setBusy(true);
 		try {
 			return await enqueue(async () => {
-				await persist();
-				await transferAssets([]);
+				do {
+					await persist();
+					await transferAssets([]);
+				} while (state.needsSave && !state.conflict && state.mounted);
 				const snapshot = state.active;
 				if (!snapshot) return false;
 				const saved = await measurePerformanceAsync(

@@ -38,7 +38,10 @@ export function createProjectExternalReload(
 		setEditorSymbol,
 		setEditorFootprint,
 		setEditorBoard,
+		setEditorViews,
+		setSplitViews,
 		setSelectedAsset,
+		publishSelection,
 	} = state;
 	const unsaved = () => state.needsSave || state.unsavedEditors.size > 0;
 	let queued = false;
@@ -66,6 +69,11 @@ export function createProjectExternalReload(
 				replaceDrawingShapes(state.store, snapshot.shapes, true, snapshot);
 				state.savedMainShapes = state.store.getSnapshot().shapes;
 				names.push(snapshot.manifest.name);
+				if (
+					snapshot.manifest.drawing === undefined &&
+					state.editorViews?.schematic === "main"
+				)
+					setEditorViews({ ...state.editorViews, schematic: null });
 			}
 			for (const [id, document] of drawingDocuments) {
 				const next = after.drawingsById.get(id);
@@ -74,6 +82,8 @@ export function createProjectExternalReload(
 					drawingDocuments.delete(id);
 					closed.push(document.file.name);
 					if (state.editorDrawing === document) setEditorDrawing(null);
+					if (state.editorViews?.schematic === document)
+						setEditorViews({ ...state.editorViews, schematic: null });
 					continue;
 				}
 				if (!moved(next.path, before.drawingsById.get(id)?.path)) continue;
@@ -85,6 +95,8 @@ export function createProjectExternalReload(
 				};
 				drawingDocuments.set(id, replaced);
 				if (state.editorDrawing === document) setEditorDrawing(replaced);
+				if (state.editorViews?.schematic === document)
+					setEditorViews({ ...state.editorViews, schematic: replaced });
 			}
 			for (const [id, document] of symbolDocuments) {
 				const next = after.symbolsById.get(id);
@@ -131,6 +143,8 @@ export function createProjectExternalReload(
 					boardDocuments.delete(id);
 					closed.push(document.file.name);
 					if (state.editorBoard === document) setEditorBoard(null);
+					if (state.editorViews?.board === document)
+						setEditorViews({ ...state.editorViews, board: null });
 					continue;
 				}
 				if (!moved(next.path, before.boardsByCircuit.get(id)?.path)) continue;
@@ -144,6 +158,8 @@ export function createProjectExternalReload(
 				};
 				boardDocuments.set(id, replaced);
 				if (state.editorBoard === document) setEditorBoard(replaced);
+				if (state.editorViews?.board === document)
+					setEditorViews({ ...state.editorViews, board: replaced });
 			}
 			for (const [id, document] of circuitDocuments) {
 				const next = after.circuitsById.get(id);
@@ -152,6 +168,8 @@ export function createProjectExternalReload(
 					circuitDocuments.delete(id);
 					closed.push(document.file.circuit.name);
 					if (state.editorCircuit === document) setEditorCircuit(null);
+					if (state.editorViews?.circuit === document)
+						setEditorViews({ ...state.editorViews, circuit: null });
 					continue;
 				}
 				if (!moved(next.path, before.circuitsById.get(id)?.path)) continue;
@@ -166,6 +184,8 @@ export function createProjectExternalReload(
 				};
 				circuitDocuments.set(id, replaced);
 				if (state.editorCircuit === document) setEditorCircuit(replaced);
+				if (state.editorViews?.circuit === document)
+					setEditorViews({ ...state.editorViews, circuit: replaced });
 			}
 		} finally {
 			state.synchronizing = false;
@@ -197,7 +217,58 @@ export function createProjectExternalReload(
 		state.libraries = snapshot.symbolLibraries ?? [];
 		linkedAssembler.invalidate();
 		update(snapshot);
+		if (state.splitViews.length) {
+			const views = state.editorViews;
+			const remaining = views
+				? state.splitViews.filter((view) =>
+						view === "schematic"
+							? views.schematic !== null
+							: view === "circuit"
+								? views.circuit !== null
+								: views.board !== null,
+					)
+				: [];
+			setSplitViews(remaining.length >= 2 ? remaining : []);
+			const currentPrimary = state.editorCircuit
+				? "circuit"
+				: state.editorBoard
+					? "pcb"
+					: state.editorDrawing ||
+							(views?.schematic === "main" &&
+								!state.editorSymbol &&
+								!state.editorFootprint)
+						? "schematic"
+						: null;
+			if (
+				views &&
+				remaining.length >= 1 &&
+				(!currentPrimary || !remaining.includes(currentPrimary))
+			) {
+				const promoted = remaining[0];
+				if (promoted === "circuit" && views.circuit) {
+					setEditorDrawing(null);
+					setEditorBoard(null);
+					setEditorSymbol(null);
+					setEditorFootprint(null);
+					setEditorCircuit(views.circuit);
+				} else if (promoted === "pcb" && views.board) {
+					setEditorCircuit(null);
+					setEditorDrawing(null);
+					setEditorSymbol(null);
+					setEditorFootprint(null);
+					setEditorBoard(views.board);
+				} else if (promoted === "schematic" && views.schematic) {
+					setEditorCircuit(null);
+					setEditorBoard(null);
+					setEditorSymbol(null);
+					setEditorFootprint(null);
+					setEditorDrawing(views.schematic === "main" ? null : views.schematic);
+				}
+			}
+		}
 		state.selectionHandoff = null;
+		state.syncedSelection = null;
+		publishSelection();
 		state.selectionOrigins = new WeakSet();
 		if (state.viewSelection?.origin) {
 			const { origin: _origin, ...current } = state.viewSelection;

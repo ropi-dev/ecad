@@ -35,6 +35,7 @@ import {
 } from "@ecad/drawing-core/footprint/shapes.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import type { JSX } from "@solidjs/web";
+import { Dynamic } from "@solidjs/web";
 import {
 	createEffect,
 	createMemo,
@@ -175,6 +176,9 @@ export type EditorCanvasProps = Editor2DProps & {
 	documentSelection?: string;
 	syncSelection?: boolean;
 	active?: boolean;
+	splitPane?: boolean;
+	contained?: boolean;
+	fillHeight?: boolean;
 };
 
 type ResolvedDocument = { shapes: EditorShape[]; errors: string[] };
@@ -1018,7 +1022,7 @@ function EditorCanvas(props: EditorCanvasProps) {
 
 	// In a project the page tabs share the document bar's row. Standalone,
 	// they float at the top centre of the canvas.
-	const pageBar = (floating: boolean) => (
+	const pageBar = (floating: boolean | "pane") => (
 		<Show when={!sheetless()}>
 			<PageBar
 				pages={pages()}
@@ -1073,45 +1077,59 @@ function EditorCanvas(props: EditorCanvasProps) {
 			/>
 		);
 		return (
-			<main
-				class="relative flex h-dvh flex-col overflow-hidden"
+			<Dynamic
+				component={props.contained ? "section" : "main"}
+				aria-label={props.contained ? `${editorKind()} editor` : undefined}
+				class={[
+					"relative flex min-h-0 flex-col overflow-hidden",
+					props.fillHeight ? "h-full" : "h-dvh",
+				]}
 				ref={listen("keydown", editorKeyDown, true)}
 				onCopy={clipboard.onCopy}
 				onCut={clipboard.onCut}
 				onPaste={clipboard.onPaste}
 			>
-				<h1 class="sr-only">
+				<Dynamic component={props.splitPane ? "h2" : "h1"} class="sr-only">
 					{sheetless()
 						? `${editorKind()} editor · ${props.board?.file.name ?? props.footprintName ?? props.symbolName}`
 						: `Schematic editor · ${props.drawingName ? `${props.drawingName} · ` : ""}${pages().length > 1 ? `${page().name} (page ${pageIndex() + 1} of ${pages().length}) · ` : ""}${sheet().name ? `${sheet().name} · ` : ""}${formatInches(sheet().width)} × ${formatInches(sheet().height)} in`}
-				</h1>
-				{inWorkspace ? (
-					<DocumentBar
-						icon={
-							isBoard()
-								? Grid2x2
-								: isFootprint()
-									? Cpu
-									: sheetless()
-										? Component
-										: CircuitBoard
-						}
-						title={
-							props.board?.file.name ??
-							props.footprintName ??
-							props.symbolName ??
-							props.drawingName
-						}
-						selection={props.documentSelection}
-						view={isBoard() ? "pcb" : undefined}
-						center={pageBar(false)}
-						active={active()}
-					>
-						{props.headerControls ?? props.viewSwitch}
-					</DocumentBar>
-				) : (
-					<EditorHeader headerControls={props.headerControls} />
-				)}
+				</Dynamic>
+				<Show
+					when={!props.splitPane}
+					fallback={
+						<Show when={props.headerControls}>
+							{(controls) => <EditorHeader headerControls={controls()} />}
+						</Show>
+					}
+				>
+					{inWorkspace ? (
+						<DocumentBar
+							icon={
+								isBoard()
+									? Grid2x2
+									: isFootprint()
+										? Cpu
+										: sheetless()
+											? Component
+											: CircuitBoard
+							}
+							title={
+								props.board?.file.name ??
+								props.footprintName ??
+								props.symbolName ??
+								props.drawingName
+							}
+							selection={props.documentSelection}
+							view={isBoard() ? "pcb" : undefined}
+							center={pageBar(false)}
+							active={active()}
+						>
+							{props.headerControls ?? props.viewSwitch}
+						</DocumentBar>
+					) : (
+						<EditorHeader headerControls={props.headerControls} />
+					)}
+				</Show>
 				<div class="relative flex min-h-0 flex-1">
 					<div
 						ref={[
@@ -1120,7 +1138,7 @@ function EditorCanvas(props: EditorCanvasProps) {
 							listen("keydown", canvasKeyDown, true),
 						]}
 						class={[
-							"relative min-w-0 flex-1 touch-none",
+							"@container relative min-w-0 flex-1 touch-none",
 							sheetless() ? "bg-paper" : "bg-desk",
 							{
 								"[&_canvas]:cursor-grab": tool() === "pan",
@@ -1213,6 +1231,7 @@ function EditorCanvas(props: EditorCanvasProps) {
 						<EditorMessages
 							{...messages}
 							besidePanel={isFootprint() || (ercOpen() && !sheetless())}
+							aboveStatus={isBoard() && Boolean(boardEditor.rules)}
 						/>
 						{isFootprint() && (
 							<FootprintLayerPanel
@@ -1223,6 +1242,7 @@ function EditorCanvas(props: EditorCanvasProps) {
 								focused={layers.focused}
 								onSelect={layers.select}
 								onToggle={toggleLayer}
+								compact={props.splitPane}
 								realistic={{
 									shown: realisticBoard(),
 									onToggle: () => setRealisticBoard((shown) => !shown),
@@ -1271,7 +1291,9 @@ function EditorCanvas(props: EditorCanvasProps) {
 								/>
 							)}
 						</Show>
-						{inWorkspace ? undefined : pageBar(true)}
+						{inWorkspace && !props.splitPane
+							? undefined
+							: pageBar(props.splitPane ? "pane" : true)}
 						{ercOpen() && !sheetless() && (
 							<Loading
 								fallback={
@@ -1366,7 +1388,7 @@ function EditorCanvas(props: EditorCanvasProps) {
 						onCreate={commands.createSelectionSymbol}
 					/>
 				)}
-			</main>
+			</Dynamic>
 		);
 	};
 
@@ -1375,6 +1397,10 @@ function EditorCanvas(props: EditorCanvasProps) {
 			{(target) => (
 				<LibrarySymbolEditor
 					target={target()}
+					active={props.active}
+					contained={props.contained}
+					fillHeight={props.fillHeight}
+					splitPane={props.splitPane}
 					onClose={() => definitionEditing.setEditingDefinition(null)}
 				/>
 			)}
@@ -1384,6 +1410,10 @@ function EditorCanvas(props: EditorCanvasProps) {
 
 function LibrarySymbolEditor(props: {
 	target: SymbolEditTarget;
+	active?: boolean;
+	contained?: boolean;
+	fillHeight?: boolean;
+	splitPane?: boolean;
 	onClose: () => void;
 }) {
 	const symbol = useLibrarySymbolSave(() => props.target);
@@ -1391,6 +1421,10 @@ function LibrarySymbolEditor(props: {
 		<EditorCanvas
 			store={symbol.store}
 			symbolName={props.target.file.name}
+			active={props.active}
+			contained={props.contained}
+			fillHeight={props.fillHeight}
+			splitPane={props.splitPane}
 			headerControls={
 				<>
 					<button

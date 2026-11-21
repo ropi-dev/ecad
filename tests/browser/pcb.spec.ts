@@ -1,6 +1,11 @@
-import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
-import type { Page } from "@playwright/test";
+import { mkdir } from "node:fs/promises";
+import type {
+	EditorShape,
+	EditorSymbol,
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import type { Locator, Page } from "@playwright/test";
 import { required } from "../helpers/required.ts";
+import { captureArtifacts } from "./artifacts";
 import {
 	closeProjectFiles,
 	openProjectFiles,
@@ -336,6 +341,8 @@ test("the schematic, circuit and PCB of a circuit keep the same component select
 		"Schematic editor · RP2350A",
 	);
 	await expect.poll(selectedReferences).toEqual(["U1"]);
+	const schematicShapes = (await documentState(page))
+		.editorShapes as EditorShape[];
 
 	await page.getByRole("button", { name: "Switch to circuit view" }).click();
 	const selectedComponent = active.locator(".circuit-component.is-selected");
@@ -354,6 +361,127 @@ test("the schematic, circuit and PCB of a circuit keep the same component select
 		"PCB editor · RP2350A",
 	);
 	await expect.poll(selectedReferences).toEqual(["X1"]);
+
+	// Open 3-way split view and verify live selection syncing across all 3 panes.
+	const pcbShapes = (await documentState(page)).editorShapes as EditorShape[];
+	const x1Footprint = required(
+		pcbShapes.find(
+			(shape): shape is EditorSymbol =>
+				shape.kind === "symbol" &&
+				shape.footprint !== undefined &&
+				shape.attributes?.reference === "X1",
+		),
+	);
+	const referencesIn = async (pane: Locator, shapes: EditorShape[]) => {
+		const ids = await pane
+			.getByTestId("text-anchor")
+			.evaluateAll((anchors) =>
+				anchors.map((anchor) =>
+					Number(anchor.getAttribute("data-anchor-id")?.split(":")[0]),
+				),
+			);
+		return [
+			...new Set(
+				shapes
+					.filter(
+						(shape): shape is EditorSymbol =>
+							shape.kind === "symbol" && ids.includes(shape.id),
+					)
+					.map((shape) => shape.attributes?.reference),
+			),
+		].sort();
+	};
+	await page.getByRole("button", { name: "Split view", exact: true }).click();
+	const schematicPane = page.locator(
+		'[data-editor-pane="active"][data-pane-view="schematic"]',
+	);
+	const circuitPane = page.locator(
+		'[data-editor-pane="active"][data-pane-view="circuit"]',
+	);
+	const pcbPane = page.locator(
+		'[data-editor-pane="active"][data-pane-view="pcb"]',
+	);
+	await expect(schematicPane).toBeVisible();
+	await expect(circuitPane).toBeVisible();
+	await expect(pcbPane).toBeVisible();
+	await expect
+		.poll(() => referencesIn(schematicPane, schematicShapes))
+		.toEqual(["X1"]);
+	await expect(
+		circuitPane
+			.locator(".circuit-component.is-selected")
+			.getByRole("button", { name: "Select component X1" }),
+	).toBeVisible();
+	await expect.poll(() => referencesIn(pcbPane, pcbShapes)).toEqual(["X1"]);
+
+	// Selecting U1 in the circuit pane immediately syncs to schematic and PCB.
+	await circuitPane
+		.getByRole("button", { name: "Select component U1", exact: true })
+		.click();
+	await expect(
+		circuitPane
+			.locator(".circuit-component.is-selected")
+			.getByRole("button", { name: "Select component U1" }),
+	).toBeVisible();
+	await expect
+		.poll(() => referencesIn(schematicPane, schematicShapes))
+		.toEqual(["U1"]);
+	await expect.poll(() => referencesIn(pcbPane, pcbShapes)).toEqual(["U1"]);
+
+	if (captureArtifacts) {
+		await mkdir("/tmp/ecad-split-view", { recursive: true });
+		await page.screenshot({
+			path: "/tmp/ecad-split-view/split-3-columns.png",
+		});
+	}
+
+	// Selecting X1 in the PCB pane immediately syncs back to schematic and circuit.
+	await expect(
+		pcbPane.getByRole("button", { name: "Zoom in", exact: true }),
+	).toBeEnabled();
+	const splitX1Point = await screenPointOfMillimetres(
+		pcbPane,
+		x1Footprint.x,
+		x1Footprint.y,
+	);
+	await page.mouse.click(splitX1Point.x, splitX1Point.y);
+	await expect.poll(() => referencesIn(pcbPane, pcbShapes)).toEqual(["X1"]);
+	await expect
+		.poll(() => referencesIn(schematicPane, schematicShapes))
+		.toEqual(["X1"]);
+	await expect(
+		circuitPane
+			.locator(".circuit-component.is-selected")
+			.getByRole("button", { name: "Select component X1" }),
+	).toBeVisible();
+
+	// Switch split layout to grid, hide a view to get 2-way split, re-show, and exit.
+	await page.getByRole("button", { name: "Grid layout", exact: true }).click();
+	if (captureArtifacts) {
+		await page.screenshot({ path: "/tmp/ecad-split-view/split-3-grid.png" });
+	}
+	await page
+		.getByRole("button", { name: "Hide circuit view", exact: true })
+		.click();
+	await expect(circuitPane).toHaveCount(0);
+	await expect(schematicPane).toBeVisible();
+	await expect(pcbPane).toBeVisible();
+	await page
+		.getByRole("button", { name: "Columns layout", exact: true })
+		.click();
+	if (captureArtifacts) {
+		await page.screenshot({
+			path: "/tmp/ecad-split-view/split-2-columns.png",
+		});
+	}
+	await page
+		.getByRole("button", { name: "Show circuit view", exact: true })
+		.click();
+	await expect(circuitPane).toBeVisible();
+	await page
+		.getByRole("button", { name: "Exit split view", exact: true })
+		.click();
+	await expect(page.locator('[data-editor-pane="active"]')).toHaveCount(1);
 });
 
 test("the realistic board shows its solder mask in the flat and 3D views and each footprint's 3D model until the cube button hides them, and turning it off brings back the layer colors", async ({
