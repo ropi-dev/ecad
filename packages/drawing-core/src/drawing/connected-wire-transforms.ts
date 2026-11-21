@@ -65,7 +65,9 @@ export function moveShapes(
 		routing !== undefined &&
 		shapes.some((shape) => isBoardTrack(shape) || isVia(shape));
 	delta =
-		board && shapes.some(isBoardTrack)
+		board &&
+		shapes.some(isBoardTrack) &&
+		shapes.every((shape) => isBoardTrack(shape) || isVia(shape))
 			? octantDelta(delta, gridStep)
 			: snappedMoveDelta(anchorShape, delta, gridStep);
 	const moved = shapes.map((shape) => ({
