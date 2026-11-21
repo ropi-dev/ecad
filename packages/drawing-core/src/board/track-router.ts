@@ -198,7 +198,14 @@ export function touchingItems(
 	const index = itemIndex(routing.items);
 	const seen = new Set<CopperItem>();
 	const found: CopperItem[] = [];
-	forBuckets(mergeBounds(copper.hulls.map(hullBounds)), (key) => {
+	const area = mergeBounds(copper.hulls.map(hullBounds));
+	const reach = {
+		minX: area.minX - 1e-6,
+		minY: area.minY - 1e-6,
+		maxX: area.maxX + 1e-6,
+		maxY: area.maxY + 1e-6,
+	};
+	forBuckets(reach, (key) => {
 		for (const item of index.get(key) ?? []) {
 			if (seen.has(item)) continue;
 			seen.add(item);
