@@ -177,6 +177,7 @@ export type EditorCanvasProps = Editor2DProps & {
 	syncSelection?: boolean;
 	active?: boolean;
 	splitPane?: boolean;
+	contained?: boolean;
 	fillHeight?: boolean;
 };
 
@@ -1077,8 +1078,8 @@ function EditorCanvas(props: EditorCanvasProps) {
 		);
 		return (
 			<Dynamic
-				component={props.splitPane ? "section" : "main"}
-				aria-label={props.splitPane ? `${editorKind()} editor` : undefined}
+				component={props.contained ? "section" : "main"}
+				aria-label={props.contained ? `${editorKind()} editor` : undefined}
 				class={[
 					"relative flex min-h-0 flex-col overflow-hidden",
 					props.fillHeight ? "h-full" : "h-dvh",

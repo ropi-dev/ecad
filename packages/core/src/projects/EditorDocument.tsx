@@ -127,6 +127,7 @@ function EditorPane(props: {
 	view: EditorView;
 	active: boolean;
 	split: boolean;
+	splitKey: string;
 	focused: boolean;
 	placement?: { column?: string; row?: string };
 	onFocusPane: () => void;
@@ -136,26 +137,31 @@ function EditorPane(props: {
 }) {
 	let pane!: HTMLDivElement;
 	const focusSurface = () =>
-		pane.querySelector<HTMLElement>(
-			'canvas, svg[role="application"], [role="application"]',
-		);
+		pane.querySelector<HTMLElement>("canvas") ??
+		pane.querySelector<HTMLElement>('svg[role="application"]') ??
+		pane.querySelector<HTMLElement>('[role="application"][tabindex]');
 	createEffect(
 		() => ({
 			active: props.active,
 			split: props.split,
+			splitKey: props.splitKey,
 			focused: props.focused,
 		}),
-		({ active, split, focused }, previous) => {
+		({ active, split, splitKey, focused }, previous) => {
 			const becameVisibleSingle =
 				active && !split && previous?.active === false;
 			const modeOrFocusChanged =
 				active &&
 				focused &&
 				previous !== undefined &&
-				(previous.split !== split || (!previous.focused && split));
+				(previous.split !== split ||
+					previous.splitKey !== splitKey ||
+					!previous.focused);
 			if (!becameVisibleSingle && !modeOrFocusChanged) return;
-			queueMicrotask(() => {
-				if (!props.active) return;
+			let cancelled = false;
+			let frame = 0;
+			const restoreIfLost = () => {
+				if (cancelled || !props.active) return;
 				if (props.split && !props.focused) return;
 				const current = document.activeElement;
 				if (
@@ -170,7 +176,15 @@ function EditorPane(props: {
 						) ?? focusSurface())
 					: focusSurface();
 				quietFocus(target ?? null);
+			};
+			queueMicrotask(() => {
+				restoreIfLost();
+				if (!cancelled) frame = requestAnimationFrame(restoreIfLost);
 			});
+			return () => {
+				cancelled = true;
+				if (frame) cancelAnimationFrame(frame);
+			};
 		},
 	);
 	return (
@@ -184,25 +198,21 @@ function EditorPane(props: {
 						if (!props.focused) props.onFocusPane();
 						if (
 							event.target instanceof Element &&
-							!event.target.closest(
-								'button, a, input, select, textarea, canvas, [role="application"], [tabindex]',
-							)
-						) {
-							const active = document.activeElement;
-							if (!active || !pane.contains(active)) quietFocus(focusSurface());
-						}
+							event.target.closest("[data-split-pane-header]") &&
+							!event.target.closest("button")
+						)
+							quietFocus(focusSurface());
 					},
 					{ capture: true },
 				);
 				element.addEventListener(
 					"mousedown",
 					(event) => {
-						if (!props.split) return;
 						if (
+							props.split &&
 							event.target instanceof Element &&
-							!event.target.closest(
-								'button, a, input, select, textarea, canvas, [role="application"], [tabindex]',
-							)
+							event.target.closest("[data-split-pane-header]") &&
+							!event.target.closest("button")
 						)
 							event.preventDefault();
 					},
@@ -619,8 +629,7 @@ export function EditorDocument(
 								title={splitTitle()}
 							/>
 						</Show>
-						<Dynamic
-							component={isSplit() ? "main" : "div"}
+						<main
 							ref={gridEl}
 							class="relative grid min-h-0 flex-1 overflow-hidden"
 							style={gridStyle()}
@@ -631,6 +640,7 @@ export function EditorDocument(
 										view={pane().view}
 										active={paneVisible(pane().view)}
 										split={isSplit()}
+										splitKey={splitViews().join(",")}
 										focused={activeView() === pane().view}
 										placement={panePlacement(pane().view)}
 										onFocusPane={() => actions()?.focusSplitView(pane().view)}
@@ -650,6 +660,7 @@ export function EditorDocument(
 													{...canvasProps}
 													active={paneVisible("schematic")}
 													splitPane={isSplit()}
+													contained
 													fillHeight
 													store={
 														documents().schematic === "main"
@@ -698,6 +709,7 @@ export function EditorDocument(
 														{...canvasProps}
 														active={paneVisible("pcb")}
 														splitPane={isSplit()}
+														contained
 														fillHeight
 														store={board().store}
 														board={board()}
@@ -724,7 +736,7 @@ export function EditorDocument(
 									/>
 								)}
 							</For>
-						</Dynamic>
+						</main>
 					</div>
 				}
 			>

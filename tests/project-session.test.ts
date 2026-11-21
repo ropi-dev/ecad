@@ -599,13 +599,19 @@ test("exiting split view to the focused view cancels an in-flight split open", a
 		circuits: [createCircuit("Main", primaryPcbId)],
 	});
 	const origSave = f.storage.save.bind(f.storage);
+	let notifySaveEntered: (() => void) | undefined;
+	const saveEntered = new Promise<void>((resolve) => {
+		notifySaveEntered = resolve;
+	});
 	let releaseSave: (() => void) | undefined;
 	let holdSave = false;
 	f.storage.save = async (...args) => {
-		if (holdSave)
+		if (holdSave) {
+			notifySaveEntered?.();
 			await new Promise<void>((resolve) => {
 				releaseSave = resolve;
 			});
+		}
 		return origSave(...args);
 	};
 	const stop = f.session.connect();
@@ -620,7 +626,7 @@ test("exiting split view to the focused view cancels an in-flight split open", a
 	const opening = f.session
 		.getSnapshot()
 		.setSplitEditorViews(["schematic", "circuit", "pcb"], "schematic");
-	await new Promise((resolve) => setTimeout(resolve, 10));
+	await saveEntered;
 	await f.session.getSnapshot().setSplitEditorViews(["schematic"]);
 	holdSave = false;
 	releaseSave?.();

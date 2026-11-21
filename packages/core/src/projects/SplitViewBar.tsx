@@ -155,6 +155,7 @@ export function SplitPaneHeader(props: {
 	return (
 		<TooltipProvider delayDuration={350} skipDelayDuration={150}>
 			<div
+				data-split-pane-header=""
 				class={[
 					"flex h-8 shrink-0 items-center justify-between gap-2 border-t-2 border-b border-b-line-subtle bg-panel px-2.5 select-none",
 					props.focused ? "border-t-accent" : "border-t-transparent",

@@ -25,6 +25,7 @@ import {
 	createSignal,
 	onSettled,
 	Show,
+	untrack,
 } from "solid-js";
 import { createWebProjectStorage } from "#/projects/storage.ts";
 import { createWebSymbolLibraryStorage } from "#/symbol-library/storage.ts";
@@ -102,6 +103,7 @@ function useProjectFileUrl() {
 	let pending: { id: string; split?: string } | null = null;
 	const [pendingSplit, setPendingSplit] = createSignal<{
 		target: string | undefined;
+		view: EditorView;
 	} | null>(null);
 	const [failedRestoration, setFailedRestoration] = createSignal<{
 		id: string;
@@ -199,18 +201,16 @@ function useProjectFileUrl() {
 			const initial = previous === null || changedProject;
 			previous = { href: location.href, session: context.session };
 			const applySplit = (targetSplit: string | undefined) => {
-				const token = { target: targetSplit };
-				setPendingSplit(token);
-				const requestedView: EditorView =
+				const targetView: EditorView =
 					requested?.file === active?.file
 						? (requested?.view ?? "schematic")
 						: (active?.view ?? "schematic");
+				const token = { target: targetSplit, view: targetView };
+				setPendingSplit(token);
 				const wanted: EditorView[] = targetSplit
 					? (targetSplit.split(",") as EditorView[])
-					: [requestedView];
-				const focus: EditorView =
-					requested?.view ?? active?.view ?? "schematic";
-				void context.setSplitEditorViews(wanted, focus).finally(() => {
+					: [targetView];
+				void context.setSplitEditorViews(wanted, targetView).finally(() => {
 					setPendingSplit((current) => (current === token ? null : current));
 				});
 			};
@@ -289,7 +289,12 @@ function useProjectFileUrl() {
 			}
 			pending = null;
 			if (pendingSplitToken !== null) {
-				if (pendingSplitToken.target === activeSplit) setPendingSplit(null);
+				const currentView: EditorView = active?.view ?? "schematic";
+				if (
+					pendingSplitToken.target === activeSplit &&
+					pendingSplitToken.view === currentView
+				)
+					setPendingSplit(null);
 				else return;
 			}
 			if (
@@ -297,22 +302,24 @@ function useProjectFileUrl() {
 				active?.view !== view ||
 				activeSplit !== split
 			) {
-				void navigate({
-					to: path,
-					search: (previous) => ({
-						...previous,
-						file: active?.file,
-						view: active?.view,
-						split: activeSplit,
-					}),
-					replace:
-						initial ||
-						!file ||
-						requested?.id === active?.id ||
-						restorationFailed ||
-						(path === "/editor" &&
-							active?.file === file &&
-							(activeSplit !== undefined || split !== undefined)),
+				untrack(() => {
+					void navigate({
+						to: path,
+						search: (previous) => ({
+							...previous,
+							file: active?.file,
+							view: active?.view,
+							split: activeSplit,
+						}),
+						replace:
+							initial ||
+							!file ||
+							requested?.id === active?.id ||
+							restorationFailed ||
+							(path === "/editor" &&
+								active?.file === file &&
+								(activeSplit !== undefined || split !== undefined)),
+					});
 				});
 			}
 		},
