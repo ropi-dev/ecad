@@ -1098,7 +1098,7 @@ function EditorCanvas(props: EditorCanvasProps) {
 					when={!props.splitPane}
 					fallback={
 						<Show when={props.headerControls}>
-							<EditorHeader headerControls={props.headerControls} />
+							{(controls) => <EditorHeader headerControls={controls()} />}
 						</Show>
 					}
 				>
@@ -1231,6 +1231,7 @@ function EditorCanvas(props: EditorCanvasProps) {
 						<EditorMessages
 							{...messages}
 							besidePanel={isFootprint() || (ercOpen() && !sheetless())}
+							aboveStatus={isBoard() && Boolean(boardEditor.rules)}
 						/>
 						{isFootprint() && (
 							<FootprintLayerPanel
