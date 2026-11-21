@@ -4,7 +4,6 @@ import {
 	footprintLayerLabels,
 } from "@ecad/drawing-core/footprint/layers.ts";
 import { shapeLayers } from "@ecad/drawing-core/footprint/shapes.ts";
-import { zlibSync } from "fflate";
 import { drillHoles } from "#/board/drill.ts";
 import { maskOpenings } from "#/board/mask.ts";
 import {
@@ -17,7 +16,7 @@ import {
 } from "#/drawing/export.ts";
 import { fontPixels, overbarThickness } from "#/drawing/text.ts";
 import outlineData from "#/engine/drawing/fonts/jetbrains-mono-outlines.json";
-import { measurePerformance } from "#/performance/runtime.ts";
+import { measurePerformanceAsync } from "#/performance/runtime.ts";
 
 type Weight = "400" | "700";
 
@@ -222,8 +221,15 @@ end
 end`;
 }
 
+async function deflate(data: Uint8Array<ArrayBuffer>) {
+	const compressed = new Blob([data])
+		.stream()
+		.pipeThrough(new CompressionStream("deflate"));
+	return new Uint8Array(await new Response(compressed).arrayBuffer());
+}
+
 class PdfDocument {
-	private readonly objects: Uint8Array[] = [];
+	private readonly objects: (Uint8Array | Promise<Uint8Array>)[] = [];
 
 	reserve() {
 		this.objects.push(new Uint8Array());
@@ -236,16 +242,17 @@ class PdfDocument {
 			this.objects[id - 1] = encoder.encode(`${head}${dictionary}\nendobj\n`);
 			return id;
 		}
-		const data = zlibSync(encoder.encode(stream));
-		const start = encoder.encode(
-			`${head}${dictionary.slice(0, -2)} /Length ${data.length} /Filter /FlateDecode >>\nstream\n`,
-		);
-		const end = encoder.encode("\nendstream\nendobj\n");
-		const object = new Uint8Array(start.length + data.length + end.length);
-		object.set(start);
-		object.set(data, start.length);
-		object.set(end, start.length + data.length);
-		this.objects[id - 1] = object;
+		this.objects[id - 1] = deflate(encoder.encode(stream)).then((data) => {
+			const start = encoder.encode(
+				`${head}${dictionary.slice(0, -2)} /Length ${data.length} /Filter /FlateDecode >>\nstream\n`,
+			);
+			const end = encoder.encode("\nendstream\nendobj\n");
+			const object = new Uint8Array(start.length + data.length + end.length);
+			object.set(start);
+			object.set(data, start.length);
+			object.set(end, start.length + data.length);
+			return object;
+		});
 		return id;
 	}
 
@@ -253,7 +260,8 @@ class PdfDocument {
 		return this.set(this.reserve(), dictionary, stream);
 	}
 
-	bytes(root: number, info: number): Uint8Array<ArrayBuffer> {
+	async bytes(root: number, info: number): Promise<Uint8Array<ArrayBuffer>> {
+		const objects = await Promise.all(this.objects);
 		const header = new Uint8Array([
 			...encoder.encode("%PDF-1.4\n%"),
 			0xe2,
@@ -264,21 +272,21 @@ class PdfDocument {
 		]);
 		const offsets: number[] = [];
 		let length = header.length;
-		for (const object of this.objects) {
+		for (const object of objects) {
 			offsets.push(length);
 			length += object.length;
 		}
 		const trailer = encoder.encode(
-			`xref\n0 ${this.objects.length + 1}\n0000000000 65535 f \n${offsets
+			`xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets
 				.map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`)
 				.join(
 					"",
-				)}trailer\n<< /Size ${this.objects.length + 1} /Root ${root} 0 R /Info ${info} 0 R >>\nstartxref\n${length}\n%%EOF\n`,
+				)}trailer\n<< /Size ${objects.length + 1} /Root ${root} 0 R /Info ${info} 0 R >>\nstartxref\n${length}\n%%EOF\n`,
 		);
 		const output = new Uint8Array(length + trailer.length);
 		output.set(header);
 		let offset = header.length;
-		for (const object of this.objects) {
+		for (const object of objects) {
 			output.set(object, offset);
 			offset += object.length;
 		}
@@ -463,10 +471,10 @@ function pageContent(
 export function exportDrawingPdf(
 	shapes: EditorShape[],
 	options: DrawingPdfOptions,
-): Uint8Array<ArrayBuffer> {
-	return measurePerformance(
+): Promise<Uint8Array<ArrayBuffer>> {
+	return measurePerformanceAsync(
 		"drawing.export-pdf",
-		() => {
+		async () => {
 			const pages = options.layers
 				? layerPages(shapes, options)
 				: [{ scene: buildDrawingScene(shapes, options) }];

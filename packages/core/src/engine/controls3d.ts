@@ -52,6 +52,26 @@ export function create3DControls(
 		controls.touches.ONE = locked ? TOUCH.PAN : null;
 	};
 	setRotationLocked(lockTop);
+	let size: { clientWidth: number; clientHeight: number } | null = null;
+	let rect: DOMRect | null = null;
+	const observer =
+		typeof ResizeObserver === "undefined"
+			? null
+			: new ResizeObserver(() => {
+					size = {
+						clientWidth: canvas.clientWidth,
+						clientHeight: canvas.clientHeight,
+					};
+					rect = null;
+				});
+	observer?.observe(canvas);
+	const canvasSize = () =>
+		size ?? {
+			clientWidth: canvas.clientWidth,
+			clientHeight: canvas.clientHeight,
+		};
+	const canvasWidth = () => Math.max(canvasSize().clientWidth, 1);
+	const canvasHeight = () => Math.max(canvasSize().clientHeight, 1);
 	const pointers = new Map<number, { x: number; y: number; touch: boolean }>();
 	let orbitPointer: number | null = null;
 	let orbitRequiresAlt = false;
@@ -74,6 +94,7 @@ export function create3DControls(
 		onFocus?.(null);
 	};
 	const beginGesture = (clientX: number, clientY: number) => {
+		rect = null;
 		gestureStart = { x: clientX, y: clientY };
 		hideFocus();
 		pivot = focus?.(clientX, clientY) ?? null;
@@ -102,20 +123,19 @@ export function create3DControls(
 					panRight,
 					(-deltaX * speed * (camera.right - camera.left)) /
 						camera.zoom /
-						Math.max(canvas.clientWidth, 1),
+						canvasWidth(),
 				)
 				.addScaledVector(
 					panUp,
 					(deltaY * speed * (camera.top - camera.bottom)) /
 						camera.zoom /
-						Math.max(canvas.clientHeight, 1),
+						canvasHeight(),
 				);
 		} else {
 			const targetDistance =
 				camera.position.distanceTo(controls.target) *
 				Math.tan(((camera.fov / 2) * Math.PI) / 180);
-			const scale =
-				(2 * targetDistance * speed) / Math.max(canvas.clientHeight, 1);
+			const scale = (2 * targetDistance * speed) / canvasHeight();
 			panOffset
 				.addScaledVector(panRight, -deltaX * scale)
 				.addScaledVector(panUp, deltaY * scale);
@@ -130,7 +150,7 @@ export function create3DControls(
 		if (!Number.isFinite(factor) || factor <= 0 || factor === 1) return;
 		const camera = controls.object;
 		camera.updateMatrixWorld();
-		const rect = canvas.getBoundingClientRect();
+		rect ??= canvas.getBoundingClientRect();
 		const ndcX = ((clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1;
 		const ndcY = -((clientY - rect.top) / Math.max(rect.height, 1)) * 2 + 1;
 		if (camera instanceof OrthographicCamera) {
@@ -177,8 +197,7 @@ export function create3DControls(
 		}
 		const camera = controls.object;
 		showFocus();
-		const scale =
-			(2 * Math.PI * controls.rotateSpeed) / Math.max(canvas.clientHeight, 1);
+		const scale = (2 * Math.PI * controls.rotateSpeed) / canvasHeight();
 		const center = (pivot ?? controls.target).clone();
 		const up = new Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
 		const right = new Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
@@ -226,7 +245,7 @@ export function create3DControls(
 				zoomAt(event.clientX, event.clientY, MOUSE_WHEEL_ZOOM ** -steps);
 			return;
 		}
-		const delta = wheelDelta(event, canvas);
+		const delta = wheelDelta(event, canvasSize());
 		const orbitIntent =
 			event.shiftKey && (!rotationLocked || (!mouseWheel && !!unlock));
 		const mode = orbitIntent ? "orbit" : "pan";
@@ -240,9 +259,7 @@ export function create3DControls(
 		lastWheel = event.timeStamp;
 		lastWheelMode = mode;
 		const orbitX =
-			event.deltaMode === 2
-				? event.deltaX * Math.max(canvas.clientHeight, 1)
-				: delta.x;
+			event.deltaMode === 2 ? event.deltaX * canvasHeight() : delta.x;
 		if (orbitIntent && !rotationLocked) {
 			orbit(orbitX, delta.y);
 		} else if (orbitIntent) {
@@ -352,6 +369,7 @@ export function create3DControls(
 		pan,
 		setRotationLocked,
 		dispose: () => {
+			observer?.disconnect();
 			canvas.removeEventListener("pointerdown", onPointerDown, true);
 			canvas.removeEventListener("pointermove", onPointerMove, true);
 			canvas.removeEventListener("pointerup", onPointerEnd, true);

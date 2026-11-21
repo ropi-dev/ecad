@@ -146,7 +146,10 @@ const escapeXml = (value: string) =>
 				"'": "&apos;",
 			})[c] ?? c,
 	);
-const number = (value: number) => Number(value.toFixed(6));
+const number = (value: number) =>
+	value < 0
+		? -Math.round(-value * 1e6) / 1e6 || 0
+		: Math.round(value * 1e6) / 1e6;
 
 export function buildDrawingScene(
 	shapes: EditorShape[],

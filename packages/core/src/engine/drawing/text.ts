@@ -14,12 +14,17 @@ import {
 	padding,
 	textLayout,
 } from "#/drawing/text.ts";
+import { drawingFontsLoaded } from "#/engine/drawing/fonts.ts";
 
 let measureContext:
 	| CanvasRenderingContext2D
 	| OffscreenCanvasRenderingContext2D
 	| null = null;
 const atlasGutter = 8;
+const widthLimit = 8192;
+const widths = new Map<string, number>();
+let widthsLoaded = false;
+const glyphs = new Map<string, { texture: CanvasTexture; users: number }>();
 
 function glyphTexture(canvas: HTMLCanvasElement) {
 	const texture = new CanvasTexture(canvas);
@@ -31,13 +36,24 @@ function glyphTexture(canvas: HTMLCanvasElement) {
 
 /** Browser measurement adapter shared by editor text sizing and glyph textures. */
 export function measureText(text: string, bold?: boolean): number {
+	const loaded = drawingFontsLoaded();
+	if (loaded !== widthsLoaded) {
+		widths.clear();
+		widthsLoaded = loaded;
+	}
+	const key = bold ? `b${text}` : `r${text}`;
+	const cached = widths.get(key);
+	if (cached !== undefined) return cached;
 	measureContext ??=
 		typeof document === "undefined"
 			? new OffscreenCanvas(1, 1).getContext("2d")
 			: document.createElement("canvas").getContext("2d");
 	if (!measureContext) throw new Error("Text drawing is unavailable.");
 	measureContext.font = bold ? boldFont : font;
-	return measureContext.measureText(text).width;
+	const width = measureContext.measureText(text).width;
+	if (widths.size >= widthLimit) widths.clear();
+	widths.set(key, width);
+	return width;
 }
 
 function paintText(
@@ -98,8 +114,7 @@ function paintText(
 	}
 }
 
-/** One transparent glyph texture per text object, reused through moves and resizing. */
-export function createTextMaterial(
+function paintGlyph(
 	text: string,
 	horizontalAlign?: TextAlignment["horizontalAlign"],
 	bold?: boolean,
@@ -113,18 +128,38 @@ export function createTextMaterial(
 	if (!context) throw new Error("Text drawing is unavailable.");
 	context.scale(canvas.width / layout.width, canvas.height / layout.height);
 	paintText(context, layout, horizontalAlign, bold);
-	const texture = glyphTexture(canvas);
+	return glyphTexture(canvas);
+}
+
+export function createTextMaterial(
+	text: string,
+	horizontalAlign?: TextAlignment["horizontalAlign"],
+	bold?: boolean,
+) {
+	const key = `${drawingFontsLoaded() ? 1 : 0}${bold ? 1 : 0}${horizontalAlign ?? "left"}\u0000${text}`;
+	let glyph = glyphs.get(key);
+	if (!glyph) {
+		glyph = { texture: paintGlyph(text, horizontalAlign, bold), users: 0 };
+		glyphs.set(key, glyph);
+	}
+	glyph.users++;
+	const shared = glyph;
 	const material = new MeshBasicMaterial({
-		alphaMap: texture,
+		alphaMap: shared.texture,
 		transparent: true,
 		depthTest: false,
 		depthWrite: false,
 	});
+	let released = false;
 	return {
 		material,
 		dispose: () => {
 			material.dispose();
-			texture.dispose();
+			if (released) return;
+			released = true;
+			if (--shared.users > 0) return;
+			shared.texture.dispose();
+			if (glyphs.get(key) === shared) glyphs.delete(key);
 		},
 	};
 }

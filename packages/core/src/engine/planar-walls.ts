@@ -1,9 +1,12 @@
+import type { PlanarGeometry } from "#/engine/planar-geometry.ts";
+
 type Ring = [number, number][];
 
 export interface PlanarWalls {
 	extrude: "slab" | "barrel";
 	positions: Float32Array;
 	normals?: Float32Array;
+	instances?: { positions: Float32Array; normals?: Float32Array }[];
 }
 
 const MAX_WALL_FRACTION = 0.4;
@@ -179,4 +182,54 @@ export function buildPlanarWalls(
 	if (extrude === "slab") return { extrude, positions: slabPositions(edges) };
 	const positions = barrelPositions(edges, wall);
 	return { extrude, positions, normals: faceNormals(positions) };
+}
+
+export function buildGeometryWalls(
+	geometry: PlanarGeometry,
+	extrude: PlanarWalls["extrude"],
+	wall = 0,
+): PlanarWalls {
+	const { instances } = geometry;
+	if (!instances?.length)
+		return buildPlanarWalls(geometry.edges, extrude, wall);
+	const walls = buildPlanarWalls(plainEdges(geometry), extrude, wall);
+	walls.instances = instances.map((instance) => {
+		const { positions, normals } = buildPlanarWalls(
+			instance.edges,
+			extrude,
+			wall,
+		);
+		return normals ? { positions, normals } : { positions };
+	});
+	return walls;
+}
+
+export function plainEdges({ edges, regions, instances }: PlanarGeometry) {
+	if (!instances?.length) return edges;
+	const drawn = instancedRegions(regions.length, instances);
+	let count = 0;
+	regions.forEach((region, index) => {
+		if (!drawn[index]) count += region.edgeCount;
+	});
+	const plain = new Float32Array(count);
+	let offset = 0;
+	regions.forEach((region, index) => {
+		if (drawn[index]) return;
+		plain.set(
+			edges.subarray(region.edgeStart, region.edgeStart + region.edgeCount),
+			offset,
+		);
+		offset += region.edgeCount;
+	});
+	return plain;
+}
+
+export function instancedRegions(
+	count: number,
+	instances: NonNullable<PlanarGeometry["instances"]>,
+) {
+	const drawn = new Uint8Array(count);
+	for (const instance of instances)
+		for (const region of instance.regions) drawn[region] = 1;
+	return drawn;
 }

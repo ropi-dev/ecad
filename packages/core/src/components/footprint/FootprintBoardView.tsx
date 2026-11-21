@@ -14,7 +14,7 @@ import { maskOpenings } from "#/board/mask.ts";
 import { useFootprintModels } from "#/components/footprint/useFootprintModels.ts";
 import { GerberViewer } from "#/components/gerber/GerberViewer.tsx";
 import type { Viewer2DProps } from "#/components/viewer/Viewer2D.tsx";
-import { boundsPolygon } from "#/engine/realistic-board.ts";
+import { boundsPolygon, type MaskOpenings } from "#/engine/realistic-board.ts";
 import {
 	BOARD_SURFACE_Z,
 	type BoardRegion,
@@ -31,6 +31,8 @@ import {
 import type { ModelPlacement } from "#/footprint/models.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 import { useSchematicTheme } from "#/settings/theme.ts";
+
+const NO_OPENINGS: MaskOpenings = { top: [], bottom: [] };
 
 export function FootprintBoardView(
 	props: Pick<
@@ -168,12 +170,17 @@ export function FootprintBoardView(
 		const interior = boardInterior(shapes);
 		return interior.length ? interior : boundsPolygon(boardEdgeBounds(shapes));
 	});
+	const openings = createMemo(() =>
+		outline() ? maskOpenings(props.shapes, props.maskMargin) : NO_OPENINGS,
+	);
 	const boardShape = createMemo(() => {
 		const current = outline();
 		return (
 			current && {
 				outline: current,
-				openings: maskOpenings(props.shapes, props.maskMargin),
+				get openings() {
+					return openings();
+				},
 			}
 		);
 	});

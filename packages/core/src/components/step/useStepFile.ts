@@ -15,6 +15,17 @@ function readStep(file: File) {
 
 const release = (model: ParsedStepFile) => model.dispose();
 
+async function sameFile(a: File, b: File) {
+	if (a === b) return true;
+	if (a.name !== b.name || a.size !== b.size) return false;
+	const [left, right] = await Promise.all([a.arrayBuffer(), b.arrayBuffer()]);
+	const x = new Uint8Array(left),
+		y = new Uint8Array(right);
+	for (let index = 0; index < x.length; index++)
+		if (x[index] !== y[index]) return false;
+	return true;
+}
+
 export function useStepFile() {
 	const actions = useProjectActions();
 	const [restoreError, setRestoreError] = createSignal("");
@@ -34,7 +45,14 @@ export function useStepFile() {
 		undefined,
 		() => "step" as const,
 	);
+	let restored: File | undefined;
+	let generation = 0;
+	const forget = () => {
+		restored = undefined;
+		generation++;
+	};
 	const openFile = async (file: File) => {
+		forget();
 		const models = await files.readFiles([file], (imported) => {
 			if (imported.length) setModel(imported[0]);
 		});
@@ -45,20 +63,25 @@ export function useStepFile() {
 	const readAssets = createMemo(() => actions()?.readAssets);
 	createEffect(readAssets, (read) => {
 		let cancelled = false;
+		const current = generation;
 		void read?.("step")
 			.then(async ({ files: assets, problems }) => {
 				if (cancelled) return;
 				// Assets over the size limit are named; the newest valid one loads.
 				setRestoreError(problems.join(" "));
 				const file = assets.at(-1);
-				if (file)
-					await files.readFiles(
-						[file],
-						(imported) => {
-							if (imported.length) setModel(imported[0]);
-						},
-						false,
-					);
+				if (!file) return;
+				if (restored && (await sameFile(restored, file))) return;
+				if (cancelled || current !== generation) return;
+				restored = file;
+				const models = await files.readFiles(
+					[file],
+					(imported) => {
+						if (imported.length) setModel(imported[0]);
+					},
+					false,
+				);
+				if (!models?.length && restored === file) restored = undefined;
 			})
 			.catch((cause: unknown) => {
 				if (!cancelled)
@@ -81,8 +104,12 @@ export function useStepFile() {
 			return [restoreError(), files.message].filter(Boolean).join("; ");
 		},
 		openFile,
-		cancel: () => files.cancel(),
+		cancel: () => {
+			forget();
+			files.cancel();
+		},
 		clear: () => {
+			forget();
 			files.cancel();
 			setModel(null);
 			setRestoreError("");

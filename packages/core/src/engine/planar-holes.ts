@@ -1,7 +1,7 @@
 import {
 	DataTexture,
 	LinearFilter,
-	type Material,
+	Material,
 	Matrix4,
 	type Object3D,
 	RedFormat,
@@ -295,7 +295,10 @@ function installHoleCut(material: Material) {
 		holeLocal: { value: new Matrix4() },
 	};
 	cuts.set(material, uniforms);
-	material.onBeforeCompile = (shader) => {
+	const compile = material.onBeforeCompile;
+	const cacheKey = material.customProgramCacheKey;
+	material.onBeforeCompile = (shader, renderer) => {
+		compile.call(material, shader, renderer);
 		Object.assign(shader.uniforms, uniforms);
 		shader.vertexShader = shader.vertexShader
 			.replace(
@@ -304,7 +307,7 @@ function installHoleCut(material: Material) {
 			)
 			.replace(
 				"#include <begin_vertex>",
-				"#include <begin_vertex>\nvHoleUv = ((holeLocal * vec4(position, 1.0)).xy - holeMin) / holeSize;",
+				"#include <begin_vertex>\n#ifdef PLANAR_INSTANCE_OFFSET\nvHoleUv = ((holeLocal * vec4(position.xy + instanceOffset, position.z, 1.0)).xy - holeMin) / holeSize;\n#else\nvHoleUv = ((holeLocal * vec4(position, 1.0)).xy - holeMin) / holeSize;\n#endif",
 			);
 		shader.fragmentShader = shader.fragmentShader
 			.replace(
@@ -316,7 +319,10 @@ function installHoleCut(material: Material) {
 				"void main() {\n\tif (holeEnabled && all(greaterThanEqual(vHoleUv, vec2(0.0))) && all(lessThanEqual(vHoleUv, vec2(1.0))) && texture2D(holeMask, vHoleUv).r > 0.5) discard;",
 			);
 	};
-	material.customProgramCacheKey = () => "planar-hole-cut";
+	material.customProgramCacheKey = () =>
+		cacheKey === Material.prototype.customProgramCacheKey
+			? "planar-hole-cut"
+			: `${cacheKey.call(material)}+planar-hole-cut`;
 	material.needsUpdate = true;
 	return uniforms;
 }

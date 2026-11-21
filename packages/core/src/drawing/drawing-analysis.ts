@@ -81,6 +81,53 @@ function merged(boxes: Bounds[]) {
 	return result;
 }
 
+const CELL = 20;
+const MAX_CELLS = 256;
+
+const cellRange = (bounds: Bounds) => ({
+	minX: Math.floor(bounds.minX / CELL),
+	minY: Math.floor(bounds.minY / CELL),
+	maxX: Math.floor(bounds.maxX / CELL),
+	maxY: Math.floor(bounds.maxY / CELL),
+});
+const cellCount = (cells: Bounds) =>
+	cells.maxX < cells.minX || cells.maxY < cells.minY
+		? Infinity
+		: (cells.maxX - cells.minX + 1) * (cells.maxY - cells.minY + 1);
+
+function wireGrid(wires: readonly EditorShape[]) {
+	const reach = wires.map((wire) => grow(boundsOf(wire), MARGIN));
+	const cells = new Map<string, number[]>();
+	const wide: number[] = [];
+	for (const [index, bounds] of reach.entries()) {
+		const range = cellRange(bounds);
+		if (!finite(bounds) || cellCount(range) > MAX_CELLS) {
+			wide.push(index);
+			continue;
+		}
+		for (let x = range.minX; x <= range.maxX; x++)
+			for (let y = range.minY; y <= range.maxY; y++) {
+				const key = `${x},${y}`;
+				const entries = cells.get(key);
+				if (entries) entries.push(index);
+				else cells.set(key, [index]);
+			}
+	}
+	return (bounds: Bounds): EditorShape[] => {
+		const range = cellRange(bounds);
+		if (!finite(bounds) || cellCount(range) > MAX_CELLS)
+			return wires.filter((_, index) => overlaps(reach[index], bounds));
+		const candidates = new Set(wide);
+		for (let x = range.minX; x <= range.maxX; x++)
+			for (let y = range.minY; y <= range.maxY; y++)
+				for (const index of cells.get(`${x},${y}`) ?? []) candidates.add(index);
+		return [...candidates]
+			.filter((index) => overlaps(reach[index], bounds))
+			.sort((a, b) => a - b)
+			.map((index) => wires[index]);
+	};
+}
+
 function fullAnalysis(shapes: EditorShape[]): DrawingAnalysis {
 	const junctions = wireJunctions(shapes);
 	return {
@@ -107,8 +154,7 @@ function updateCrossings(
 	junctions: Point[],
 ) {
 	const wires: EditorShape[] = shapes.filter((shape) => shape.kind === "wire");
-	const touching = (bounds: Bounds) =>
-		wires.filter((wire) => overlaps(grow(boundsOf(wire), MARGIN), bounds));
+	const touching = wireGrid(wires);
 	const affected = new Set(wires.filter((wire) => near(boundsOf(wire))));
 	for (const wire of [...affected])
 		for (const other of touching(boundsOf(wire))) affected.add(other);

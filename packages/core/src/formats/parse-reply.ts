@@ -3,7 +3,7 @@ import {
 	compilePlanarGeometry,
 	type PlanarGeometry,
 } from "#/engine/planar-geometry.ts";
-import { buildPlanarWalls, type PlanarWalls } from "#/engine/planar-walls.ts";
+import { buildGeometryWalls, type PlanarWalls } from "#/engine/planar-walls.ts";
 import type { ParseResult } from "#/engine/types.ts";
 import { DRILL_WALL, isDrillLayer } from "#/formats/gerber/board-stack.ts";
 import { parsers } from "#/formats/registry.ts";
@@ -26,8 +26,8 @@ export function parseWorkerReply(
 			: compilePlanarGeometry(result.object.objects);
 		const walls =
 			mesh &&
-			buildPlanarWalls(
-				mesh.edges,
+			buildGeometryWalls(
+				mesh,
 				isDrillLayer(result.object) ? "barrel" : "slab",
 				DRILL_WALL,
 			);
