@@ -279,6 +279,7 @@ export function useBoardEditor(
 			);
 		return {
 			items: visibleItems,
+			copper: () => copperItems(currentSession.shapes(), currentNetlist),
 			rules: currentRules,
 			copperLayer: layer,
 			copperLayers: copperLayers(),

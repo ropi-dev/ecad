@@ -5,6 +5,11 @@ import type {
 import { outlineEncloses } from "@ecad/drawing-core/board/geometry.ts";
 import { ruleVia } from "@ecad/drawing-core/board/routing-grid.ts";
 import type { BoardRules } from "@ecad/drawing-core/board/rules.ts";
+import {
+	type TrackPosture,
+	type TrackRouting,
+	trackPath,
+} from "@ecad/drawing-core/board/track-router.ts";
 import { isNetLabel } from "@ecad/drawing-core/drawing/named-nets.ts";
 import {
 	canInspectSymbolChild,
@@ -57,9 +62,7 @@ import { freeze } from "@ecad/drawing-core/lib/freeze.ts";
 import { createEffect, createMemo, createSignal, onSettled } from "solid-js";
 import {
 	otherCopperLayer,
-	type TrackPosture,
 	trackAnchor,
-	trackPath,
 	trackSegments,
 } from "#/board/routing.ts";
 import {
@@ -147,6 +150,7 @@ type CanvasGesture =
 export interface BoardGestures {
 	/** Copper on the visible layers, in board coordinates. */
 	items(): readonly CopperItem[];
+	copper(): readonly CopperItem[];
 	rules: BoardRules;
 	/** The copper layer new tracks, zones and copper graphics go on. */
 	copperLayer: CopperLayer;
@@ -448,12 +452,20 @@ export function useCanvasGestures(getOptions: () => CanvasGesturesOptions) {
 		};
 		previewWire(connection);
 	};
+	const trackRouting = (): TrackRouting | undefined => {
+		const { board } = options;
+		return board && { items: board.copper(), clearance: board.rules.clearance };
+	};
 	const stepDrag = (active: Drag, point: Point | null, end: Point) => {
 		const step = canvasDragStep(active, point, end, {
 			shapes: options.shapes,
 			allowLocked: options.allowLocked,
 			cameraScale: () => options.cameraView.getProjection()?.scale ?? 1,
 			nextId: options.session.nextId,
+			routing: () => {
+				active.routing ??= trackRouting() ?? null;
+				return active.routing ?? undefined;
+			},
 			inScreenBox: (shape, box, mode) =>
 				options.cameraView.getProjection()?.inScreenBox(shape, box, mode) ??
 				false,
@@ -542,13 +554,10 @@ export function useCanvasGestures(getOptions: () => CanvasGesturesOptions) {
 		active.canvas.style.cursor = "";
 		setMarquee(null);
 		// Releasing where a wire could only cross another net restores the drag.
-		if (active.mode === "move" && active.unsafe && !cancel)
-			options.session.setError(UNSAFE_MOVE_MESSAGE);
-		if (
-			cancel ||
-			(active.created && !active.valid) ||
-			(active.mode === "move" && active.unsafe)
-		) {
+		const refused =
+			(active.mode === "move" || active.mode === "resize") && active.unsafe;
+		if (refused && !cancel) options.session.setError(UNSAFE_MOVE_MESSAGE);
+		if (cancel || (active.created && !active.valid) || refused) {
 			options.session.preview(null);
 			options.session.select(active.previousSelection);
 			options.session.selectChild(active.previousChild);
@@ -1475,6 +1484,7 @@ export function useCanvasGestures(getOptions: () => CanvasGesturesOptions) {
 		},
 		finishDrag,
 		finishWire,
+		trackRouting,
 		placeTrackVia,
 		stepCopperLayer,
 		flipTrackPosture,

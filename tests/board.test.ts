@@ -16,8 +16,11 @@ import {
 } from "@ecad/drawing-core/board/footprints.ts";
 import {
 	hullBounds,
+	hullDistance,
+	lineEnds,
 	outlineEncloses,
 	rectangleCorners,
+	shapeHulls,
 	trackSegment,
 } from "@ecad/drawing-core/board/geometry.ts";
 import { negotiatedRoute } from "@ecad/drawing-core/board/negotiated-route.ts";
@@ -30,12 +33,16 @@ import {
 	defaultBoardRules,
 } from "@ecad/drawing-core/board/rules.ts";
 import { synchronizeBoard } from "@ecad/drawing-core/board/sync.ts";
+import { dragTrackEnd } from "@ecad/drawing-core/board/track-drag.ts";
+import { trackPath } from "@ecad/drawing-core/board/track-router.ts";
 import {
 	type Circuit,
 	createCircuit,
 } from "@ecad/drawing-core/circuit/model.ts";
 import {
 	type EditorShape,
+	isUnsafeMove,
+	moveShapes,
 	resizeHandles,
 	resizeShape,
 	symbolShapes,
@@ -50,6 +57,7 @@ import type { FootprintReference } from "@ecad/drawing-core/footprint/reference.
 import {
 	createHole,
 	createPad,
+	createVia,
 	isPad,
 } from "@ecad/drawing-core/footprint/shapes.ts";
 import {
@@ -60,9 +68,12 @@ import {
 } from "#/board/fill.ts";
 import { boardFileSchema, createBoardFile } from "#/board/format.ts";
 import { exportFabrication } from "#/board/gerber.ts";
-import { trackAnchor, trackPath, trackSegments } from "#/board/routing.ts";
+import { trackAnchor, trackSegments } from "#/board/routing.ts";
 import { boardDisplay, boardLayerView, footprintItemId } from "#/board/view.ts";
 import { containsPoint } from "#/engine/geometry.ts";
+import exampleDesign from "#/examples/rp2350a-design.json" with {
+	type: "json",
+};
 import { parseGerber } from "#/formats/gerber/index.ts";
 import { projectFileSelections } from "#/projects/file-url.ts";
 import {
@@ -245,6 +256,71 @@ const pourCopper = (
 	rules: BoardRules = defaultBoardRules,
 ) => layerFill(fillZones(shapes, netlist, rules), "F.Cu");
 
+function applyMove(
+	shapes: readonly EditorShape[],
+	replacements: readonly EditorShape[],
+) {
+	const byId = new Map(replacements.map((shape) => [shape.id, shape]));
+	const known = new Set(shapes.map((shape) => shape.id));
+	return [
+		...shapes.map((shape) => byId.get(shape.id) ?? shape),
+		...replacements.filter((shape) => !known.has(shape.id)),
+	];
+}
+
+const trackRouting = (
+	shapes: readonly EditorShape[],
+	netlist = boardNetlist(undefined),
+	clearance = 0.2,
+) => ({ items: copperItems(shapes, netlist), clearance });
+
+const onOctant = (shape: EditorShape) =>
+	Math.abs(Math.sin(4 * shape.rotation)) < 1e-6;
+
+function touching(tracks: readonly EditorShape[]) {
+	const reached = new Set([tracks[0]]);
+	for (let grown = true; grown; ) {
+		grown = false;
+		for (const track of tracks)
+			if (
+				!reached.has(track) &&
+				[...reached].some((other) =>
+					shapeHulls(track).some((own) =>
+						shapeHulls(other).some((hull) => hullDistance(own, hull) <= 1e-6),
+					),
+				)
+			) {
+				reached.add(track);
+				grown = true;
+			}
+	}
+	return reached.size === tracks.length;
+}
+
+function joins(tracks: readonly EditorShape[], from: Point, to: Point) {
+	const key = (point: Point) =>
+		`${Math.round(point.x * 1000)},${Math.round(point.y * 1000)}`;
+	const reached = new Set([key(from)]);
+	for (let grown = true; grown; ) {
+		grown = false;
+		for (const track of tracks) {
+			const [a, b] = lineEnds(track).map(key);
+			if (reached.has(a) !== reached.has(b)) {
+				reached.add(a);
+				reached.add(b);
+				grown = true;
+			}
+		}
+	}
+	return reached.has(key(to));
+}
+
+const roundedEnds = (shape: EditorShape) =>
+	lineEnds(shape).map((point) => ({
+		x: Math.round(point.x * 1000) / 1000 || 0,
+		y: Math.round(point.y * 1000) / 1000 || 0,
+	}));
+
 const padNets = (footprint: EditorShape, netlist: BoardNetlist) =>
 	boardPads([footprint]).map((pad) =>
 		netlist.padNet(pad.component, pad.number),
@@ -351,6 +427,392 @@ describe("routing and the ratsnest", () => {
 			unroutedNets([...shapes, ...routeMid(shapes, netlist)], netlist),
 			["gnd"],
 		);
+	});
+
+	test("dragging a track slides it along the tracks at its ends, which keep their angles", () => {
+		const across = trackSegment(
+			1,
+			{ x: 0, y: 0 },
+			{ x: 2, y: 0 },
+			"F.Cu",
+			0.25,
+			"mid",
+		);
+		const bend = trackSegment(
+			2,
+			{ x: 2, y: 0 },
+			{ x: 4, y: 2 },
+			"F.Cu",
+			0.25,
+			"mid",
+		);
+		const down = trackSegment(
+			3,
+			{ x: 4, y: 2 },
+			{ x: 4, y: 5 },
+			"F.Cu",
+			0.25,
+			"mid",
+		);
+		const shapes = [across, bend, down];
+		const moved = applyMove(
+			shapes,
+			moveShapes(
+				[bend],
+				{ x: 0.5, y: -0.5 },
+				0,
+				bend,
+				shapes,
+				4,
+				false,
+				trackRouting(shapes),
+			),
+		);
+		assert.deepEqual(moved.map(roundedEnds), [
+			[
+				{ x: 0, y: 0 },
+				{ x: 3, y: 0 },
+			],
+			[
+				{ x: 3, y: 0 },
+				{ x: 4, y: 1 },
+			],
+			[
+				{ x: 4, y: 1 },
+				{ x: 4, y: 5 },
+			],
+		]);
+	});
+
+	test("dragging a track's end off a via reroutes it in 45 degree steps and keeps it joined to the via and the track there", () => {
+		const via = { ...createVia(1, { x: -6, y: 3 }), net: "a" };
+		const track = trackSegment(
+			2,
+			{ x: 0, y: 0 },
+			{ x: -6, y: 3 },
+			"F.Cu",
+			0.25,
+			"a",
+		);
+		const joined = trackSegment(
+			3,
+			{ x: -6, y: 3 },
+			{ x: -6, y: 9 },
+			"F.Cu",
+			0.25,
+			"a",
+		);
+		const shapes = [via, track, joined];
+		const moved = applyMove(
+			shapes,
+			dragTrackEnd(
+				track,
+				1,
+				{ x: -3, y: 1.5 },
+				shapes,
+				4,
+				0.1,
+				trackRouting(shapes),
+			),
+		);
+		const copper = moved.filter((shape) => shape.kind === "line");
+		assert.ok(copper.every(onOctant));
+		assert.ok(joins(copper, { x: 0, y: 0 }, { x: -6, y: 9 }));
+		assert.ok(joins(copper, { x: 0, y: 0 }, { x: -6, y: 3 }));
+		assert.ok(joins(copper, { x: 0, y: 0 }, { x: -3, y: 1.5 }));
+	});
+
+	test("a rerouted track goes around another net's copper", () => {
+		const track = trackSegment(
+			1,
+			{ x: 0, y: 0 },
+			{ x: 4, y: 0 },
+			"F.Cu",
+			0.25,
+			"a",
+		);
+		const joined = trackSegment(
+			2,
+			{ x: 4, y: 0 },
+			{ x: 4, y: 4 },
+			"F.Cu",
+			0.25,
+			"a",
+		);
+		const wall = trackSegment(
+			3,
+			{ x: 5, y: -3 },
+			{ x: 5, y: 2.5 },
+			"F.Cu",
+			0.25,
+			"b",
+		);
+		const shapes = [track, joined, wall];
+		const moved = applyMove(
+			shapes,
+			dragTrackEnd(
+				track,
+				1,
+				{ x: 6, y: 2 },
+				shapes,
+				4,
+				0.1,
+				trackRouting(shapes),
+			),
+		);
+		const net = moved.filter(
+			(shape) => shape.kind === "line" && shape.net === "a",
+		);
+		assert.ok(net.every(onOctant));
+		assert.ok(joins(net, { x: 0, y: 0 }, { x: 4, y: 4 }));
+		assert.ok(joins(net, { x: 0, y: 0 }, { x: 6, y: 2 }));
+		for (const shape of net)
+			assert.ok(
+				Math.min(
+					...shapeHulls(shape).flatMap((own) =>
+						shapeHulls(wall).map((other) => hullDistance(own, other)),
+					),
+				) >=
+					0.2 - 1e-6,
+			);
+	});
+
+	test("a drag whose connections cannot keep clear of another net is refused", () => {
+		const track = trackSegment(
+			1,
+			{ x: 0, y: 0 },
+			{ x: 4, y: 0 },
+			"F.Cu",
+			0.25,
+			"a",
+		);
+		const wall = trackSegment(
+			2,
+			{ x: 5, y: -30 },
+			{ x: 5, y: 30 },
+			"F.Cu",
+			0.25,
+			"b",
+		);
+		const fenced = [track, wall];
+		assert.ok(
+			isUnsafeMove(
+				dragTrackEnd(
+					track,
+					1,
+					{ x: 6, y: 0 },
+					fenced,
+					3,
+					0.1,
+					trackRouting(fenced),
+				),
+			),
+		);
+		const bend = trackSegment(
+			5,
+			{ x: 2, y: 0 },
+			{ x: 6, y: 4 },
+			"F.Cu",
+			0.25,
+			"a",
+		);
+		const crossed = [
+			trackSegment(4, { x: 0, y: 0 }, { x: 2, y: 0 }, "F.Cu", 0.25, "a"),
+			bend,
+			trackSegment(6, { x: 6, y: 4 }, { x: 6, y: 8 }, "F.Cu", 0.25, "a"),
+			trackSegment(7, { x: 3.5, y: -2 }, { x: 3.5, y: 2 }, "F.Cu", 0.25, "b"),
+		];
+		assert.ok(
+			isUnsafeMove(
+				moveShapes(
+					[bend],
+					{ x: 1, y: -1 },
+					0,
+					bend,
+					crossed,
+					8,
+					false,
+					trackRouting(crossed),
+				),
+			),
+		);
+	});
+
+	test("a track ending on another track's middle stays joined when either one moves", () => {
+		const trunk = trackSegment(
+			1,
+			{ x: 0, y: 0 },
+			{ x: 4, y: 0 },
+			"F.Cu",
+			0.25,
+			"a",
+		);
+		const branch = trackSegment(
+			2,
+			{ x: 2, y: 0 },
+			{ x: 2, y: 3 },
+			"F.Cu",
+			0.25,
+			"a",
+		);
+		const shapes = [trunk, branch];
+		const routing = trackRouting(shapes);
+		for (const [shape, delta] of [
+			[trunk, { x: 0, y: -1 }],
+			[branch, { x: 1, y: 0 }],
+		] as const) {
+			const moved = applyMove(
+				shapes,
+				moveShapes([shape], delta, 0, shape, shapes, 3, false, routing),
+			).filter((item) => item.width > 0);
+			assert.ok(moved.every(onOctant));
+			assert.ok(touching(moved));
+		}
+		const level = trackSegment(
+			4,
+			{ x: 0, y: 0 },
+			{ x: 10, y: 0 },
+			"F.Cu",
+			0.25,
+			"a",
+		);
+		const slope = trackSegment(
+			5,
+			{ x: 2, y: 2 },
+			{ x: 10, y: 10 },
+			"F.Cu",
+			0.25,
+			"a",
+		);
+		const rung = trackSegment(
+			6,
+			{ x: 5, y: 0 },
+			{ x: 5, y: 5 },
+			"F.Cu",
+			0.25,
+			"a",
+		);
+		const ladder = [level, slope, rung];
+		const moved = applyMove(
+			ladder,
+			moveShapes(
+				[level, slope],
+				{ x: 0, y: 1 },
+				0,
+				level,
+				ladder,
+				7,
+				false,
+				trackRouting(ladder),
+			),
+		).filter((item) => item.width > 0);
+		assert.ok(moved.every(onOctant));
+		assert.ok(touching(moved));
+	});
+
+	test("tracks that end up in one straight line after a drag merge into one", () => {
+		const before = trackSegment(
+			1,
+			{ x: 0, y: 0 },
+			{ x: 2, y: 0 },
+			"F.Cu",
+			0.25,
+			"a",
+		);
+		const track = trackSegment(
+			2,
+			{ x: 2, y: 0 },
+			{ x: 3, y: 1 },
+			"F.Cu",
+			0.25,
+			"a",
+		);
+		const shapes = [before, track];
+		const moved = applyMove(
+			shapes,
+			dragTrackEnd(
+				track,
+				1,
+				{ x: 4, y: 0 },
+				shapes,
+				3,
+				0.1,
+				trackRouting(shapes),
+			),
+		).filter((shape) => shape.width > 0);
+		assert.deepEqual(moved.map(roundedEnds), [
+			[
+				{ x: 0, y: 0 },
+				{ x: 4, y: 0 },
+			],
+		]);
+	});
+
+	test("a dragged track moves only in 45 degree steps", () => {
+		const track = trackSegment(
+			1,
+			{ x: 0, y: 0 },
+			{ x: 4, y: 0 },
+			"F.Cu",
+			0.25,
+			"a",
+		);
+		const [moved] = moveShapes(
+			[track],
+			{ x: 0.4, y: 1.7 },
+			0.1,
+			track,
+			[track],
+			2,
+			false,
+			trackRouting([track]),
+		);
+		assert.deepEqual(roundedEnds(moved), [
+			{ x: 0, y: 1.7 },
+			{ x: 4, y: 1.7 },
+		]);
+	});
+
+	test("moving tracks and vias on the example board keeps every net routed", () => {
+		const shapes = exampleDesign.board as unknown as EditorShape[];
+		const netlist = boardNetlist(exampleDesign.circuit as never);
+		const routing = trackRouting(
+			shapes,
+			netlist,
+			exampleDesign.rules.clearance,
+		);
+		const unrouted = (list: readonly EditorShape[]) =>
+			analyzeConnectivity(copperItems(list, netlist)).ratsnest.length;
+		const before = unrouted(shapes);
+		for (const [id, delta] of [
+			[41, { x: 0.5, y: 0 }],
+			[2466, { x: 0, y: -0.5 }],
+			[2257, { x: 0, y: 0.5 }],
+			[55, { x: 0, y: -0.5 }],
+		] as const) {
+			const shape = required(shapes.find((item) => item.id === id));
+			const moved = moveShapes(
+				[shape],
+				delta,
+				0,
+				shape,
+				shapes,
+				9000,
+				false,
+				routing,
+			);
+			assert.ok(!isUnsafeMove(moved));
+			assert.equal(
+				unrouted(applyMove(shapes, moved).filter((item) => item.width > 0)),
+				before,
+			);
+			for (const item of moved) {
+				const original = shapes.find((other) => other.id === item.id);
+				if (item.kind !== "line" || item.width === 0) continue;
+				if (original && original.rotation === item.rotation) continue;
+				assert.ok(onOctant(item));
+			}
+		}
 	});
 
 	test("a track end snaps to the centre of a nearby pad on its net, never to another net's pad", () => {
