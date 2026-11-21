@@ -259,15 +259,17 @@ function rework(
 	const added: Track[] = [];
 	let unsafe = false;
 	const place = (wire: Wire, path: readonly Point[], kept?: Follower) => {
-		const [first = [path[0], path[0]] as const, ...rest] = segments(path);
-		if (kept)
+		const lines = segments(path);
+		if (kept) {
+			const index = kept.track.id === dragged?.id ? lines.length - 1 : 0;
+			const [from, to] = lines.splice(index, 1)[0] ?? [path[0], path[0]];
 			result.push(
 				kept.backwards
-					? withEnds(kept.track, first[1], first[0])
-					: withEnds(kept.track, first[0], first[1]),
+					? withEnds(kept.track, to, from)
+					: withEnds(kept.track, from, to),
 			);
-		else if (!near(first[0], first[1])) rest.unshift(first);
-		for (const [from, to] of rest)
+		}
+		for (const [from, to] of lines)
 			added.push(
 				trackSegment(
 					nextShapeId + added.length,
