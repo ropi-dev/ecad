@@ -1094,7 +1094,14 @@ function EditorCanvas(props: EditorCanvasProps) {
 						? `${editorKind()} editor · ${props.board?.file.name ?? props.footprintName ?? props.symbolName}`
 						: `Schematic editor · ${props.drawingName ? `${props.drawingName} · ` : ""}${pages().length > 1 ? `${page().name} (page ${pageIndex() + 1} of ${pages().length}) · ` : ""}${sheet().name ? `${sheet().name} · ` : ""}${formatInches(sheet().width)} × ${formatInches(sheet().height)} in`}
 				</Dynamic>
-				<Show when={!props.splitPane}>
+				<Show
+					when={!props.splitPane}
+					fallback={
+						<Show when={props.headerControls}>
+							<EditorHeader headerControls={props.headerControls} />
+						</Show>
+					}
+				>
 					{inWorkspace ? (
 						<DocumentBar
 							icon={
@@ -1389,6 +1396,10 @@ function EditorCanvas(props: EditorCanvasProps) {
 			{(target) => (
 				<LibrarySymbolEditor
 					target={target()}
+					active={props.active}
+					contained={props.contained}
+					fillHeight={props.fillHeight}
+					splitPane={props.splitPane}
 					onClose={() => definitionEditing.setEditingDefinition(null)}
 				/>
 			)}
@@ -1398,6 +1409,10 @@ function EditorCanvas(props: EditorCanvasProps) {
 
 function LibrarySymbolEditor(props: {
 	target: SymbolEditTarget;
+	active?: boolean;
+	contained?: boolean;
+	fillHeight?: boolean;
+	splitPane?: boolean;
 	onClose: () => void;
 }) {
 	const symbol = useLibrarySymbolSave(() => props.target);
@@ -1405,6 +1420,10 @@ function LibrarySymbolEditor(props: {
 		<EditorCanvas
 			store={symbol.store}
 			symbolName={props.target.file.name}
+			active={props.active}
+			contained={props.contained}
+			fillHeight={props.fillHeight}
+			splitPane={props.splitPane}
 			headerControls={
 				<>
 					<button

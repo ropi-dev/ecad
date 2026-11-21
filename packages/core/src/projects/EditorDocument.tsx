@@ -11,6 +11,7 @@ import {
 	omit,
 	Show,
 	Switch,
+	untrack,
 } from "solid-js";
 import type {
 	Editor2DProps,
@@ -177,7 +178,7 @@ function EditorPane(props: {
 					: focusSurface();
 				quietFocus(target ?? null);
 			};
-			restoreIfLost();
+			untrack(restoreIfLost);
 			queueMicrotask(() => {
 				restoreIfLost();
 				if (!cancelled) frame = requestAnimationFrame(restoreIfLost);
@@ -374,7 +375,7 @@ export function EditorDocument(
 	>([1 / 3, 1 / 3, 1 / 3]);
 	const [gridColSplit, setGridColSplit] = createSignal(0.5);
 	const [gridRowSplit, setGridRowSplit] = createSignal(0.5);
-	let gridEl: HTMLDivElement | undefined;
+	let gridEl: HTMLElement | undefined;
 	const documents = createMemo(() => {
 		const { inProject, circuit, board, drawing, activeViews } = state();
 		const view = activeView();
