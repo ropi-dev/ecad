@@ -7,7 +7,7 @@ import { required } from "../helpers/required.ts";
 import { captureArtifacts } from "./artifacts";
 import { closeProjectFiles, openProjectFiles } from "./project-files";
 import { expect, test } from "./seeded-project";
-import { drawingGridStep, drawingPoint } from "./symbol-items";
+import { drawingGridStep, drawingPoint, waitForFrame } from "./symbol-items";
 
 test("dragging a generated label adds wires and persists through autosave, undo and reload", async ({
 	page,
@@ -57,6 +57,7 @@ test("dragging a generated label adds wires and persists through autosave, undo 
 	await expect(page.locator("canvas")).toBeVisible();
 	for (let index = 0; index < 7; index++)
 		await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+	await waitForFrame(page);
 	const { shapeBounds } = await import("@ecad/drawing-core/drawing/shapes.ts");
 	const bounds = shapeBounds(label);
 	const center = {

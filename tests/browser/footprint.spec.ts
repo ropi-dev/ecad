@@ -428,18 +428,6 @@ test("a footprint links a built-in 3D model, which the realistic board draws unt
 	const canvas = page
 		.getByRole("application", { name: "Footprint editor" })
 		.locator("canvas");
-	const settled = async () => {
-		let previous: Buffer | undefined;
-		await expect
-			.poll(async () => {
-				const next = await canvas.screenshot();
-				const same = previous?.equals(next) ?? false;
-				previous = next;
-				return same;
-			})
-			.toBe(true);
-		return required(previous);
-	};
 	const differingShare = (first: Buffer, second: Buffer) =>
 		page.evaluate(
 			async ([first, second]) => {
@@ -470,6 +458,20 @@ test("a footprint links a built-in 3D model, which the realistic board draws unt
 			},
 			[first.toString("base64"), second.toString("base64")],
 		);
+	const settled = async () => {
+		let previous: Buffer | undefined;
+		await expect
+			.poll(async () => {
+				const next = await canvas.screenshot();
+				const same = previous
+					? (await differingShare(previous, next)) === 0
+					: false;
+				previous = next;
+				return same;
+			})
+			.toBe(true);
+		return required(previous);
+	};
 	const shown = await settled();
 	await models.click();
 	await expect(models).toHaveAttribute("aria-pressed", "false");

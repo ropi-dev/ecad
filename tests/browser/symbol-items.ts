@@ -45,6 +45,15 @@ export async function openPlacedShape(page: Page) {
 	await selectDrawingShape(page, required(document.shapes.at(-1)).id);
 }
 
+export async function waitForFrame(page: Page) {
+	await page.evaluate(
+		() =>
+			new Promise((resolve) =>
+				requestAnimationFrame(() => requestAnimationFrame(resolve)),
+			),
+	);
+}
+
 export async function drawingPoint(
 	page: Page,
 	point: { x: number; y: number },
