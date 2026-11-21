@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
-import { applyCircuitCommand } from "@ecad/drawing-core/circuit/store.ts";
+import {
+	applyCircuitCommand,
+	createCircuitStore,
+} from "@ecad/drawing-core/circuit/store.ts";
+import { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
 import {
 	drawShape,
 	type EditorShape,
@@ -11,16 +15,28 @@ import { symbolShapes } from "@ecad/drawing-core/drawing/symbol-instances.ts";
 import { synchronizePcb } from "#/circuit/linked-schematic.ts";
 import {
 	boardSelectionFromComponents,
+	boardSelectionFromNet,
+	boardSelectionFromSource,
+	circuitSelectionFromBoard,
 	circuitSelectionFromComponents,
 	circuitSelectionFromSchematic,
 	componentsOfBoardSelection,
 	componentsOfCircuitSelection,
 	componentsOfSchematicSelection,
+	netOfBoardSelection,
+	schematicSelectionFromBoard,
 	schematicSelectionFromCircuit,
 	schematicSelectionFromComponents,
 } from "#/circuit/selection-sync.ts";
 import { componentFromSymbol } from "#/circuit/symbol-components.ts";
 import { symbolDefinitions } from "#/drawing/symbols.ts";
+import {
+	closeSplitPane,
+	openThreePaneSplit,
+	openTwoPaneSplit,
+	resizeSplitSizes,
+	switchPaneView,
+} from "#/projects/split-layout.ts";
 import { required } from "./helpers/required.ts";
 
 const resistor = required(
@@ -265,4 +281,155 @@ test("PCB footprints select the same components in the schematic and circuit", (
 		item: null,
 		checkedPins: [],
 	});
+});
+
+function linkedBoard() {
+	const pair = linkedPair();
+	const [a, b] = pair.file.circuit.components;
+	const footprint = (id: number, component: string): EditorShape => ({
+		...pair.symbolOf(0),
+		id,
+		footprint: { library: "builtin", id: "R_0603" },
+		component,
+	});
+	const copper = (id: number, net: string): EditorShape =>
+		({
+			...drawShape(id, "line", { x: 0, y: id }, { x: 5, y: id }),
+			layer: "F.Cu",
+			net,
+		}) as EditorShape;
+	const footprints = [footprint(1, a.id), footprint(2, b.id)];
+	const routed = [
+		...footprints,
+		copper(5, pair.net.id),
+		copper(6, pair.net.id),
+		copper(7, "other"),
+	];
+	return { ...pair, footprints, routed };
+}
+
+test("PCB copper selects its net in the schematic and circuit, and a selected footprint selects its component instead", () => {
+	const { file, shapes, net, labels, routed } = linkedBoard();
+	const [a] = file.circuit.components;
+	const select = (...shapeIds: number[]) => ({ shapeIds, childKey: null });
+	assert.equal(netOfBoardSelection(routed, select(5, 6)), net.id);
+	assert.equal(netOfBoardSelection(routed, select(5, 7)), null);
+	assert.equal(netOfBoardSelection(routed, select(1, 5)), null);
+	assert.deepEqual(boardSelectionFromNet(routed, net.id), select(5, 6));
+	assert.deepEqual(circuitSelectionFromBoard(routed, file.circuit, select(5)), {
+		item: { kind: "net", id: net.id },
+		checkedPins: [],
+	});
+	assert.deepEqual(
+		circuitSelectionFromBoard(routed, file.circuit, select(1, 5)),
+		{ item: { kind: "component", id: a.id }, checkedPins: [] },
+	);
+	assert.deepEqual(
+		schematicSelectionFromBoard(shapes, routed, file.circuit, select(6)),
+		select(...labels.map((label) => label.id).sort((x, y) => x - y)),
+	);
+});
+
+test("a net chosen in the schematic or circuit selects its PCB copper, and still names the net on an unrouted board", () => {
+	const { file, shapes, net, labels, symbolOf, routed, footprints } =
+		linkedBoard();
+	const [a] = file.circuit.components;
+	const circuit = (item: { kind: "net" | "component"; id: string }) => ({
+		view: "circuit" as const,
+		store: createCircuitStore(file),
+		selection: { item, checkedPins: [] },
+	});
+	const schematic = (shapeIds: number[]) => ({
+		view: "schematic" as const,
+		store: createDrawingStore(shapes),
+		selection: { shapeIds, childKey: null },
+	});
+	const copper = {
+		selection: { shapeIds: [5, 6], childKey: null },
+		netId: net.id,
+	};
+	assert.deepEqual(
+		boardSelectionFromSource(
+			routed,
+			circuit({ kind: "net", id: net.id }),
+			file,
+		),
+		copper,
+	);
+	assert.deepEqual(
+		boardSelectionFromSource(
+			routed,
+			schematic(labels.map((label) => label.id)),
+			file,
+		),
+		copper,
+	);
+	assert.deepEqual(
+		boardSelectionFromSource(
+			footprints,
+			circuit({ kind: "net", id: net.id }),
+			file,
+		),
+		{ selection: { shapeIds: [], childKey: null }, netId: net.id },
+	);
+	assert.deepEqual(
+		boardSelectionFromSource(routed, schematic([symbolOf(0).id]), file),
+		{ selection: { shapeIds: [1], childKey: null }, netId: null },
+	);
+	assert.deepEqual(
+		boardSelectionFromSource(
+			routed,
+			circuit({ kind: "component", id: a.id }),
+			file,
+		),
+		{ selection: { shapeIds: [1], childKey: null }, netId: null },
+	);
+});
+
+test("split view panes open beside the current view, swap, close to the nearest pane and resize within their limits", () => {
+	assert.deepEqual(openTwoPaneSplit("schematic", true), ["schematic", "pcb"]);
+	assert.deepEqual(openTwoPaneSplit("schematic", false), [
+		"schematic",
+		"circuit",
+	]);
+	assert.deepEqual(openTwoPaneSplit("pcb", true), ["pcb", "schematic"]);
+	assert.deepEqual(openThreePaneSplit(["pcb", "schematic"]), [
+		"pcb",
+		"schematic",
+		"circuit",
+	]);
+	assert.deepEqual(openThreePaneSplit(["circuit"]), [
+		"schematic",
+		"circuit",
+		"pcb",
+	]);
+	assert.deepEqual(switchPaneView(["schematic", "pcb"], 0, "pcb"), [
+		"pcb",
+		"schematic",
+	]);
+	assert.deepEqual(switchPaneView(["schematic", "pcb"], 1, "circuit"), [
+		"schematic",
+		"circuit",
+	]);
+	assert.deepEqual(
+		closeSplitPane(["schematic", "circuit", "pcb"], 1, "circuit"),
+		{ panes: ["schematic", "pcb"], focused: "pcb" },
+	);
+	assert.deepEqual(closeSplitPane(["schematic", "pcb"], 1, "schematic"), {
+		panes: ["schematic"],
+		focused: "schematic",
+	});
+	const near = (actual: number[], expected: number[]) =>
+		assert.ok(
+			actual.length === expected.length &&
+				actual.every((size, index) => Math.abs(size - expected[index]) < 1e-9),
+			`${actual} is not ${expected}`,
+		);
+	near(resizeSplitSizes([0.5, 0.5], 0, 0.1, 0.2), [0.6, 0.4]);
+	near(resizeSplitSizes([0.5, 0.5], 0, 0.6, 0.2), [0.8, 0.2]);
+	near(resizeSplitSizes([1 / 3, 1 / 3, 1 / 3], 1, -1, 0.1), [
+		1 / 3,
+		0.1,
+		2 / 3 - 0.1,
+	]);
 });

@@ -175,6 +175,11 @@ export type EditorCanvasProps = Editor2DProps & {
 	documentSelection?: string;
 	syncSelection?: boolean;
 	active?: boolean;
+	visible?: boolean;
+	inPane?: boolean;
+	clearSidebar?: boolean;
+	splitPaneCount?: number;
+	circuitId?: string;
 };
 
 type ResolvedDocument = { shapes: EditorShape[]; errors: string[] };
@@ -377,6 +382,24 @@ function EditorCanvas(props: EditorCanvasProps) {
 	const allowLocked = createMemo(() => editor().allowLocked);
 	const draft = createMemo(() => editor().draft);
 	const editorPage = createMemo(() => editor().page);
+	const cancelGestures = () => {
+		gestures.finishDrag(true);
+		gestures.finishWire();
+	};
+	createEffect(store, (current) => session.connect(current, cancelGestures));
+	const syncedNetId = useDrawingSelectionSync(
+		() => ({
+			enabled: props.syncSelection ?? false,
+			visible: props.visible ?? active(),
+			active: active(),
+			circuitId: props.circuitId,
+			view: isBoard() ? "pcb" : "schematic",
+			store: store(),
+			session,
+			storeVersion: committedShapes(),
+		}),
+		() => ({ shapeIds: selectedIds(), childKey: selectedChildKey() }),
+	);
 	const boardEditor = useBoardEditor(() => ({
 		board: props.board,
 		store: store(),
@@ -390,6 +413,7 @@ function EditorCanvas(props: EditorCanvasProps) {
 		setActive: layers.activate,
 		selection: selectedIds(),
 		ratsnestShown: flatShown(),
+		syncedNetId: syncedNetId(),
 	}));
 	const pages = createMemo(() => drawingPages(drawingPageList()));
 	const pageIndex = createMemo(() => {
@@ -623,20 +647,6 @@ function EditorCanvas(props: EditorCanvasProps) {
 			boardEditor.clearSyncReport();
 			announceBoardSync(report);
 		},
-	);
-	const cancelGestures = () => {
-		gestures.finishDrag(true);
-		gestures.finishWire();
-	};
-	createEffect(store, (current) => session.connect(current, cancelGestures));
-	useDrawingSelectionSync(
-		() => ({
-			enabled: (props.syncSelection ?? false) && active(),
-			view: isBoard() ? "pcb" : "schematic",
-			store: store(),
-			session,
-		}),
-		() => ({ shapeIds: selectedIds(), childKey: selectedChildKey() }),
 	);
 
 	const rerouteNotice = useLegacyWireReroute(() => ({
@@ -1074,7 +1084,10 @@ function EditorCanvas(props: EditorCanvasProps) {
 		);
 		return (
 			<main
-				class="relative flex h-dvh flex-col overflow-hidden"
+				class={[
+					props.inPane ? "h-full" : "h-dvh",
+					"@container relative flex flex-col overflow-hidden",
+				]}
 				ref={listen("keydown", editorKeyDown, true)}
 				onCopy={clipboard.onCopy}
 				onCut={clipboard.onCut}
@@ -1106,6 +1119,8 @@ function EditorCanvas(props: EditorCanvasProps) {
 						view={isBoard() ? "pcb" : undefined}
 						center={pageBar(false)}
 						active={active()}
+						clearSidebar={props.clearSidebar}
+						split={(props.splitPaneCount ?? 1) > 1}
 					>
 						{props.headerControls ?? props.viewSwitch}
 					</DocumentBar>
@@ -1216,6 +1231,7 @@ function EditorCanvas(props: EditorCanvasProps) {
 						/>
 						{isFootprint() && (
 							<FootprintLayerPanel
+								defaultCollapsed={(props.splitPaneCount ?? 1) >= 3}
 								layers={layers.layers}
 								active={layers.active}
 								hidden={layers.hidden}

@@ -31,6 +31,8 @@ export function DocumentBar(props: {
 	 */
 	center?: JSX.Element;
 	active?: boolean;
+	clearSidebar?: boolean;
+	split?: boolean;
 	/** Controls for this document, such as the view switch. */
 	children?: JSX.Element;
 }) {
@@ -64,6 +66,7 @@ export function DocumentBar(props: {
 			: undefined);
 	const projectName = () => snapshot()?.manifest.name;
 	const center = children(() => props.center);
+	const undocked = () => !controls?.sidebarDocked;
 	return (
 		<Show when={project()}>
 			<TooltipProvider delayDuration={350} skipDelayDuration={150}>
@@ -72,9 +75,15 @@ export function DocumentBar(props: {
 				<div
 					data-docked={controls?.sidebarDocked ? "true" : "false"}
 					class={[
-						"pointer-events-none absolute top-[var(--chrome-top)] right-[calc(var(--chrome-gap)+var(--chrome-control)+6px)] left-[calc(var(--chrome-gap)+var(--chrome-control)+6px)] z-4 grid items-start gap-2 data-[docked=true]:right-[var(--chrome-gap)] data-[docked=true]:left-[var(--chrome-gap)]",
+						"pointer-events-none absolute top-[var(--chrome-top)] z-4 grid items-start gap-2",
+						undocked() && (props.clearSidebar ?? true)
+							? "left-[calc(var(--chrome-gap)+var(--chrome-control)+6px)]"
+							: "left-[var(--chrome-gap)]",
+						undocked() && !props.split
+							? "right-[calc(var(--chrome-gap)+var(--chrome-control)+6px)]"
+							: "right-[var(--chrome-gap)]",
 						center.toArray().length
-							? "grid-cols-[minmax(min-content,1fr)_auto_minmax(0,1fr)] max-[600px]:grid-cols-[minmax(0,1fr)]"
+							? "grid-cols-[minmax(min-content,1fr)_auto_minmax(0,1fr)] @max-[600px]:grid-cols-[minmax(0,1fr)]"
 							: "grid-cols-[minmax(0,1fr)]",
 					]}
 				>
@@ -88,13 +97,13 @@ export function DocumentBar(props: {
 					    is shown once. */}
 						<p class="m-0 flex min-w-0 items-center gap-1.5">
 							<Show when={name() && projectName() && name() !== projectName()}>
-								<span class="hidden max-w-40 min-w-0 truncate text-xs text-fg-faint min-[1100px]:inline">
+								<span class="hidden max-w-40 min-w-0 truncate text-xs text-fg-faint @min-[1100px]:inline">
 									{projectName()}
 								</span>
 								<ChevronRight
 									size={12}
 									aria-hidden="true"
-									class="hidden shrink-0 text-fg-disabled min-[1100px]:inline"
+									class="hidden shrink-0 text-fg-disabled @min-[1100px]:inline"
 								/>
 							</Show>
 							<Dynamic
@@ -103,14 +112,14 @@ export function DocumentBar(props: {
 								aria-hidden="true"
 								class="shrink-0 text-fg-faint"
 							/>
-							<span class="max-w-40 min-w-0 truncate pl-0.5 text-sm font-semibold text-fg min-[1100px]:max-w-64">
+							<span class="max-w-40 min-w-0 truncate pl-0.5 text-sm font-semibold text-fg @min-[1100px]:max-w-64">
 								{name() ?? projectName()}
 							</span>
 						</p>
 						{props.children}
 					</div>
 					<Show when={center.toArray().length}>
-						<div class="pointer-events-auto max-w-full min-w-0 max-[600px]:justify-self-center">
+						<div class="pointer-events-auto max-w-full min-w-0 @max-[600px]:justify-self-center">
 							{center()}
 						</div>
 					</Show>

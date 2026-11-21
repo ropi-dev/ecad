@@ -6,12 +6,20 @@ import {
 	createBoardFile,
 } from "#/board/format.ts";
 import { createBoardRulesStore } from "#/board/rules-store.ts";
-import type { ViewSelection } from "#/circuit/selection-sync.ts";
+import {
+	sameCircuitSelection,
+	sameSchematicSelection,
+	type ViewSelection,
+} from "#/circuit/selection-sync.ts";
 import { symbolFileShapes } from "#/drawing/symbol-file.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 import type { ProjectDrawing } from "#/projects/format.ts";
-import type { EditorView } from "#/projects/ProjectSession.ts";
-import { pcbDocumentName, primaryPcbId } from "#/projects/pcb.ts";
+import type { BoardDocument, EditorView } from "#/projects/ProjectSession.ts";
+import {
+	hasMainDrawing,
+	pcbDocumentName,
+	primaryPcbId,
+} from "#/projects/pcb.ts";
 import { projectIndex } from "#/projects/project-index.ts";
 import type { ProjectSessionState } from "#/projects/project-session-state.ts";
 
@@ -39,6 +47,7 @@ export function createProjectEditorFiles(
 		setEditorFootprint,
 		setEditorBoard,
 		setEditorViews,
+		setSelectionSync,
 		showError,
 	} = state;
 	const circuitModules = () =>
@@ -270,75 +279,47 @@ export function createProjectEditorFiles(
 			)
 				return;
 			if (!path) return;
-			const remembered = state.viewSelection;
-			const handoff =
-				remembered &&
-				remembered.store ===
-					(state.editorCircuit?.store ??
-						state.editorBoard?.store ??
-						state.editorDrawing?.store ??
-						state.store)
-					? {
-							view,
-							circuitId: selectedCircuitId,
-							generation: state.generation,
-							source: remembered.origin ?? remembered,
-						}
-					: null;
 			keepOpenViews();
-			state.selectionHandoff = handoff;
-			const opened =
-				view === "circuit"
-					? await openCircuit(path)
-					: view === "pcb"
-						? await openBoard(path)
-						: await selectEditorFile(path);
-			if (!opened && state.selectionHandoff === handoff)
-				state.selectionHandoff = null;
+			if (view === "circuit") await openCircuit(path);
+			else if (view === "pcb") await openBoard(path);
+			else await selectEditorFile(path);
 		} catch (cause) {
-			state.selectionHandoff = null;
 			showError(cause, "Unable to switch editor views.");
 		}
 	};
-	const rememberViewSelection = (selection: ViewSelection) => {
-		const { origin, ...current } = selection;
-		state.viewSelection =
-			!origin || state.selectionOrigins.has(origin) ? selection : current;
-	};
-	const takeSelectionHandoff = (view: ViewSelection["view"]) => {
-		const handoff = state.selectionHandoff;
-		state.selectionHandoff = null;
-		const snapshot = state.active;
+	const publishViewSelection = (
+		circuitId: string,
+		selection: ViewSelection,
+	) => {
+		const current = state.selectionSync;
 		if (
-			!handoff ||
-			!snapshot ||
-			handoff.view !== view ||
-			handoff.generation !== state.generation
+			current &&
+			current.circuitId === circuitId &&
+			current.generation === state.generation &&
+			current.source.view === selection.view &&
+			current.source.store === selection.store &&
+			(current.source.view === "circuit"
+				? selection.view === "circuit" &&
+					sameCircuitSelection(current.source.selection, selection.selection)
+				: selection.view !== "circuit" &&
+					sameSchematicSelection(current.source.selection, selection.selection))
 		)
-			return null;
-		const circuitId =
-			view === "circuit"
-				? state.editorCircuit?.file.circuit.id
-				: view === "pcb"
-					? state.editorBoard?.file.circuitId
-					: state.editorCircuit ||
-							state.editorSymbol ||
-							state.editorFootprint ||
-							state.editorBoard
-						? undefined
-						: state.editorDrawing
-							? projectIndex(snapshot).drawingsById.get(
-									state.editorDrawing.file.id,
-								)?.file.circuitId
-							: primaryPcbId;
-		if (circuitId !== handoff.circuitId) return null;
-		state.selectionOrigins.add(handoff.source);
-		return {
-			source: handoff.source,
-			circuit:
-				circuitDocuments.get(circuitId)?.store.getSnapshot().circuit ??
-				projectIndex(snapshot).circuitsById.get(circuitId)?.file.circuit,
-		};
+			return;
+		setSelectionSync({
+			circuitId,
+			generation: state.generation,
+			revision: ++state.selectionRevision,
+			source: selection,
+		});
+	};
+	const circuitForSelection = (circuitId: string) => {
+		const snapshot = state.active;
+		return (
+			circuitDocuments.get(circuitId)?.store.getSnapshot() ??
+			(snapshot
+				? projectIndex(snapshot).circuitsById.get(circuitId)?.file
+				: undefined)
+		);
 	};
 
 	const subscribeDrawing = (
@@ -403,6 +384,7 @@ export function createProjectEditorFiles(
 				unsubscribe: subscribeDrawing(drawingStore),
 			};
 		});
+	const boardSources = new WeakMap<BoardDocument, number>();
 	const openBoard = (path: string): boolean | Promise<boolean> => {
 		if (state.needsSave) {
 			const before = state.active;
@@ -437,13 +419,15 @@ export function createProjectEditorFiles(
 		};
 		return import("#/board/sync-document.ts")
 			.then(
-				async ({ announceBoardSync, boardContext, synchronizeBoardStore }) =>
+				async ({ announceBoardSync, boardContext, synchronizeBoardStore }) => {
+					boardSources.set(document, state.circuitSyncVersion);
 					announceBoardSync(
 						await synchronizeBoardStore(
 							document.store,
 							boardContext(state.active, board.circuitId),
 						),
-					),
+					);
+				},
 			)
 			.then(show, (cause) => {
 				showError(cause, "Unable to update the board from its schematic.");
@@ -613,7 +597,9 @@ export function createProjectEditorFiles(
 			board: board ? openBoardDocument(board) : null,
 		};
 		setEditorViews(views);
-		if (views.circuit) return;
+		if (!views.circuit) await loadCircuitView(circuitId);
+	};
+	const loadCircuitView = async (circuitId: string) => {
 		const generation = state.generation;
 		const modules = await circuitModules();
 		if (
@@ -645,6 +631,145 @@ export function createProjectEditorFiles(
 			circuit: openCircuitDocument(file, view, modules),
 		});
 	};
+	const views = () => {
+		const circuitId = currentCircuitId();
+		if (!circuitId) return undefined;
+		keepOpenViews();
+		return state.editorViews?.circuitId === circuitId
+			? state.editorViews
+			: undefined;
+	};
+	const synchronizeBoard = (document: BoardDocument) => {
+		if (boardSources.get(document) === state.circuitSyncVersion)
+			return undefined;
+		boardSources.set(document, state.circuitSyncVersion);
+		return import("#/board/sync-document.ts")
+			.then(
+				async ({ announceBoardSync, boardContext, synchronizeBoardStore }) =>
+					announceBoardSync(
+						await synchronizeBoardStore(
+							document.store,
+							boardContext(state.active, document.file.circuitId),
+						),
+					),
+			)
+			.catch((cause) =>
+				showError(cause, "Unable to update the board from its schematic."),
+			);
+	};
+	const pairEditorViews = async (wanted: readonly EditorView[]) => {
+		const snapshot = state.active;
+		if (!snapshot || state.editorSymbol || state.editorFootprint) return;
+		const index = projectIndex(snapshot);
+		const drawingCircuitId = state.editorDrawing
+			? index.drawingsById.get(state.editorDrawing.file.id)?.file.circuitId
+			: undefined;
+		const circuitId =
+			state.editorBoard?.file.circuitId ??
+			state.editorCircuit?.file.circuit.id ??
+			drawingCircuitId ??
+			(snapshot.manifest.drawing !== undefined && hasMainDrawing(snapshot)
+				? primaryPcbId
+				: undefined);
+		const needsCircuit =
+			circuitId !== undefined &&
+			(wanted.includes("circuit") || wanted.includes("pcb")) &&
+			!index.circuitsById.has(circuitId);
+		const needsDrawing =
+			circuitId !== undefined &&
+			wanted.includes("schematic") &&
+			circuitId !== primaryPcbId &&
+			!index.drawingsByCircuit.has(circuitId);
+		const unpairedDrawing = !!state.editorDrawing && !drawingCircuitId;
+		if (needsCircuit || needsDrawing || unpairedDrawing) await autosave();
+	};
+	const prepareEditorViews = async (wanted: readonly EditorView[]) => {
+		const generation = state.generation;
+		await pairEditorViews(wanted);
+		if (generation !== state.generation || !state.mounted) return;
+		const snapshot = state.active;
+		const open = views();
+		if (!open || !snapshot) return;
+		const { circuitId } = open;
+		const index = projectIndex(snapshot);
+		let schematic = open.schematic;
+		if (wanted.includes("schematic") && !schematic) {
+			const drawing = index.drawingsByCircuit.get(circuitId)?.file;
+			schematic =
+				circuitId === primaryPcbId
+					? "main"
+					: drawing
+						? openDrawingDocument(drawing)
+						: null;
+		}
+		let board = open.board;
+		if (wanted.includes("pcb") && !board) {
+			const file = index.boardsByCircuit.get(circuitId)?.file;
+			if (file) board = openBoardDocument(file);
+		}
+		setEditorViews({ ...open, schematic, board });
+		await Promise.all([
+			wanted.includes("pcb") && board ? synchronizeBoard(board) : undefined,
+			wanted.includes("circuit") &&
+			!state.editorViews?.circuit &&
+			state.editorViews?.circuitId === circuitId
+				? loadCircuitView(circuitId)
+				: undefined,
+		]);
+	};
+	const focusEditorView = (view: EditorView) => {
+		const open = views();
+		if (!open) return;
+		const shown = state.editorCircuit
+			? "circuit"
+			: state.editorBoard
+				? "pcb"
+				: "schematic";
+		if (shown === view) return;
+		if (view === "circuit") {
+			if (!open.circuit) return;
+			state.editorSelection++;
+			clearEditors("circuit");
+			setEditorCircuit(open.circuit);
+		} else if (view === "pcb") {
+			if (!open.board) return;
+			state.editorSelection++;
+			clearEditors("board");
+			setEditorBoard(open.board);
+		} else {
+			const schematic = open.schematic;
+			if (!schematic) return;
+			state.editorSelection++;
+			if (schematic === "main") clearEditors();
+			else {
+				clearEditors("drawing");
+				setEditorDrawing(schematic);
+			}
+		}
+	};
+	const createCircuitBoard = async (circuitId: string) => {
+		keepOpenViews();
+		const path = await state.enqueue(() => ensureBoard(circuitId));
+		if (!path || currentCircuitId() !== circuitId) return false;
+		const opened = await openBoard(path);
+		if (opened) keepOpenViews();
+		return opened;
+	};
+	const circuitOfPath = (path: string | undefined) => {
+		const snapshot = state.active;
+		if (!snapshot) return undefined;
+		if (!path || path === snapshot.manifest.drawing) return primaryPcbId;
+		const index = projectIndex(snapshot);
+		return (
+			index.circuitsByPath.get(path)?.circuit.id ??
+			index.boardsByPath.get(path)?.circuitId ??
+			index.drawingsByPath.get(path)?.circuitId
+		);
+	};
+	const leaveSelection = (path: string | undefined) => {
+		const sync = state.selectionSync;
+		if (sync && circuitOfPath(path) !== sync.circuitId) setSelectionSync(null);
+	};
 
 	let stopMain = () => {};
 	const subscribeMain = () => {
@@ -663,19 +788,25 @@ export function createProjectEditorFiles(
 
 	return {
 		openCircuit: (path: string) => {
-			state.selectionHandoff = null;
+			leaveSelection(path);
+			state.bumpEditorNavigation();
 			return openCircuit(path);
 		},
 		openBoard: (path: string) => {
-			state.selectionHandoff = null;
+			leaveSelection(path);
+			state.bumpEditorNavigation();
 			return openBoard(path);
 		},
 		switchEditorView,
 		preloadEditorViews,
-		rememberViewSelection,
-		takeSelectionHandoff,
+		prepareEditorViews,
+		focusEditorView,
+		createCircuitBoard,
+		publishViewSelection,
+		circuitForSelection,
 		selectEditorFile: (path?: string) => {
-			state.selectionHandoff = null;
+			leaveSelection(path);
+			state.bumpEditorNavigation();
 			return selectEditorFile(path);
 		},
 		subscribeMain,

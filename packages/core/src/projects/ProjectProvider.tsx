@@ -28,6 +28,7 @@ export type {
 	DrawingDocument,
 	EditorViews,
 	SymbolDocument,
+	ViewSelectionSync,
 } from "#/projects/ProjectSession.ts";
 
 interface ProjectContextState {
@@ -80,6 +81,8 @@ export const useProjectEditor = () =>
 			editorViews,
 			openingCircuit,
 			selectedAsset,
+			circuitSyncVersion,
+			editorNavigation,
 		}) => ({
 			mainDrawing: project?.manifest.drawing !== undefined,
 			session,
@@ -92,6 +95,8 @@ export const useProjectEditor = () =>
 			editorViews,
 			openingCircuit,
 			selectedAsset,
+			circuitSyncVersion,
+			editorNavigation,
 		}),
 	);
 export const useProjectActions = () =>
@@ -114,6 +119,9 @@ export const useProjectActions = () =>
 			editorViews: _editorViews,
 			openingCircuit: _openingCircuit,
 			selectedAsset: _selectedAsset,
+			selectionSync: _selectionSync,
+			circuitSyncVersion: _circuitSyncVersion,
+			editorNavigation: _editorNavigation,
 			...actions
 		}) => actions,
 	);

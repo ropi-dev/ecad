@@ -6,6 +6,7 @@ import {
 import { snapCircuitPoint } from "@ecad/drawing-core/circuit/grid.ts";
 import type { CircuitCommand } from "@ecad/drawing-core/circuit/store.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
+import type { JSX } from "@solidjs/web";
 import {
 	createEffect,
 	createMemo,
@@ -83,6 +84,9 @@ function CircuitDocumentBar(props: {
 	name: string;
 	id: string;
 	active: boolean;
+	clearSidebar?: boolean;
+	split?: boolean;
+	viewSwitch?: JSX.Element;
 }) {
 	return (
 		<DocumentBar
@@ -91,8 +95,10 @@ function CircuitDocumentBar(props: {
 			selection={`circuit:${props.id}`}
 			view="circuit"
 			active={props.active}
+			clearSidebar={props.clearSidebar}
+			split={props.split}
 		>
-			<EditorViewSwitch view="circuit" />
+			{props.viewSwitch ?? <EditorViewSwitch view="circuit" />}
 		</DocumentBar>
 	);
 }
@@ -100,8 +106,15 @@ function CircuitDocumentBar(props: {
 export function CircuitEditor(props: {
 	document: CircuitDocument;
 	active?: boolean;
+	visible?: boolean;
+	inPane?: boolean;
+	clearSidebar?: boolean;
+	splitPaneCount?: number;
+	circuitId?: string;
+	viewSwitch?: JSX.Element;
 }) {
 	const active = () => props.active ?? true;
+	const visible = () => props.visible ?? active();
 	const project = useProjectSelection(({ dirty, error, libraryErrors }) => ({
 		dirty,
 		error,
@@ -225,7 +238,11 @@ export function CircuitEditor(props: {
 	});
 	useCircuitSelectionSync(
 		() => ({
-			enabled: active(),
+			enabled: true,
+			visible: visible(),
+			active: active(),
+			circuitId: props.circuitId ?? circuit().id,
+			storeVersion: circuit(),
 			store: store(),
 			setSelection,
 			setCheckedPins,
@@ -597,6 +614,9 @@ export function CircuitEditor(props: {
 				name={circuit().name}
 				id={circuit().id}
 				active={active()}
+				clearSidebar={props.clearSidebar}
+				split={(props.splitPaneCount ?? 1) > 1}
+				viewSwitch={props.viewSwitch}
 			/>
 			{circuitMessages().length > 0 && (
 				<div
@@ -649,7 +669,7 @@ export function CircuitEditor(props: {
 						onLostPointerCapture={svgHandlers.onLostPointerCapture}
 					>
 						<title>Components, pins, and shared electrical nets</title>
-						{active() && (
+						{visible() && (
 							<CircuitGraphLayer
 								graph={graph()}
 								pins={pins()}

@@ -38,6 +38,7 @@ export function createProjectExternalReload(
 		setEditorSymbol,
 		setEditorFootprint,
 		setEditorBoard,
+		setEditorViews,
 		setSelectedAsset,
 	} = state;
 	const unsaved = () => state.needsSave || state.unsavedEditors.size > 0;
@@ -170,6 +171,41 @@ export function createProjectExternalReload(
 		} finally {
 			state.synchronizing = false;
 		}
+		const views = state.editorViews;
+		if (views) {
+			const { schematic, board, circuit } = views;
+			const nextSchematic =
+				schematic === "main"
+					? snapshot.manifest.drawing === undefined
+						? null
+						: "main"
+					: schematic && (drawingDocuments.get(schematic.file.id) ?? null);
+			const nextBoard =
+				board && (boardDocuments.get(board.file.circuitId) ?? null);
+			const nextCircuit =
+				circuit && (circuitDocuments.get(circuit.file.circuit.id) ?? null);
+			if (
+				!after.circuitsById.has(views.circuitId) ||
+				(!nextSchematic && !nextBoard && !nextCircuit)
+			)
+				setEditorViews(null);
+			else if (
+				nextSchematic !== schematic ||
+				nextBoard !== board ||
+				nextCircuit !== circuit
+			)
+				setEditorViews({
+					...views,
+					schematic: nextSchematic,
+					board: nextBoard,
+					circuit: nextCircuit,
+				});
+		}
+		if (
+			state.selectionSync &&
+			!after.circuitsById.has(state.selectionSync.circuitId)
+		)
+			state.setSelectionSync(null);
 		for (const [id, entry] of after.drawingsById)
 			if (entry.path && moved(entry.path, before.drawingsById.get(id)?.path))
 				names.push(entry.file.name);
@@ -197,12 +233,16 @@ export function createProjectExternalReload(
 		state.libraries = snapshot.symbolLibraries ?? [];
 		linkedAssembler.invalidate();
 		update(snapshot);
-		state.selectionHandoff = null;
-		state.selectionOrigins = new WeakSet();
-		if (state.viewSelection?.origin) {
-			const { origin: _origin, ...current } = state.viewSelection;
-			state.viewSelection = current;
-		}
+		const boardPaths = new Set(
+			[...before.boardsByCircuit.values(), ...after.boardsByCircuit.values()]
+				.map((entry) => entry.path)
+				.filter((path) => path !== undefined),
+		);
+		if (
+			changed.size === 0 ||
+			[...changed].some((path) => !boardPaths.has(path))
+		)
+			state.bumpCircuitSyncVersion();
 		if (
 			[snapshot.manifest.drawing, snapshot.manifest.symbolLibraries].some(
 				(path) => path !== undefined && changed.has(path),
@@ -212,7 +252,10 @@ export function createProjectExternalReload(
 		)
 			for (const listener of state.symbolListeners) listener();
 		// A delayed open must not bring back a closed document.
-		if (closed.length) state.editorSelection++;
+		if (closed.length) {
+			state.editorSelection++;
+			state.setSelectionSync(null);
+		}
 		toastManager.add({
 			id: toastId,
 			type: closed.length ? "warning" : "info",

@@ -93,13 +93,15 @@ export function FootprintLayerPanel(props: {
 	onToggle: (layer: FootprintLayer) => void;
 	realistic?: { shown: boolean; onToggle: () => void };
 	models?: { shown: boolean; onToggle: () => void };
+	defaultCollapsed?: boolean;
 }) {
-	const [collapsed, setCollapsed] = createSignal(false);
+	const [userCollapsed, setCollapsed] = createSignal<boolean | null>(null);
+	const collapsed = () => userCollapsed() ?? props.defaultCollapsed ?? false;
 	const theme = useSchematicTheme();
 	const listId = createUniqueId();
 	const focusNoteId = createUniqueId();
 	return (
-		<FloatingPanel label="Layers" position="top-left" narrow>
+		<FloatingPanel label="Layers" position="top-left" narrow sheet={false}>
 			<header
 				class={[
 					"flex shrink-0 items-center justify-between gap-3 py-1.5 pr-1.5 pl-3",

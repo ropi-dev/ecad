@@ -1,7 +1,6 @@
 import { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
-import type { ViewSelection } from "#/circuit/selection-sync.ts";
 import type { SymbolLibrary } from "#/components/editor/symbolFormat.ts";
 import { createSerialQueue } from "#/lib/serial-queue.ts";
 import { instrumentProjectStorage } from "#/performance/project-storage.ts";
@@ -21,6 +20,7 @@ import type {
 	FootprintDocument,
 	ProjectContextValue,
 	SymbolDocument,
+	ViewSelectionSync,
 } from "#/projects/ProjectSession.ts";
 import type { ProjectStorage } from "#/projects/storage.ts";
 import type { ConfiguredSymbolLibrary } from "#/symbol-library/config.ts";
@@ -73,14 +73,10 @@ export function createProjectSessionState(rawStorage: ProjectStorage) {
 		generation: 0,
 		circuitLayout: undefined as AbortController | undefined,
 		editorSelection: 0,
-		viewSelection: null as ViewSelection | null,
-		selectionOrigins: new WeakSet<object>(),
-		selectionHandoff: null as {
-			view: ViewSelection["view"];
-			circuitId: string;
-			generation: number;
-			source: ViewSelection;
-		} | null,
+		selectionSync: null as ViewSelectionSync | null,
+		selectionRevision: 0,
+		circuitSyncVersion: 0,
+		editorNavigation: 0,
 		busy: true,
 		dirty: false,
 		needsSave: false,
@@ -170,6 +166,19 @@ export function createProjectSessionState(rawStorage: ProjectStorage) {
 		)
 			return;
 		state.editorViews = next;
+		publish();
+	};
+	const setSelectionSync = (next: ViewSelectionSync | null) => {
+		if (next === state.selectionSync) return;
+		state.selectionSync = next;
+		publish();
+	};
+	const bumpCircuitSyncVersion = () => {
+		state.circuitSyncVersion++;
+		publish();
+	};
+	const bumpEditorNavigation = () => {
+		state.editorNavigation++;
 		publish();
 	};
 	const setEpoch = (next: number) => {
@@ -266,6 +275,9 @@ export function createProjectSessionState(rawStorage: ProjectStorage) {
 		setEditorBoard,
 		setEditorDrawing,
 		setEditorViews,
+		setSelectionSync,
+		bumpCircuitSyncVersion,
+		bumpEditorNavigation,
 		setEpoch,
 		setBusy,
 		setDirty,

@@ -9,8 +9,13 @@ import {
 	setPagesEffect,
 	undoEffect,
 } from "@ecad/drawing-core/commands/drawing-commands.ts";
+import { getHistoryNode } from "@ecad/drawing-core/drawing/history.ts";
+import { savedDrawingShapesSchema } from "@ecad/drawing-core/drawing/schema.ts";
+import type { EditorSymbol } from "@ecad/drawing-core/drawing/shapes.ts";
+import { boardFileSchema, createBoardFile } from "#/board/format.ts";
 import { createEditorSession } from "#/components/editor/editorSession.ts";
 import { createEmptySymbolFile } from "#/components/editor/symbolFormat.ts";
+import { exampleDesigns } from "#/examples/designs.ts";
 import { InvalidFile } from "#/formats/import-effects.ts";
 import {
 	MAX_GERBER_ARCHIVE_BYTES,
@@ -441,18 +446,151 @@ test("a circuit's schematic, circuit and PCB load together and the PCB takes the
 		store: project().store,
 		selection: { shapeIds: [1], childKey: null },
 	};
-	project().rememberViewSelection(schematic);
+	project().publishViewSelection(primaryPcbId, schematic);
 	await project().switchEditorView("pcb");
 	const board = required(project().editorBoard);
-	const handoff = required(project().takeSelectionHandoff("pcb"));
-	assert.equal(handoff.source, schematic);
-	assert.equal(handoff.circuit?.id, primaryPcbId);
+	const sync = required(project().selectionSync);
+	assert.equal(sync.source, schematic);
+	assert.equal(sync.circuitId, primaryPcbId);
+	assert.equal(
+		project().circuitForSelection(primaryPcbId)?.circuit.id,
+		primaryPcbId,
+	);
 
 	await project().preloadEditorViews();
 	assert.equal(project().editorViews?.board, board);
 	assert.equal(project().editorViews?.circuit, circuit);
 	await project().switchEditorView("circuit");
 	assert.equal(project().editorCircuit, circuit);
+	stop();
+});
+
+test("splitting a circuit without a PCB opens its circuit but creates the board only when asked", async () => {
+	const initial = snapshot();
+	const { session } = fixture({
+		...initial,
+		manifest: { ...initial.manifest, circuits: [{ circuit: "main.ecaddraw" }] },
+		circuits: [createCircuit("Main", primaryPcbId)],
+	});
+	const stop = session.connect();
+	await loaded(session);
+	const project = () => session.getSnapshot();
+	await project().prepareEditorViews(["schematic", "circuit", "pcb"]);
+	const views = required(project().editorViews);
+	assert.ok(views.circuit);
+	assert.equal(views.board, null);
+	assert.equal(project().project?.boards?.length ?? 0, 0);
+
+	assert.equal(await project().createCircuitBoard(primaryPcbId), true);
+	assert.equal(project().project?.boards?.length, 1);
+	const board = required(project().editorBoard);
+	assert.equal(project().editorViews?.board, board);
+	assert.equal(project().editorViews?.circuit, views.circuit);
+	stop();
+});
+
+test("splitting a main schematic whose circuit was never saved opens its circuit beside it", async () => {
+	const { session } = fixture({ ...snapshot(), shapes: [rectangle] });
+	const stop = session.connect();
+	await loaded(session);
+	const project = () => session.getSnapshot();
+	assert.equal(project().project?.circuits?.length ?? 0, 0);
+	await project().prepareEditorViews(["schematic", "circuit"]);
+	const views = required(project().editorViews);
+	assert.equal(views.circuitId, primaryPcbId);
+	assert.equal(views.schematic, "main");
+	assert.equal(views.circuit?.file.circuit.id, primaryPcbId);
+	stop();
+});
+
+test("undo in a PCB beside its schematic steps back through the board's history without updating it from the schematic again", async () => {
+	const design = await exampleDesigns.rp2350a.load();
+	const initial = snapshot();
+	const circuitId = design.circuit.id;
+	const { session } = fixture({
+		...initial,
+		manifest: {
+			...initial.manifest,
+			drawings: ["rp2350a.ecaddraw"],
+			circuits: [{ circuit: "rp2350a.ecadcircuit" }],
+		},
+		drawings: [
+			{
+				id: "rp2350a",
+				name: design.name,
+				circuitId,
+				shapes: savedDrawingShapesSchema.parse(design.schematic),
+			},
+		],
+		circuits: [
+			{
+				circuit: design.circuit,
+				graph: {
+					format: "ecad-circuit-graph",
+					version: 1,
+					circuitId,
+					positions: [],
+				},
+			},
+		],
+		boards: [
+			boardFileSchema.parse({
+				...createBoardFile(design.name, circuitId),
+				rules: design.rules,
+				shapes: design.board,
+			}),
+		],
+	});
+	const stop = session.connect();
+	await loaded(session);
+	const project = () => session.getSnapshot();
+	assert.equal(await project().openBoard("rp2350a.ecadcircuit"), true);
+	const board = required(project().editorBoard);
+	const views = ["schematic", "pcb"] as const;
+	await project().prepareEditorViews(views);
+	const schematic = project().editorViews?.schematic;
+	assert.ok(schematic && schematic !== "main");
+	const references = () =>
+		board.store
+			.getSnapshot()
+			.shapes.flatMap((shape) =>
+				shape.kind === "symbol" ? shape.attributes.reference : [],
+			);
+	const history = () =>
+		required(getHistoryNode(board.store.getSnapshot().history));
+	const opened = history().id;
+	const crystal = required(
+		schematic.store
+			.getSnapshot()
+			.shapes.find(
+				(shape): shape is EditorSymbol =>
+					shape.kind === "symbol" && shape.attributes.reference === "X1",
+			),
+	);
+	createEditorSession(schematic.store).replace(
+		[{ ...crystal, attributes: { ...crystal.attributes, reference: "Y1" } }],
+		"Rename",
+	);
+	await project().save();
+	await project().prepareEditorViews(views);
+	assert.equal(history().label, "Update from schematic");
+	assert.ok(references().includes("Y1"));
+
+	const editor = createEditorSession(board.store);
+	const footprint = required(
+		board.store.getSnapshot().shapes.find((shape) => shape.kind === "symbol"),
+	);
+	editor.replace([{ ...footprint, x: footprint.x + 1 }], "Move");
+	await project().save();
+	for (const _step of [0, 1]) {
+		editor.restore(undoEffect);
+		await project().save();
+		await project().prepareEditorViews(views);
+	}
+	assert.equal(history().id, opened);
+	assert.ok(history().childIds.length > 0);
+	assert.ok(references().includes("X1"));
+	assert.ok(!references().includes("Y1"));
 	stop();
 });
 

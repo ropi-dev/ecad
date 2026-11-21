@@ -1287,7 +1287,7 @@ function SelectionAttributesPanel(props: SelectionAttributesProps) {
 					}
 				/>
 				<div
-					class="m-0 min-h-0 overflow-y-auto overscroll-contain max-[760px]:pb-4 max-[760px]:[mask-image:linear-gradient(to_bottom,black_calc(100%-1.5rem),transparent)]"
+					class="m-0 min-h-0 overflow-y-auto overscroll-contain @max-[540px]:pb-4 @max-[540px]:[mask-image:linear-gradient(to_bottom,black_calc(100%-1.5rem),transparent)]"
 					ref={(element) =>
 						element.addEventListener("keydown", blurOnKey, { capture: true })
 					}

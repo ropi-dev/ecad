@@ -1,9 +1,8 @@
 import type { CircuitStore } from "@ecad/drawing-core/circuit/store.ts";
 import type { Accessor, Setter } from "solid-js";
 import {
-	circuitSelectionFromComponents,
+	circuitSelectionFromBoard,
 	circuitSelectionFromSchematic,
-	componentsOfBoardSelection,
 	pruneCircuitSelection,
 	sameCircuitSelection,
 } from "#/circuit/selection-sync.ts";
@@ -13,26 +12,42 @@ import { useViewSelectionSync } from "#/projects/useViewSelectionSync.ts";
 export function useCircuitSelectionSync(
 	options: Accessor<{
 		enabled: boolean;
+		visible: boolean;
+		active: boolean;
+		circuitId: string | undefined;
 		store: CircuitStore;
+		storeVersion?: unknown;
 		setSelection: Setter<CircuitSelection>;
 		setCheckedPins: Setter<string[]>;
 	}>,
 	selection: Accessor<{ item: CircuitSelection; checkedPins: string[] }>,
 ) {
 	useViewSelectionSync(() => {
-		const { enabled, store, setSelection, setCheckedPins } = options();
+		const {
+			enabled,
+			visible,
+			active,
+			circuitId,
+			store,
+			storeVersion,
+			setSelection,
+			setCheckedPins,
+		} = options();
 		return {
 			enabled,
+			visible,
+			active,
+			circuitId,
 			view: "circuit",
 			store,
+			storeVersion,
 			equal: sameCircuitSelection,
 			receive: (source) =>
 				source.view === "pcb"
-					? circuitSelectionFromComponents(
-							componentsOfBoardSelection(
-								source.store.getSnapshot().shapes,
-								source.selection,
-							),
+					? circuitSelectionFromBoard(
+							source.store.getSnapshot().shapes,
+							store.getSnapshot().circuit,
+							source.selection,
 						)
 					: source.view === "schematic"
 						? {

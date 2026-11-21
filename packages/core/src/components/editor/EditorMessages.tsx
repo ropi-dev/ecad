@@ -125,7 +125,7 @@ export function EditorMessages(
 		<Show when={props.messages.length > 0 || props.hiddenIssues.length > 0}>
 			<div
 				data-beside-panel={props.besidePanel ? "true" : "false"}
-				class="pointer-events-none absolute top-[calc(var(--chrome-top)+var(--chrome-bar))] left-[var(--chrome-gap)] z-3 flex max-w-[min(560px,calc(100%-2*var(--chrome-gap)))] flex-col items-start gap-2 *:pointer-events-auto min-[761px]:data-[beside-panel=true]:left-[calc(var(--chrome-gap)+18.5rem)] min-[761px]:data-[beside-panel=true]:max-w-[min(560px,calc(100%-2*var(--chrome-gap)-18.5rem))]"
+				class="pointer-events-none absolute top-[calc(var(--chrome-top)+var(--chrome-bar))] left-[var(--chrome-gap)] z-3 flex max-w-[min(560px,calc(100%-2*var(--chrome-gap)))] flex-col items-start gap-2 *:pointer-events-auto @min-[541px]:data-[beside-panel=true]:left-[calc(var(--chrome-gap)+18.5rem)] @min-[541px]:data-[beside-panel=true]:max-w-[min(560px,calc(100%-2*var(--chrome-gap)-18.5rem))]"
 			>
 				{props.messages.length > 0 && (
 					<div class="ui-notice flex max-w-full items-start gap-2 py-1.5 pr-1.5 pl-2.5">

@@ -42,6 +42,15 @@ const appShape = {
 	releaseChannel: z.enum(releaseChannels).optional(),
 	ercSeverity: ercSeveritySchema.optional(),
 	boardUnit: z.enum(boardUnits).optional(),
+	editorSplit: z
+		.array(z.enum(["schematic", "circuit", "pcb"]))
+		.min(2)
+		.max(3)
+		.refine(
+			(views) => new Set(views).size === views.length,
+			"Duplicate split views.",
+		)
+		.optional(),
 };
 const projectShape = {
 	ercSeverity: ercSeveritySchema.optional(),

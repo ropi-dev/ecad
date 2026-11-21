@@ -155,7 +155,7 @@ export function PageBar(props: {
 			class={[
 				"flex h-[var(--chrome-control)] items-center gap-0.5 p-1",
 				props.floating
-					? "absolute top-10 left-1/2 z-3 max-w-[min(40rem,calc(100%-5rem))] -translate-x-1/2 max-[600px]:top-22"
+					? "absolute top-10 left-1/2 z-3 max-w-[min(40rem,calc(100%-5rem))] -translate-x-1/2 @max-[600px]:top-22"
 					: "relative max-w-[40rem] min-w-0",
 				toolbarSurfaceClassName,
 			]}

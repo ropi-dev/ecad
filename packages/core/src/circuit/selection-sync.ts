@@ -30,14 +30,13 @@ export interface CircuitViewSelection {
 	checkedPins: readonly string[];
 }
 
-type ViewState =
+export type ViewSelection =
 	| {
 			view: "schematic" | "pcb";
 			store: ReturnType<typeof createDrawingStore>;
 			selection: SchematicSelection;
 	  }
 	| { view: "circuit"; store: CircuitStore; selection: CircuitViewSelection };
-export type ViewSelection = ViewState & { origin?: ViewState };
 
 const pinChildPrefix = "shape:";
 
@@ -335,4 +334,119 @@ export function pruneCircuitSelection(
 				? circuit.nets.some((net) => net.id === item.id)
 				: item?.kind === "pin" && visiblePins.has(item.id);
 	return { item: exists ? item : null, checkedPins: [] };
+}
+
+export function netOfBoardSelection(
+	shapes: readonly EditorShape[],
+	selection: SchematicSelection,
+): string | null {
+	const selected = new Set(selection.shapeIds);
+	const nets = new Set<string>();
+	for (const shape of shapes) {
+		if (!selected.has(shape.id)) continue;
+		if (isBoardFootprint(shape)) return null;
+		if ("net" in shape && typeof shape.net === "string" && shape.net)
+			nets.add(shape.net);
+	}
+	return nets.size === 1 ? [...nets][0] : null;
+}
+
+export function boardSelectionFromNet(
+	shapes: readonly EditorShape[],
+	netId: string,
+): SchematicSelection {
+	return {
+		shapeIds: shapes
+			.filter(
+				(shape) =>
+					!isBoardFootprint(shape) && "net" in shape && shape.net === netId,
+			)
+			.map((shape) => shape.id)
+			.sort((a, b) => a - b),
+		childKey: null,
+	};
+}
+
+export function netOfSchematicSelection(
+	shapes: readonly EditorShape[],
+	file: Pick<CircuitFile, "circuit" | "graph">,
+	selection: SchematicSelection,
+): string | null {
+	const subject = circuitSelectionFromSchematic(shapes, file, selection);
+	return subject?.kind === "net" ? subject.id : null;
+}
+
+export function netOfCircuitSelection(
+	selection: CircuitViewSelection,
+): string | null {
+	return selection.item?.kind === "net" ? selection.item.id : null;
+}
+
+export function circuitSelectionFromBoard(
+	boardShapes: readonly EditorShape[],
+	circuit: Circuit,
+	selection: SchematicSelection,
+): CircuitViewSelection {
+	const components = componentsOfBoardSelection(boardShapes, selection);
+	if (components.length) return circuitSelectionFromComponents(components);
+	const netId = netOfBoardSelection(boardShapes, selection);
+	return netId !== null && circuit.nets.some((net) => net.id === netId)
+		? { item: { kind: "net", id: netId }, checkedPins: [] }
+		: { item: null, checkedPins: [] };
+}
+
+export function schematicSelectionFromBoard(
+	schematicShapes: readonly EditorShape[],
+	boardShapes: readonly EditorShape[],
+	circuit: Circuit,
+	selection: SchematicSelection,
+): SchematicSelection {
+	const components = componentsOfBoardSelection(boardShapes, selection);
+	if (components.length)
+		return schematicSelectionFromComponents(
+			schematicShapes,
+			circuit,
+			components,
+		);
+	const netId = netOfBoardSelection(boardShapes, selection);
+	return netId === null
+		? { shapeIds: [], childKey: null }
+		: schematicSelectionFromCircuit(schematicShapes, circuit, {
+				item: { kind: "net", id: netId },
+				checkedPins: [],
+			});
+}
+
+export function boardSelectionFromSource(
+	boardShapes: readonly EditorShape[],
+	source: ViewSelection,
+	circuitFile: Pick<CircuitFile, "circuit" | "graph"> | undefined,
+): { selection: SchematicSelection; netId: string | null } {
+	const components =
+		source.view === "circuit"
+			? componentsOfCircuitSelection(
+					source.store.getSnapshot().circuit,
+					source.selection,
+				)
+			: source.view === "schematic" && circuitFile
+				? componentsOfSchematicSelection(circuitFile.circuit, source.selection)
+				: [];
+	if (components.length)
+		return {
+			selection: boardSelectionFromComponents(boardShapes, components),
+			netId: null,
+		};
+	const netId =
+		source.view === "circuit"
+			? netOfCircuitSelection(source.selection)
+			: source.view === "schematic" && circuitFile
+				? netOfSchematicSelection(
+						source.store.getSnapshot().shapes,
+						circuitFile,
+						source.selection,
+					)
+				: null;
+	return netId === null
+		? { selection: { shapeIds: [], childKey: null }, netId: null }
+		: { selection: boardSelectionFromNet(boardShapes, netId), netId };
 }

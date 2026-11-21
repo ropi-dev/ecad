@@ -43,6 +43,7 @@ export function createProjectAutosave(
 		setError,
 		setLibraryErrors,
 	} = state;
+	let boardSourceLibraryRevision = state.libraryRevision;
 	const persist = async (
 		nextSymbols?: SymbolLibrary,
 		nextLibraries?: readonly ConfiguredSymbolLibrary[],
@@ -118,6 +119,25 @@ export function createProjectAutosave(
 				? { circuit: snapshot.circuit, graph: snapshot.graph }
 				: file;
 		});
+
+		const changesBoardSources =
+			nextSymbols !== undefined ||
+			nextLibraries !== undefined ||
+			nextDrawings !== undefined ||
+			nextCircuits !== undefined ||
+			nextFootprints !== undefined ||
+			savingLibraryRevision !== boardSourceLibraryRevision ||
+			mainShapes !== state.savedMainShapes ||
+			edits.length > 0 ||
+			footprintEdits.size > 0 ||
+			[...drawingDocuments.values()].some(
+				(entry) =>
+					drawingEdits.get(entry.file.id)?.shapes !== entry.savedShapes,
+			) ||
+			[...circuitDocuments.values()].some(
+				(entry) =>
+					circuitInputs.get(entry.file.circuit.id) !== entry.savedFile.circuit,
+			);
 
 		const { assembleProjectSave, withCurrentGraph } = await import(
 			"#/projects/save-assembly.ts"
@@ -245,6 +265,13 @@ export function createProjectAutosave(
 			),
 		);
 		update(next);
+		boardSourceLibraryRevision = savingLibraryRevision;
+		if (
+			changesBoardSources ||
+			next.circuits?.length !== previous.circuits?.length ||
+			next.drawings?.length !== previous.drawings?.length
+		)
+			state.bumpCircuitSyncVersion();
 		if (state.mounted) {
 			state.needsSave =
 				state.libraryRevision !== savingLibraryRevision ||

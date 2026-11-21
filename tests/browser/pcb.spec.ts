@@ -1,5 +1,8 @@
-import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
-import type { Page } from "@playwright/test";
+import {
+	type EditorShape,
+	isBoxSymbol,
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import type { Locator, Page } from "@playwright/test";
 import { required } from "../helpers/required.ts";
 import {
 	closeProjectFiles,
@@ -8,6 +11,7 @@ import {
 } from "./project-files";
 import { screenPointOfMillimetres } from "./rulers";
 import { expect, test } from "./seeded-project";
+import { drawingPoint } from "./symbol-items";
 import { toolbarButton } from "./toolbar";
 
 test.describe.configure({ timeout: 60_000 });
@@ -286,24 +290,20 @@ test("a designer draws a polygon copper zone corner by corner, drags a corner, r
 	expect(await zones()).toEqual([filled]);
 });
 
-test("the schematic, circuit and PCB of a circuit keep the same component selected", async ({
+test("the schematic, circuit and PCB of a circuit keep the same component selected, one at a time or side by side", async ({
 	page,
 }) => {
 	await addExample(page);
 	const active = page.locator('[data-editor-pane="active"]');
-	const selectedReferences = async () => {
-		const ids = await active
+	type Shape = EditorShape & { attributes?: { reference?: string } };
+	const selectedIn = async (pane: Locator, shapes: Shape[]) => {
+		const ids = await pane
 			.getByTestId("text-anchor")
 			.evaluateAll((anchors) =>
 				anchors.map((anchor) =>
 					Number(anchor.getAttribute("data-anchor-id")?.split(":")[0]),
 				),
 			);
-		const shapes: {
-			id: number;
-			kind: string;
-			attributes?: { reference?: string };
-		}[] = (await documentState(page)).editorShapes;
 		return [
 			...new Set(
 				shapes
@@ -312,8 +312,11 @@ test("the schematic, circuit and PCB of a circuit keep the same component select
 			),
 		].sort();
 	};
+	const selectedReferences = async () =>
+		selectedIn(active, (await documentState(page)).editorShapes);
+	const boardShapes: Shape[] = (await documentState(page)).editorShapes;
 	const footprint = required(
-		((await documentState(page)).editorShapes as EditorShape[]).find(
+		boardShapes.find(
 			(shape) =>
 				shape.kind === "symbol" &&
 				shape.footprint !== undefined &&
@@ -336,6 +339,7 @@ test("the schematic, circuit and PCB of a circuit keep the same component select
 		"Schematic editor · RP2350A",
 	);
 	await expect.poll(selectedReferences).toEqual(["U1"]);
+	const schematicShapes: Shape[] = (await documentState(page)).editorShapes;
 
 	await page.getByRole("button", { name: "Switch to circuit view" }).click();
 	const selectedComponent = active.locator(".circuit-component.is-selected");
@@ -354,6 +358,206 @@ test("the schematic, circuit and PCB of a circuit keep the same component select
 		"PCB editor · RP2350A",
 	);
 	await expect.poll(selectedReferences).toEqual(["X1"]);
+
+	const pane = (view: "schematic" | "circuit" | "pcb") =>
+		page.locator(`[data-editor-pane][data-editor-view="${view}"]`);
+	const schematic = pane("schematic");
+	const circuit = pane("circuit");
+	const board = pane("pcb");
+	const shownPanes = page.locator(
+		'[data-editor-pane]:not([data-editor-pane="hidden"])',
+	);
+	const circuitSelection = circuit.locator(
+		".circuit-component.is-selected, .circuit-net.is-selected",
+	);
+	const clickInCircuit = async (name: string) => {
+		const button = circuit
+			.getByRole("button", { name, exact: true })
+			.locator("xpath=ancestor::*[local-name()='foreignObject'][1]");
+		const bounds = required(await circuit.boundingBox());
+		const center = {
+			x: bounds.x + bounds.width / 2,
+			y: bounds.y + bounds.height / 2,
+		};
+		await page.mouse.move(center.x, center.y);
+		const offset = async () => {
+			const target = required(await button.boundingBox());
+			return {
+				x: target.x + target.width / 2 - center.x,
+				y: target.y + target.height / 2 - center.y,
+			};
+		};
+		const start = await offset();
+		await page.mouse.wheel(start.x, start.y);
+		await expect
+			.poll(async () => Math.hypot(...Object.values(await offset())))
+			.toBeLessThan(2);
+		await page.mouse.click(center.x, center.y);
+	};
+	await page.getByRole("button", { name: "Split into 3 views" }).click();
+	await expect(shownPanes).toHaveCount(3);
+	await expect(board).toHaveAttribute("data-editor-pane", "active");
+	await expect
+		.poll(() => selectedIn(schematic, schematicShapes))
+		.toEqual(["X1"]);
+	await expect(
+		circuitSelection.getByRole("button", { name: "Select component X1" }),
+	).toBeVisible();
+
+	await clickInCircuit("Select component U1");
+	await expect(circuit).toHaveAttribute("data-editor-pane", "active");
+	await expect
+		.poll(() => selectedIn(schematic, schematicShapes))
+		.toEqual(["U1"]);
+	await expect.poll(() => selectedIn(board, boardShapes)).toEqual(["U1"]);
+
+	await schematic.getByRole("button", { name: "Fit drawing" }).click();
+	const crystal = required(
+		schematicShapes.find(
+			(shape) =>
+				shape.kind === "symbol" && shape.attributes?.reference === "X1",
+		),
+	);
+	const symbolPoint = await drawingPoint(
+		schematic,
+		isBoxSymbol(crystal)
+			? { x: crystal.x + 1, y: crystal.y - 1 }
+			: { x: crystal.x, y: crystal.y },
+	);
+	await page.mouse.dblclick(symbolPoint.x, symbolPoint.y);
+	await expect(schematic).toHaveAttribute("data-editor-pane", "active");
+	await expect
+		.poll(() => selectedIn(schematic, schematicShapes))
+		.toEqual(["X1"]);
+	await expect(
+		circuitSelection.getByRole("button", { name: "Select component X1" }),
+	).toBeVisible();
+	await expect.poll(() => selectedIn(board, boardShapes)).toEqual(["X1"]);
+
+	const crystalFootprint = required(
+		boardShapes.find(
+			(shape) =>
+				shape.kind === "symbol" &&
+				shape.footprint !== undefined &&
+				shape.attributes?.reference === "X1",
+		),
+	);
+	const boardCrystal = async () => {
+		const shapes: Shape[] = (await documentState(page)).editorShapes;
+		const shape = shapes.find((entry) => entry.id === crystalFootprint.id);
+		return shape?.kind === "symbol"
+			? { reference: shape.attributes?.reference, rotation: shape.rotation }
+			: undefined;
+	};
+	await schematic
+		.getByRole("textbox", { name: "Reference", exact: true })
+		.fill("Y1");
+	await board.getByRole("button", { name: "PCB view" }).click();
+	await expect(board).toHaveAttribute("data-editor-pane", "active");
+	await expect
+		.poll(boardCrystal)
+		.toEqual({ reference: "Y1", rotation: crystalFootprint.rotation });
+	await clickInCircuit("Select component Y1");
+	await expect.poll(() => selectedIn(board, boardShapes)).toEqual(["X1"]);
+	await board.getByRole("button", { name: "PCB view" }).click();
+	await page.keyboard.press("r");
+	await expect
+		.poll(async () => (await boardCrystal())?.rotation)
+		.not.toBe(crystalFootprint.rotation);
+	const moved = await boardCrystal();
+	await page.keyboard.press("Control+z");
+	await page.keyboard.press("Control+z");
+	await expect
+		.poll(boardCrystal)
+		.toEqual({ reference: "X1", rotation: crystalFootprint.rotation });
+	await expect.poll(async () => (await documentState(page)).dirty).toBe(false);
+	await page.keyboard.press("Control+Shift+z");
+	await page.keyboard.press("Control+Shift+z");
+	await expect.poll(boardCrystal).toEqual(moved);
+
+	await clickInCircuit("Net GND");
+	await expect(circuit.locator(".circuit-net.is-selected")).toHaveCount(1);
+	const symbolAnchors = schematic.locator(
+		'[data-testid="text-anchor"][data-anchor-id*=":"]',
+	);
+	await expect(symbolAnchors).not.toHaveCount(0);
+	await expect.poll(() => selectedIn(board, boardShapes)).toEqual([]);
+	await page.keyboard.press("Escape");
+	await expect(circuitSelection).toHaveCount(0);
+	await expect(symbolAnchors).toHaveCount(0);
+
+	const left = async (locator: Locator) =>
+		required(await locator.boundingBox()).x;
+	const circuitLeft = await left(circuit);
+	await circuit.getByRole("button", { name: "Switch to pcb view" }).click();
+	await expect.poll(() => left(board)).toBe(circuitLeft);
+	await board.getByRole("button", { name: "Close pane" }).click();
+	await expect(shownPanes).toHaveCount(2);
+	await expect(board).toHaveAttribute("data-editor-pane", "hidden");
+	await schematic.getByRole("button", { name: "Split into 3 views" }).click();
+	await expect(shownPanes).toHaveCount(3);
+	await schematic.getByRole("button", { name: "Show only this view" }).click();
+	await expect(schematic).toHaveAttribute("data-editor-pane", "active");
+	await expect(shownPanes).toHaveCount(1);
+	await expect(
+		page.getByRole("button", { name: "Split into 2 views" }),
+	).toBeVisible();
+});
+
+test("a circuit without a PCB shows a PCB pane that takes focus, can be shown alone, and becomes the new board", async ({
+	page,
+}) => {
+	await page.goto("/tests/browser/projects.html");
+	await (await openProjectFiles(page))
+		.getByRole("link", { name: "Open Untitled.ecaddraw", exact: true })
+		.click();
+	await closeProjectFiles(page);
+	const pane = (view: "schematic" | "circuit" | "pcb") =>
+		page.locator(`[data-editor-pane][data-editor-view="${view}"]`);
+	const shownPanes = page.locator(
+		'[data-editor-pane]:not([data-editor-pane="hidden"])',
+	);
+	const noBoard = pane("pcb").getByRole("heading", { name: "No PCB yet" });
+	await page.getByRole("button", { name: "Split into 2 views" }).click();
+	await expect(shownPanes).toHaveCount(2);
+	await expect(pane("circuit")).not.toHaveAttribute(
+		"data-editor-pane",
+		"hidden",
+	);
+	await pane("schematic")
+		.getByRole("button", { name: "Switch to pcb view" })
+		.click();
+	await expect(shownPanes).toHaveCount(2);
+	await expect(pane("pcb")).toHaveAttribute("data-editor-pane", "active");
+	await expect(noBoard).toBeVisible();
+
+	await pane("pcb").getByRole("button", { name: "Split into 3 views" }).click();
+	await expect(shownPanes).toHaveCount(3);
+	await pane("pcb")
+		.getByRole("button", { name: "Show only this view" })
+		.click();
+	await expect(shownPanes).toHaveCount(1);
+	await expect(noBoard).toBeVisible();
+	await pane("pcb")
+		.getByRole("button", { name: "Switch to schematic view" })
+		.click();
+	await expect(shownPanes).toHaveCount(1);
+	await expect(pane("schematic")).toHaveAttribute("data-editor-pane", "active");
+
+	await page.getByRole("button", { name: "Split into 2 views" }).click();
+	await pane("circuit")
+		.getByRole("button", { name: "Switch to pcb view" })
+		.click();
+	await expect(pane("pcb")).toHaveAttribute("data-editor-pane", "active");
+	await pane("pcb").getByRole("button", { name: "Create PCB" }).click();
+	await expect(
+		pane("pcb").getByRole("toolbar", { name: "PCB tools" }),
+	).toBeVisible();
+	await expect(shownPanes).toHaveCount(2);
+	await expect(pane("pcb")).toHaveAttribute("data-editor-pane", "active");
+	await expect
+		.poll(async () => (await documentState(page)).boards)
+		.toEqual(["pcb-main"]);
 });
 
 test("the realistic board shows its solder mask in the flat and 3D views and each footprint's 3D model until the cube button hides them, and turning it off brings back the layer colors", async ({

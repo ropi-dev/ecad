@@ -1,4 +1,4 @@
-import type { Circuit, CircuitFile } from "@ecad/drawing-core/circuit/model.ts";
+import type { CircuitFile } from "@ecad/drawing-core/circuit/model.ts";
 import type { CircuitStore } from "@ecad/drawing-core/circuit/store.ts";
 import { createProjectSymbolStorage } from "#/projects/project-symbol-storage.ts";
 import "#/performance/initialize.ts";
@@ -31,6 +31,7 @@ import { createProjectEditorFiles } from "#/projects/project-editor-files.ts";
 import { createProjectExternalReload } from "#/projects/project-external-reload.ts";
 import { createProjectFileActions } from "#/projects/project-file-actions.ts";
 import { createProjectSessionState } from "#/projects/project-session-state.ts";
+import type { EditorView } from "#/projects/split-layout.ts";
 import type { ProjectStorage } from "#/projects/storage.ts";
 import type { ProjectSettings } from "#/settings/schema.ts";
 import type { SymbolLibraryStorage } from "#/symbol-library/storage.ts";
@@ -62,10 +63,15 @@ export interface ProjectContextValue {
 	openBoard(path: string): boolean | Promise<boolean>;
 	switchEditorView(view: EditorView): Promise<void>;
 	preloadEditorViews(): Promise<void>;
-	rememberViewSelection(selection: ViewSelection): void;
-	takeSelectionHandoff(
-		view: ViewSelection["view"],
-	): { source: ViewSelection; circuit: Circuit | undefined } | null;
+	prepareEditorViews(views: readonly EditorView[]): Promise<void>;
+	focusEditorView(view: EditorView): void;
+	createCircuitBoard(circuitId: string): Promise<boolean>;
+	selectionSync: ViewSelectionSync | null;
+	circuitSyncVersion: number;
+	/** Counts explicit navigations to a file, such as a sidebar click. */
+	editorNavigation: number;
+	publishViewSelection(circuitId: string, selection: ViewSelection): void;
+	circuitForSelection(circuitId: string): CircuitFile | undefined;
 	createCircuit(name: string): Promise<string>;
 	importCircuit(file: CircuitFile): Promise<string>;
 	mode: ProjectStorage["mode"];
@@ -147,7 +153,13 @@ export interface BoardDocument {
 	savedRules: BoardRules;
 	unsubscribe(): void;
 }
-export type EditorView = "schematic" | "circuit" | "pcb";
+export type { EditorView } from "#/projects/split-layout.ts";
+export interface ViewSelectionSync {
+	circuitId: string;
+	generation: number;
+	revision: number;
+	source: ViewSelection;
+}
 export interface EditorViews {
 	circuitId: string;
 	schematic: DrawingDocument | "main" | null;
@@ -202,8 +214,11 @@ export function createProjectSession(
 		openBoard,
 		switchEditorView,
 		preloadEditorViews,
-		rememberViewSelection,
-		takeSelectionHandoff,
+		prepareEditorViews,
+		focusEditorView,
+		createCircuitBoard,
+		publishViewSelection,
+		circuitForSelection,
 		selectEditorFile,
 		subscribeMain,
 		stopMain,
@@ -213,9 +228,8 @@ export function createProjectSession(
 	const adopt = (snapshot: ProjectSnapshot) => {
 		state.editorSelection++;
 		state.circuitLayout?.abort();
-		state.viewSelection = null;
-		state.selectionHandoff = null;
-		state.selectionOrigins = new WeakSet();
+		state.setSelectionSync(null);
+		state.bumpCircuitSyncVersion();
 		linkedAssembler.invalidate();
 		documents.clear();
 		setEditorCircuit(null);
@@ -371,8 +385,14 @@ export function createProjectSession(
 		openBoard,
 		switchEditorView,
 		preloadEditorViews,
-		rememberViewSelection,
-		takeSelectionHandoff,
+		prepareEditorViews,
+		focusEditorView,
+		createCircuitBoard,
+		selectionSync: state.selectionSync,
+		circuitSyncVersion: state.circuitSyncVersion,
+		editorNavigation: state.editorNavigation,
+		publishViewSelection,
+		circuitForSelection,
 		selectEditorFile,
 		mode: storage.mode,
 		busy: state.busy,
@@ -460,6 +480,9 @@ export function createProjectSession(
 						editorViews: _editorViews,
 						openingCircuit: _openingCircuit,
 						selectedAsset: _selectedAsset,
+						selectionSync: _selectionSync,
+						circuitSyncVersion: _circuitSyncVersion,
+						editorNavigation: _editorNavigation,
 						...actions
 					} = next;
 					stableActions = actions;

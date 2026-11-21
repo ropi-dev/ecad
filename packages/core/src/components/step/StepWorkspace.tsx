@@ -44,7 +44,7 @@ export function StepWorkspace() {
 	};
 	return (
 		<main
-			class="workspace-plain relative h-dvh overflow-hidden"
+			class="workspace-plain @container relative h-dvh overflow-hidden"
 			onDragEnter={(event) => {
 				if (project()) return;
 				if (!event.dataTransfer?.types.includes("Files")) return;

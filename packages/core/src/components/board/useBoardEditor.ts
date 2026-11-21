@@ -75,6 +75,7 @@ export function useBoardEditor(
 		setActive: (layer: FootprintLayer) => void;
 		selection: ReadonlySet<number>;
 		ratsnestShown: boolean;
+		syncedNetId?: string;
 	}>,
 ) {
 	const board = createMemo(() => options().board);
@@ -141,12 +142,20 @@ export function useBoardEditor(
 	);
 	const analysisError = createMemo(() => state().error);
 	const ratsnest = createMemo(() => ratsnestShapes(lines() ?? []));
+	const syncedNetId = createMemo(() => options().syncedNetId);
 	const highlight = createMemo(() => {
+		if (!enabled()) return undefined;
 		const selected = selection();
-		if (!enabled() || selected.size !== 1) return undefined;
-		const [id] = selected;
-		const shape = committed().find((item) => item.id === id);
-		return shape && "net" in shape ? shape.net : undefined;
+		if (selected.size === 0) return syncedNetId();
+		let shared: string | undefined;
+		for (const shape of committed()) {
+			if (!selected.has(shape.id)) continue;
+			const net = "net" in shape ? shape.net : undefined;
+			if (typeof net !== "string" || !net) return undefined;
+			if (shared !== undefined && shared !== net) return undefined;
+			shared = net;
+		}
+		return shared;
 	});
 	const highlighted = createMemo(() => {
 		const ids = new Set<number>();

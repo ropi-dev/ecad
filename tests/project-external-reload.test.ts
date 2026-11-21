@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
+import { createBoardFile } from "#/board/format.ts";
 import { createEmptySymbolFile } from "#/components/editor/symbolFormat.ts";
 import { toastManager } from "#/components/ui/toast.ts";
 import { ProjectConflict } from "#/projects/errors.ts";
@@ -9,6 +10,7 @@ import { createProjectSession } from "#/projects/ProjectSession.ts";
 import { primaryPcbId } from "#/projects/pcb.ts";
 import type { ProjectRefresh, ProjectStorage } from "#/projects/storage.ts";
 import type { SymbolLibraryStorage } from "#/symbol-library/storage.ts";
+import { required } from "./helpers/required.ts";
 
 const rectangle = {
 	id: 1,
@@ -286,5 +288,34 @@ test("an open circuit takes the external circuit, keeps its node positions and s
 	assert.equal(value.dirty, false);
 	await new Promise((resolve) => setTimeout(resolve, 20));
 	assert.equal(f.calls.saves, 1);
+	stop();
+});
+
+test("a PCB shown beside its schematic follows the board file when another program replaces or deletes it", async () => {
+	const withBoard = (name: string) => ({
+		...withCircuit("GND"),
+		boards: [createBoardFile(name, primaryPcbId)],
+	});
+	const f = fixture(withBoard("Board"));
+	const stop = f.session.connect();
+	await loaded(f.session);
+	const project = () => f.session.getSnapshot();
+	await project().prepareEditorViews(["schematic", "pcb"]);
+	const board = required(project().editorViews?.board);
+	assert.equal(project().editorBoard, null);
+
+	const replaced = withBoard("Renamed");
+	f.changeOnDisk(replaced, ["main.ecaddraw"]);
+	await until(() => project().project === replaced);
+	const next = required(project().editorViews?.board);
+	assert.notEqual(next, board);
+	assert.equal(next.store, board.store);
+	assert.equal(next.file.name, "Renamed");
+
+	const deleted = withCircuit("GND");
+	f.changeOnDisk(deleted, ["main.ecaddraw"]);
+	await until(() => project().project === deleted);
+	assert.equal(project().editorViews?.board, null);
+	assert.equal(project().editorViews?.schematic, "main");
 	stop();
 });

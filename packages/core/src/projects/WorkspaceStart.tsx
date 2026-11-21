@@ -106,7 +106,7 @@ export function WorkspaceStart() {
 	}
 
 	return (
-		<main class="workspace-start workspace-plain relative flex h-full min-h-dvh flex-col">
+		<main class="workspace-start workspace-plain @container relative flex h-full min-h-dvh flex-col">
 			<DocumentBar icon={House} />
 			<div class="workspace-start-message">
 				<Switch

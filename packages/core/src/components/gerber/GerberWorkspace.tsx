@@ -35,7 +35,7 @@ export function GerberWorkspace() {
 		if (focusedLayerId() === id) setFocusedLayerId(undefined);
 	};
 	return (
-		<main class="relative flex h-dvh flex-col overflow-hidden">
+		<main class="@container relative flex h-dvh flex-col overflow-hidden">
 			<DocumentBar
 				icon={Layers}
 				title={

@@ -1,5 +1,5 @@
 import { isBoxSymbol } from "@ecad/drawing-core/drawing/shapes.ts";
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import { required } from "../helpers/required.ts";
 import { closeProjectFiles } from "./project-files";
 
@@ -55,7 +55,7 @@ export async function waitForFrame(page: Page) {
 }
 
 export async function drawingPoint(
-	page: Page,
+	page: Page | Locator,
 	point: { x: number; y: number },
 ) {
 	return page
