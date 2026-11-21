@@ -177,6 +177,7 @@ function EditorPane(props: {
 					: focusSurface();
 				quietFocus(target ?? null);
 			};
+			restoreIfLost();
 			queueMicrotask(() => {
 				restoreIfLost();
 				if (!cancelled) frame = requestAnimationFrame(restoreIfLost);
@@ -230,7 +231,11 @@ function EditorPane(props: {
 			class={[
 				"flex min-h-0 min-w-0 flex-col overflow-hidden",
 				props.active ? "relative h-full w-full" : "invisible absolute inset-0",
-				{ "[--chrome-bar:0px]": props.split },
+				{
+					"[--chrome-bar:0px]": props.split && props.view !== "schematic",
+					"[--chrome-top-right:var(--chrome-bar)]":
+						props.split && props.view === "schematic",
+				},
 			]}
 			inert={!props.active}
 			data-editor-pane={props.active ? "active" : "hidden"}

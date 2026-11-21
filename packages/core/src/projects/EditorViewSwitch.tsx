@@ -70,10 +70,11 @@ export function EditorViewSwitch(props: { view: EditorView }) {
 								data-shortcut-scope={
 									!isSplit() && current() ? "none" : undefined
 								}
-								disabled={
-									(isSplit() || !current()) && (switching() || project()?.busy)
+								disabled={(isSplit() || !current()) && Boolean(project()?.busy)}
+								aria-disabled={
+									(isSplit() || !current()) && switching() ? "true" : undefined
 								}
-								class={`ui-toggle flex h-full w-8 cursor-pointer items-center justify-center rounded-sm [--toggle-on-bg:var(--color-pressed)] [--toggle-on-fg:var(--color-fg)] hover:[--toggle-bg:transparent] focus-visible:outline-2 focus-visible:outline-accent disabled:pointer-events-none ${isSplit() ? "" : "aria-pressed:cursor-default"} pointer-coarse:w-11 pointer-coarse:rounded-md`}
+								class={`ui-toggle flex h-full w-8 cursor-pointer items-center justify-center rounded-sm [--toggle-on-bg:var(--color-pressed)] [--toggle-on-fg:var(--color-fg)] hover:[--toggle-bg:transparent] focus-visible:outline-2 focus-visible:outline-accent disabled:pointer-events-none aria-disabled:pointer-events-none ${isSplit() ? "" : "aria-pressed:cursor-default"} pointer-coarse:w-11 pointer-coarse:rounded-md`}
 								onClick={(event) => {
 									const state = project();
 									if (!state || switching() || state.busy) return;
@@ -115,8 +116,9 @@ export function EditorViewSwitch(props: { view: EditorView }) {
 					tooltip={isSplit() ? "Exit split view" : "Split view"}
 					aria-pressed={isSplit() ? "true" : "false"}
 					data-split-toggle={isSplit() ? "true" : "false"}
-					disabled={switching() || project()?.busy}
-					class="ui-toggle flex h-full w-8 cursor-pointer items-center justify-center rounded-sm [--toggle-on-bg:var(--color-pressed)] [--toggle-on-fg:var(--color-fg)] hover:[--toggle-bg:transparent] focus-visible:outline-2 focus-visible:outline-accent disabled:pointer-events-none pointer-coarse:w-11 pointer-coarse:rounded-md"
+					disabled={Boolean(project()?.busy)}
+					aria-disabled={switching() ? "true" : undefined}
+					class="ui-toggle flex h-full w-8 cursor-pointer items-center justify-center rounded-sm [--toggle-on-bg:var(--color-pressed)] [--toggle-on-fg:var(--color-fg)] hover:[--toggle-bg:transparent] focus-visible:outline-2 focus-visible:outline-accent disabled:pointer-events-none aria-disabled:pointer-events-none pointer-coarse:w-11 pointer-coarse:rounded-md"
 					onClick={() => {
 						const state = project();
 						if (!state || switching() || state.busy) return;
