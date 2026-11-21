@@ -468,12 +468,17 @@ export function createProjectEditorFiles(
 						try {
 							const { announceBoardSync, boardContext, synchronizeBoardStore } =
 								await import("#/board/sync-document.ts");
-							announceBoardSync(
-								await synchronizeBoardStore(
-									boardDoc.store,
-									boardContext(state.active, boardFile.circuitId),
-								),
+							const report = await synchronizeBoardStore(
+								boardDoc.store,
+								boardContext(state.active, boardFile.circuitId),
 							);
+							if (report) {
+								state.boardSyncWarnings.set(
+									boardDoc.store,
+									`${report.stale}:${report.missing.join("\0")}`,
+								);
+								announceBoardSync(report);
+							}
 						} catch (cause) {
 							showError(
 								cause,
@@ -702,13 +707,19 @@ export function createProjectEditorFiles(
 		};
 		return import("#/board/sync-document.ts")
 			.then(
-				async ({ announceBoardSync, boardContext, synchronizeBoardStore }) =>
-					announceBoardSync(
-						await synchronizeBoardStore(
+				async ({ announceBoardSync, boardContext, synchronizeBoardStore }) => {
+					const report = await synchronizeBoardStore(
+						document.store,
+						boardContext(state.active, board.circuitId),
+					);
+					if (report) {
+						state.boardSyncWarnings.set(
 							document.store,
-							boardContext(state.active, board.circuitId),
-						),
-					),
+							`${report.stale}:${report.missing.join("\0")}`,
+						);
+						announceBoardSync(report);
+					}
+				},
 			)
 			.then(show, (cause) => {
 				showError(cause, "Unable to update the board from its schematic.");

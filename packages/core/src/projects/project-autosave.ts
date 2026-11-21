@@ -343,14 +343,23 @@ export function createProjectAutosave(
 							splitBoard.store,
 							boardContext(state.active, splitCircuitId),
 						);
-						if (
-							report &&
-							(report.placed ||
+						if (report) {
+							const warningKey = `${report.stale}:${report.missing.join("\0")}`;
+							const previousWarning = state.boardSyncWarnings.get(
+								splitBoard.store,
+							);
+							state.boardSyncWarnings.set(splitBoard.store, warningKey);
+							const warningChanged =
+								(report.missing.length > 0 || report.stale > 0) &&
+								warningKey !== previousWarning;
+							if (
+								report.placed ||
 								report.updated ||
 								report.removed ||
-								circuitChanged)
-						)
-							announceBoardSync(report);
+								warningChanged
+							)
+								announceBoardSync(report);
+						}
 					}
 				} catch (cause) {
 					showError(cause, "Unable to update the board from its schematic.");

@@ -94,6 +94,7 @@ export function createProjectSessionState(rawStorage: ProjectStorage) {
 		needsSave: false,
 		savedMainShapes: store.getSnapshot().shapes as EditorShape[],
 		synchronizing: false,
+		boardSyncWarnings: new WeakMap<object, string>(),
 		libraryRevision: 0,
 		autosavePending: undefined as Promise<void> | undefined,
 		error: "",
