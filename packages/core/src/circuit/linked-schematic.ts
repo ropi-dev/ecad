@@ -276,7 +276,7 @@ function synchronize(
 	const result: LinkedSchematic = {
 		file:
 			unchanged && graphKept && isValidated(file.circuit, file.graph)
-				? remember({ circuit, graph: cloneJson(file.graph) })
+				? remember(file.circuit, { circuit, graph: cloneJson(file.graph) })
 				: validatedFile(file, {
 						circuit,
 						graph: { ...file.graph, positions, collapsedComponentIds },
@@ -311,8 +311,8 @@ function markValidated(
 	}
 }
 
-function remember(file: CircuitFile): CircuitFile {
-	markValidated([file.circuit], [file.graph]);
+function remember(input: Circuit, file: CircuitFile): CircuitFile {
+	markValidated([file.circuit, input], [file.graph]);
 	return file;
 }
 
