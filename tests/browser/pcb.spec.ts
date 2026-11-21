@@ -456,9 +456,7 @@ test("the schematic, circuit and PCB of a circuit keep the same component select
 	).toBeVisible();
 
 	// Switch split layout to grid, hide a view to get 2-way split, re-show, and exit.
-	await page
-		.getByRole("button", { name: "Stacked layout", exact: true })
-		.click();
+	await page.getByRole("button", { name: "Grid layout", exact: true }).click();
 	if (captureArtifacts) {
 		await page.screenshot({ path: "/tmp/ecad-split-view/split-3-grid.png" });
 	}

@@ -135,19 +135,42 @@ function EditorPane(props: {
 	children: JSX.Element;
 }) {
 	let pane!: HTMLDivElement;
+	const focusSurface = () =>
+		pane.querySelector<HTMLElement>(
+			'canvas, svg[role="application"], [role="application"]',
+		);
 	createEffect(
-		() => ({ active: props.active, split: props.split }),
-		({ active, split }, previous) => {
-			const opened = active && previous?.active === false;
-			if (!opened || split) return;
-			const focused = document.activeElement;
-			if (focused && focused !== document.body && !focused.closest("[inert]"))
-				return;
-			quietFocus(
-				pane.querySelector<HTMLElement>(
-					'[aria-label="Editor view"] [aria-pressed="true"]',
-				),
-			);
+		() => ({
+			active: props.active,
+			split: props.split,
+			focused: props.focused,
+		}),
+		({ active, split, focused }, previous) => {
+			const becameVisibleSingle =
+				active && !split && previous?.active === false;
+			const modeOrFocusChanged =
+				active &&
+				focused &&
+				previous !== undefined &&
+				(previous.split !== split || (!previous.focused && split));
+			if (!becameVisibleSingle && !modeOrFocusChanged) return;
+			queueMicrotask(() => {
+				if (!props.active) return;
+				if (props.split && !props.focused) return;
+				const current = document.activeElement;
+				if (
+					current?.isConnected &&
+					current !== document.body &&
+					!current.closest("[inert]")
+				)
+					return;
+				const target = !props.split
+					? (pane.querySelector<HTMLElement>(
+							'[aria-label="Editor view"] [aria-pressed="true"]',
+						) ?? focusSurface())
+					: focusSurface();
+				quietFocus(target ?? null);
+			});
 		},
 	);
 	return (
@@ -156,8 +179,32 @@ function EditorPane(props: {
 				pane = element;
 				element.addEventListener(
 					"pointerdown",
-					() => {
-						if (props.split && !props.focused) props.onFocusPane();
+					(event) => {
+						if (!props.split) return;
+						if (!props.focused) props.onFocusPane();
+						if (
+							event.target instanceof Element &&
+							!event.target.closest(
+								'button, a, input, select, textarea, canvas, [role="application"], [tabindex]',
+							)
+						) {
+							const active = document.activeElement;
+							if (!active || !pane.contains(active)) quietFocus(focusSurface());
+						}
+					},
+					{ capture: true },
+				);
+				element.addEventListener(
+					"mousedown",
+					(event) => {
+						if (!props.split) return;
+						if (
+							event.target instanceof Element &&
+							!event.target.closest(
+								'button, a, input, select, textarea, canvas, [role="application"], [tabindex]',
+							)
+						)
+							event.preventDefault();
 					},
 					{ capture: true },
 				);
@@ -572,7 +619,8 @@ export function EditorDocument(
 								title={splitTitle()}
 							/>
 						</Show>
-						<div
+						<Dynamic
+							component={isSplit() ? "main" : "div"}
 							ref={gridEl}
 							class="relative grid min-h-0 flex-1 overflow-hidden"
 							style={gridStyle()}
@@ -676,7 +724,7 @@ export function EditorDocument(
 									/>
 								)}
 							</For>
-						</div>
+						</Dynamic>
 					</div>
 				}
 			>

@@ -1076,7 +1076,9 @@ function EditorCanvas(props: EditorCanvasProps) {
 			/>
 		);
 		return (
-			<main
+			<Dynamic
+				component={props.splitPane ? "section" : "main"}
+				aria-label={props.splitPane ? `${editorKind()} editor` : undefined}
 				class={[
 					"relative flex min-h-0 flex-col overflow-hidden",
 					props.fillHeight ? "h-full" : "h-dvh",
@@ -1128,7 +1130,7 @@ function EditorCanvas(props: EditorCanvasProps) {
 							listen("keydown", canvasKeyDown, true),
 						]}
 						class={[
-							"relative min-w-0 flex-1 touch-none",
+							"@container relative min-w-0 flex-1 touch-none",
 							sheetless() ? "bg-paper" : "bg-desk",
 							{
 								"[&_canvas]:cursor-grab": tool() === "pan",
@@ -1377,7 +1379,7 @@ function EditorCanvas(props: EditorCanvasProps) {
 						onCreate={commands.createSelectionSymbol}
 					/>
 				)}
-			</main>
+			</Dynamic>
 		);
 	};
 

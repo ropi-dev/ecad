@@ -228,14 +228,42 @@ export function createProjectExternalReload(
 								: views.board !== null,
 					)
 				: [];
-			setSplitViews(remaining);
-			if (views && remaining.length === 1) {
-				const sole = remaining[0];
-				if (sole === "circuit" && views.circuit)
+			setSplitViews(remaining.length >= 2 ? remaining : []);
+			const currentPrimary = state.editorCircuit
+				? "circuit"
+				: state.editorBoard
+					? "pcb"
+					: state.editorDrawing ||
+							(views?.schematic === "main" &&
+								!state.editorSymbol &&
+								!state.editorFootprint)
+						? "schematic"
+						: null;
+			if (
+				views &&
+				remaining.length >= 1 &&
+				(!currentPrimary || !remaining.includes(currentPrimary))
+			) {
+				const promoted = remaining[0];
+				if (promoted === "circuit" && views.circuit) {
+					setEditorDrawing(null);
+					setEditorBoard(null);
+					setEditorSymbol(null);
+					setEditorFootprint(null);
 					setEditorCircuit(views.circuit);
-				else if (sole === "pcb" && views.board) setEditorBoard(views.board);
-				else if (views.schematic && views.schematic !== "main")
-					setEditorDrawing(views.schematic);
+				} else if (promoted === "pcb" && views.board) {
+					setEditorCircuit(null);
+					setEditorDrawing(null);
+					setEditorSymbol(null);
+					setEditorFootprint(null);
+					setEditorBoard(views.board);
+				} else if (promoted === "schematic" && views.schematic) {
+					setEditorCircuit(null);
+					setEditorBoard(null);
+					setEditorSymbol(null);
+					setEditorFootprint(null);
+					setEditorDrawing(views.schematic === "main" ? null : views.schematic);
+				}
 			}
 		}
 		state.selectionHandoff = null;

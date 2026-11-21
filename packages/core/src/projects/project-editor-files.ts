@@ -352,6 +352,7 @@ export function createProjectEditorFiles(
 				: "schematic";
 		if (wanted.length === 1) {
 			if (wanted[0] === currentView) {
+				state.editorSelection++;
 				setSplitViews([]);
 				return;
 			}
@@ -867,7 +868,9 @@ export function createProjectEditorFiles(
 			circuitId,
 			schematic:
 				circuitId === primaryPcbId
-					? ("main" as const)
+					? snapshot.manifest.drawing !== undefined
+						? ("main" as const)
+						: null
 					: drawing
 						? openDrawingDocument(drawing)
 						: null,

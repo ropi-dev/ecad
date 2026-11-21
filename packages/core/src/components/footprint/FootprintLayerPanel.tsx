@@ -12,6 +12,7 @@ import {
 	createUniqueId,
 	For,
 	Show,
+	untrack,
 } from "solid-js";
 import {
 	Box,
@@ -96,14 +97,16 @@ export function FootprintLayerPanel(props: {
 	realistic?: { shown: boolean; onToggle: () => void };
 	models?: { shown: boolean; onToggle: () => void };
 }) {
-	const [collapsed, setCollapsed] = createSignal(Boolean(props.compact));
+	const [collapsed, setCollapsed] = createSignal(
+		untrack(() => Boolean(props.compact)),
+	);
 	let beforeCompact: boolean | undefined;
 	createEffect(
 		() => Boolean(props.compact),
 		(compact, previous) => {
 			if (previous === undefined || compact === previous) return;
 			if (compact) {
-				beforeCompact = collapsed();
+				beforeCompact = untrack(collapsed);
 				setCollapsed(true);
 			} else {
 				setCollapsed(beforeCompact ?? false);

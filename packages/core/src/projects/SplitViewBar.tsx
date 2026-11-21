@@ -72,6 +72,8 @@ export function SplitWorkspaceBar(props: {
 			: undefined);
 	const projectName = () => snapshot()?.manifest.name;
 	const docked = () => controls?.sidebarDocked ?? false;
+	const altLayoutLabel = () =>
+		props.views.length === 2 ? "Stacked layout" : "Grid layout";
 	return (
 		<TooltipProvider delayDuration={350} skipDelayDuration={150}>
 			<header
@@ -123,10 +125,8 @@ export function SplitWorkspaceBar(props: {
 						/>
 					</TooltipButton>
 					<TooltipButton
-						aria-label="Stacked layout"
-						tooltip={
-							props.views.length === 2 ? "Stacked layout" : "Grid layout"
-						}
+						aria-label={altLayoutLabel()}
+						tooltip={altLayoutLabel()}
 						side="bottom"
 						aria-pressed={props.layout === "grid" ? "true" : "false"}
 						class="ui-toggle flex h-full w-8 cursor-pointer items-center justify-center rounded-sm [--toggle-on-bg:var(--color-pressed)] [--toggle-on-fg:var(--color-fg)] hover:[--toggle-bg:transparent] focus-visible:outline-2 focus-visible:outline-accent aria-pressed:cursor-default"

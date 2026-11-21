@@ -100,10 +100,17 @@ function useProjectFileUrl() {
 	});
 	let previous: { href: string; session: number } | null = null;
 	let pending: { id: string; split?: string } | null = null;
-	let pendingSplit: { target: string | undefined } | null = null;
+	const [pendingSplit, setPendingSplit] = createSignal<{
+		target: string | undefined;
+	} | null>(null);
 	const [failedRestoration, setFailedRestoration] = createSignal<{
 		id: string;
 	} | null>(null);
+	const canSplit = (entry: { id: string } | undefined) =>
+		!!entry &&
+		!entry.id.startsWith("symbol:") &&
+		!entry.id.startsWith("footprint:") &&
+		!entry.id.startsWith("asset:");
 
 	createEffect(
 		() => ({
@@ -114,6 +121,7 @@ function useProjectFileUrl() {
 			split: split(),
 			navigating: navigating(),
 			failedRestoration: failedRestoration(),
+			pendingSplit: pendingSplit(),
 		}),
 		({
 			context,
@@ -123,6 +131,7 @@ function useProjectFileUrl() {
 			split,
 			navigating,
 			failedRestoration,
+			pendingSplit: pendingSplitToken,
 		}) => {
 			if (!context?.project || context.busy || navigating) return;
 			const {
@@ -139,7 +148,7 @@ function useProjectFileUrl() {
 			if (path !== "/editor" && path !== "/step" && path !== "/gerber") {
 				previous = null;
 				pending = null;
-				pendingSplit = null;
+				if (pendingSplitToken !== null) setPendingSplit(null);
 				return;
 			}
 			const selections = projectFileSelections(project);
@@ -183,7 +192,7 @@ function useProjectFileUrl() {
 				pending !== null && pending === failedRestoration;
 			if (restorationFailed) {
 				pending = null;
-				pendingSplit = null;
+				if (pendingSplitToken !== null) setPendingSplit(null);
 			}
 			const changedLocation = previous?.href !== location.href;
 			const changedProject = previous?.session !== context.session;
@@ -191,22 +200,50 @@ function useProjectFileUrl() {
 			previous = { href: location.href, session: context.session };
 			const applySplit = (targetSplit: string | undefined) => {
 				const token = { target: targetSplit };
-				pendingSplit = token;
+				setPendingSplit(token);
+				const requestedView: EditorView =
+					requested?.file === active?.file
+						? (requested?.view ?? "schematic")
+						: (active?.view ?? "schematic");
 				const wanted: EditorView[] = targetSplit
 					? (targetSplit.split(",") as EditorView[])
-					: [active?.view ?? "schematic"];
+					: [requestedView];
 				const focus: EditorView =
 					requested?.view ?? active?.view ?? "schematic";
 				void context.setSplitEditorViews(wanted, focus).finally(() => {
-					if (pendingSplit === token) pendingSplit = null;
+					setPendingSplit((current) => (current === token ? null : current));
 				});
 			};
 			if (changedLocation || changedProject) {
 				pending = null;
-				pendingSplit = null;
+				if (pendingSplitToken !== null) setPendingSplit(null);
 				if (!file && path !== "/editor" && context.selectedAsset) {
 					context.selectAsset(null);
 					return;
+				}
+				if (
+					changedLocation &&
+					!changedProject &&
+					path === "/editor" &&
+					requested &&
+					active &&
+					requested.file === active.file &&
+					canSplit(active) &&
+					(activeSplit !== undefined || split !== undefined)
+				) {
+					const targetView: EditorView = requested.view ?? "schematic";
+					if (split !== activeSplit) {
+						applySplit(split);
+						return;
+					}
+					if (
+						activeSplit !== undefined &&
+						context.splitViews.includes(targetView)
+					) {
+						if (targetView !== (active.view ?? "schematic"))
+							context.focusSplitView(targetView);
+						return;
+					}
 				}
 				if (requested && requested.id !== active?.id) {
 					const request = { id: requested.id, split };
@@ -232,14 +269,7 @@ function useProjectFileUrl() {
 					}
 					return;
 				}
-				if (
-					path === "/editor" &&
-					active &&
-					!active.id.startsWith("symbol:") &&
-					!active.id.startsWith("footprint:") &&
-					!active.id.startsWith("asset:") &&
-					split !== activeSplit
-				) {
+				if (path === "/editor" && canSplit(active) && split !== activeSplit) {
 					applySplit(split);
 					return;
 				}
@@ -248,14 +278,18 @@ function useProjectFileUrl() {
 			if (pending?.split) {
 				const targetSplit = pending.split;
 				pending = null;
-				if (targetSplit !== activeSplit && path === "/editor") {
+				if (
+					canSplit(active) &&
+					targetSplit !== activeSplit &&
+					path === "/editor"
+				) {
 					applySplit(targetSplit);
 					return;
 				}
 			}
 			pending = null;
-			if (pendingSplit !== null) {
-				if (pendingSplit.target === activeSplit) pendingSplit = null;
+			if (pendingSplitToken !== null) {
+				if (pendingSplitToken.target === activeSplit) setPendingSplit(null);
 				else return;
 			}
 			if (
@@ -275,7 +309,10 @@ function useProjectFileUrl() {
 						initial ||
 						!file ||
 						requested?.id === active?.id ||
-						restorationFailed,
+						restorationFailed ||
+						(path === "/editor" &&
+							active?.file === file &&
+							(activeSplit !== undefined || split !== undefined)),
 				});
 			}
 		},

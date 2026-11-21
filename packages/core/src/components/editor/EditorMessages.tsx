@@ -26,7 +26,9 @@ function messageButtonRef(slot: ButtonSlot) {
 		const track = (event: FocusEvent) => {
 			if (event.type === "focusin") {
 				focused = true;
-				canvas = button?.closest("main")?.querySelector("canvas");
+				canvas = button
+					?.closest("[data-editor-pane], main")
+					?.querySelector("canvas");
 			} else if (button?.isConnected && event.relatedTarget) focused = false;
 		};
 		onCleanup(() => {
@@ -37,7 +39,9 @@ function messageButtonRef(slot: ButtonSlot) {
 			released.removeEventListener("focusout", track);
 			if (released.isConnected) {
 				focused = document.activeElement === released;
-				canvas = released.closest("main")?.querySelector("canvas");
+				canvas = released
+					.closest("[data-editor-pane], main")
+					?.querySelector("canvas");
 			}
 			if (!focused) return;
 			queueMicrotask(() => {
@@ -125,7 +129,7 @@ export function EditorMessages(
 		<Show when={props.messages.length > 0 || props.hiddenIssues.length > 0}>
 			<div
 				data-beside-panel={props.besidePanel ? "true" : "false"}
-				class="pointer-events-none absolute top-[calc(var(--chrome-top)+var(--chrome-bar))] left-[var(--chrome-gap)] z-3 flex max-w-[min(560px,calc(100%-2*var(--chrome-gap)))] flex-col items-start gap-2 *:pointer-events-auto min-[761px]:data-[beside-panel=true]:left-[calc(var(--chrome-gap)+18.5rem)] min-[761px]:data-[beside-panel=true]:max-w-[min(560px,calc(100%-2*var(--chrome-gap)-18.5rem))]"
+				class="pointer-events-none absolute top-[calc(var(--chrome-top)+var(--chrome-bar))] left-[var(--chrome-gap)] z-4 flex max-w-[min(560px,calc(100%-2*var(--chrome-gap)))] flex-col items-start gap-2 *:pointer-events-auto @[640px]:data-[beside-panel=true]:left-[calc(var(--chrome-gap)+18.5rem)] @[640px]:data-[beside-panel=true]:max-w-[min(560px,calc(100%-2*var(--chrome-gap)-18.5rem))]"
 			>
 				{props.messages.length > 0 && (
 					<div class="ui-notice flex max-w-full items-start gap-2 py-1.5 pr-1.5 pl-2.5">
@@ -150,7 +154,9 @@ export function EditorMessages(
 							class={panelIconButtonClassName}
 							onClick={(event) =>
 								props.dismiss(
-									event.currentTarget.closest("main")?.querySelector("canvas"),
+									event.currentTarget
+										.closest("[data-editor-pane], main")
+										?.querySelector("canvas"),
 								)
 							}
 						>

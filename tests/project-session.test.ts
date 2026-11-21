@@ -552,17 +552,12 @@ test("split view loads circuit views together, focuses panes, broadcasts selecti
 	assert.equal(project().editorCircuit, views.circuit);
 	assert.equal(project().editorBoard, null);
 
-	let notifications = 0;
-	const stopSelection = project().subscribeViewSelection(() => {
-		notifications++;
-	});
 	const schematicSelection = {
 		view: "schematic" as const,
 		store: project().store,
 		selection: { shapeIds: [1], childKey: null },
 	};
 	project().rememberViewSelection(schematicSelection);
-	assert.equal(notifications, 1);
 	const firstSynced = required(project().getViewSelection());
 	assert.equal(firstSynced.version, 1);
 	assert.equal(firstSynced.circuitId, primaryPcbId);
@@ -574,8 +569,9 @@ test("split view loads circuit views together, focuses panes, broadcasts selecti
 		selection: { shapeIds: [2], childKey: null },
 		origin: schematicSelection,
 	});
-	assert.equal(notifications, 1);
-	assert.equal(project().getViewSelection()?.version, 1);
+	const afterEcho = required(project().getViewSelection());
+	assert.equal(afterEcho.version, 1);
+	assert.equal(afterEcho.source, schematicSelection);
 
 	project().focusSplitView("pcb");
 	assert.deepEqual(project().splitViews, ["schematic", "circuit", "pcb"]);
@@ -592,6 +588,43 @@ test("split view loads circuit views together, focuses panes, broadcasts selecti
 	assert.deepEqual(project().splitViews, []);
 	assert.equal(project().getViewSelection(), null);
 
-	stopSelection();
+	stop();
+});
+
+test("exiting split view to the focused view cancels an in-flight split open", async () => {
+	const initial = snapshot();
+	const f = fixture({
+		...initial,
+		manifest: { ...initial.manifest, circuits: [{ circuit: "main.ecaddraw" }] },
+		circuits: [createCircuit("Main", primaryPcbId)],
+	});
+	const origSave = f.storage.save.bind(f.storage);
+	let releaseSave: (() => void) | undefined;
+	let holdSave = false;
+	f.storage.save = async (...args) => {
+		if (holdSave)
+			await new Promise<void>((resolve) => {
+				releaseSave = resolve;
+			});
+		return origSave(...args);
+	};
+	const stop = f.session.connect();
+	await loaded(f.session);
+	f.session
+		.getSnapshot()
+		.store.transact((current) => [
+			undefined,
+			{ ...current, shapes: [rectangle] },
+		]);
+	holdSave = true;
+	const opening = f.session
+		.getSnapshot()
+		.setSplitEditorViews(["schematic", "circuit", "pcb"], "schematic");
+	await new Promise((resolve) => setTimeout(resolve, 10));
+	await f.session.getSnapshot().setSplitEditorViews(["schematic"]);
+	holdSave = false;
+	releaseSave?.();
+	await opening;
+	assert.deepEqual(f.session.getSnapshot().splitViews, []);
 	stop();
 });

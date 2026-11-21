@@ -24,12 +24,18 @@ export function useCircuitSelectionSync(
 	const stableSelection = createMemo(selection, {
 		equals: sameCircuitSelection,
 	});
-	const circuitSource = createMemo(() => {
+	const snapshotRevision = createMemo(() => {
 		const currentStore = options().store;
-		return fromExternalStore(
-			currentStore.subscribe,
-			() => currentStore.getSnapshot().circuit,
-		);
+		return fromExternalStore(currentStore.subscribe, () => {
+			const snapshot = currentStore.getSnapshot();
+			return {
+				circuit: snapshot.circuit,
+				collapsed: (snapshot.graph.collapsedComponentIds ?? []).join(","),
+			};
+		});
+	});
+	const revision = createMemo(() => snapshotRevision()(), {
+		equals: (a, b) => a.circuit === b.circuit && a.collapsed === b.collapsed,
 	});
 	useViewSelectionSync(
 		() => {
@@ -78,6 +84,6 @@ export function useCircuitSelectionSync(
 			};
 		},
 		stableSelection,
-		() => circuitSource()(),
+		revision,
 	);
 }

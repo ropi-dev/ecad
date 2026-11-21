@@ -227,7 +227,12 @@ export function PageBar(props: {
 					ref={panel}
 					id={listId}
 					aria-label="Pages"
-					class="ui-popover absolute top-[calc(100%+0.5rem)] left-1/2 z-20 flex max-h-[min(28rem,calc(100dvh-12rem))] w-[min(320px,calc(100vw-1.5rem))] -translate-x-1/2 flex-col"
+					class={[
+						"ui-popover absolute top-[calc(100%+0.5rem)] left-1/2 z-20 flex max-h-[min(28rem,calc(100dvh-12rem))] -translate-x-1/2 flex-col",
+						props.floating === "pane"
+							? "w-[min(320px,calc(100cqw-1.5rem))]"
+							: "w-[min(320px,calc(100vw-1.5rem))]",
+					]}
 				>
 					<header class="flex shrink-0 items-center justify-between gap-3 border-b border-line-subtle py-1.5 pr-1.5 pl-3">
 						<h2 class="m-0 text-sm font-semibold">Pages</h2>

@@ -181,23 +181,31 @@ export function ToolbarGroup(props: {
 		shownHost();
 		return null;
 	});
-	const [maxWidth, setMaxWidth] = createSignal<number | null>(null);
+	const [maxWidth, setMaxWidth] = createSignal<number | null>(() => {
+		shownHost();
+		return null;
+	});
 
 	createEffect(shownHost, () => {
 		const host = panel?.parentElement;
-		if (!host) return;
+		if (!host || !panel) return;
+		const popover = panel;
+		const splitPane = host.closest<HTMLElement>(
+			'[data-editor-pane][data-split="true"]',
+		);
 		const place = () => {
-			const button = trigger?.getBoundingClientRect();
-			const box = panel?.getBoundingClientRect();
-			if (!button || !box) return;
-			const bounds = host.getBoundingClientRect();
-			const splitPane = host.closest<HTMLElement>(
-				'[data-editor-pane][data-split="true"]',
-			);
 			const paneBounds = splitPane?.getBoundingClientRect();
+			const nextMaxWidth = paneBounds
+				? Math.max(120, paneBounds.width - 24)
+				: null;
+			popover.style.maxWidth = nextMaxWidth !== null ? `${nextMaxWidth}px` : "";
+			setMaxWidth(nextMaxWidth);
+			const button = trigger?.getBoundingClientRect();
+			const box = popover.getBoundingClientRect();
+			if (!button) return;
+			const bounds = host.getBoundingClientRect();
 			const areaLeft = paneBounds ? paneBounds.left : 0;
 			const areaRight = paneBounds ? paneBounds.right : innerWidth;
-			setMaxWidth(paneBounds ? Math.max(120, paneBounds.width - 24) : null);
 			const margin = 12;
 			const minLeft = areaLeft + margin;
 			const maxLeft = Math.max(minLeft, areaRight - margin - box.width);
@@ -209,9 +217,12 @@ export function ToolbarGroup(props: {
 		const row = host.firstElementChild;
 		row?.addEventListener("scroll", place, { passive: true });
 		addEventListener("resize", place);
+		const resizeObserver = splitPane ? new ResizeObserver(place) : undefined;
+		if (splitPane && resizeObserver) resizeObserver.observe(splitPane);
 		return () => {
 			row?.removeEventListener("scroll", place);
 			removeEventListener("resize", place);
+			resizeObserver?.disconnect();
 		};
 	});
 

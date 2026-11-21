@@ -73,7 +73,7 @@ export function EditorViewSwitch(props: { view: EditorView }) {
 								disabled={
 									(isSplit() || !current()) && (switching() || project()?.busy)
 								}
-								class="ui-toggle flex h-full w-8 cursor-pointer items-center justify-center rounded-sm [--toggle-on-bg:var(--color-pressed)] [--toggle-on-fg:var(--color-fg)] hover:[--toggle-bg:transparent] focus-visible:outline-2 focus-visible:outline-accent disabled:pointer-events-none aria-pressed:cursor-default pointer-coarse:w-11 pointer-coarse:rounded-md"
+								class={`ui-toggle flex h-full w-8 cursor-pointer items-center justify-center rounded-sm [--toggle-on-bg:var(--color-pressed)] [--toggle-on-fg:var(--color-fg)] hover:[--toggle-bg:transparent] focus-visible:outline-2 focus-visible:outline-accent disabled:pointer-events-none ${isSplit() ? "" : "aria-pressed:cursor-default"} pointer-coarse:w-11 pointer-coarse:rounded-md`}
 								onClick={(event) => {
 									const state = project();
 									if (!state || switching() || state.busy) return;

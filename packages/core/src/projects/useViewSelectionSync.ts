@@ -224,7 +224,10 @@ export function useViewSelectionSync<V extends View>(
 				synced.source,
 				proj.circuitForViewSelection(synced.circuitId),
 			);
-			if (!opts.equal(mapped, applied.selection)) {
+			if (
+				!opts.equal(mapped, applied.selection) ||
+				!opts.equal(mapped, untrack(selection))
+			) {
 				syncingNow = true;
 				let result: Selection<V>;
 				try {
