@@ -277,6 +277,19 @@ export function createSceneViewport(
 		canvas.setAttribute("aria-label", ariaLabel);
 		canvas.className = canvasClassName;
 		element.append(canvas);
+		let elementSize = { width: 1, height: 1 };
+		const measureElement = () => {
+			elementSize = {
+				width: Math.max(element.clientWidth, 1),
+				height: Math.max(element.clientHeight, 1),
+			};
+		};
+		measureElement();
+		if (typeof ResizeObserver !== "undefined") {
+			const observer = new ResizeObserver(measureElement);
+			observer.observe(element);
+			lifecycle.addFinalizer(() => observer.disconnect());
+		}
 		const topView = cameraMode === "top";
 		let orbiting = false;
 		const flat = () => topView && !orbiting;
@@ -369,7 +382,7 @@ export function createSceneViewport(
 		let openingView: string | null = null;
 		const cameraKey = () =>
 			[...camera.position.toArray(), camera.zoom, visibleHeight()].join();
-		let viewportHeight = Math.max(element.clientHeight, 1);
+		let viewportHeight = elementSize.height;
 		const referenceDistance = () =>
 			physicalScale === null
 				? zoomReferenceDistance
@@ -423,7 +436,7 @@ export function createSceneViewport(
 				planeGrid?.update({
 					center: { x: controls.target.x, y: controls.target.y, z: planeZ },
 					extent: camera.far,
-					rulerScale: Math.max(element.clientHeight, 1) / visibleHeight(),
+					rulerScale: elementSize.height / visibleHeight(),
 					ratio: output.getPixelRatio(),
 				});
 				return;
@@ -442,7 +455,7 @@ export function createSceneViewport(
 				scaleX: canvas.width / width,
 				scaleY: canvas.height / height,
 				ratio: output.getPixelRatio(),
-				rulerScale: Math.max(element.clientHeight, 1) / height,
+				rulerScale: elementSize.height / height,
 			});
 		};
 		draw = () => {
@@ -491,7 +504,7 @@ export function createSceneViewport(
 					highlighted =
 						hover?.update(
 							pointer ? raycaster.ray : null,
-							visibleHeight() / Math.max(element.clientHeight, 1),
+							visibleHeight() / elementSize.height,
 						) ?? 0;
 					if (selection?.update(null, 0, selected) === 0 && selected)
 						clearSelection();
@@ -526,8 +539,8 @@ export function createSceneViewport(
 					) / 1e6,
 				);
 				if (topView && onChange) {
-					const width = Math.max(element.clientWidth, 1);
-					const height = Math.max(element.clientHeight, 1);
+					const width = elementSize.width;
+					const height = elementSize.height;
 					onChange({
 						backend: "WebGL 2 · Three.js",
 						message: "",
@@ -647,12 +660,7 @@ export function createSceneViewport(
 			const fitSphere = fitBounds.getBoundingSphere(new Sphere());
 			const fitRadius = Math.max(fitSphere.radius, 0.001);
 			const halfFov = Math.atan(
-				halfFovTangent *
-					Math.min(
-						Math.max(element.clientWidth, 1) /
-							Math.max(element.clientHeight, 1),
-						1,
-					),
+				halfFovTangent * Math.min(elementSize.width / elementSize.height, 1),
 			);
 			const direction = camera.position
 				.clone()
@@ -662,8 +670,8 @@ export function createSceneViewport(
 			else if (!direction.lengthSq()) direction.set(1, -1, 0.8).normalize();
 			controls.target.copy(fitSphere.center);
 			// A flat editor sheet fits its rectangle, with room for rulers and controls.
-			const viewportWidth = Math.max(element.clientWidth, 1);
-			const viewportHeight = Math.max(element.clientHeight, 1);
+			const viewportWidth = elementSize.width;
+			const viewportHeight = elementSize.height;
 			const sheetSize = fitBounds.getSize(new Vector3());
 			const fitDistance =
 				topView && lockProjection
@@ -729,8 +737,7 @@ export function createSceneViewport(
 			orthographic: OrthographicCamera,
 			height: number,
 		) => {
-			const aspect =
-				Math.max(element.clientWidth, 1) / Math.max(element.clientHeight, 1);
+			const aspect = elementSize.width / elementSize.height;
 			orthographic.top = height / 2;
 			orthographic.bottom = -height / 2;
 			orthographic.left = (-height * aspect) / 2;
@@ -750,8 +757,7 @@ export function createSceneViewport(
 					? new OrthographicCamera(-1, 1, 1, -1, camera.near, camera.far)
 					: new PerspectiveCamera(
 							fieldOfView,
-							Math.max(element.clientWidth, 1) /
-								Math.max(element.clientHeight, 1),
+							elementSize.width / elementSize.height,
 							camera.near,
 							camera.far,
 						);
@@ -779,6 +785,7 @@ export function createSceneViewport(
 					? ((camera.top - camera.bottom) * height) / viewportHeight
 					: null;
 			viewportHeight = height;
+			measureElement();
 			output.setPixelRatio(viewerPixelRatio());
 			output.setSize(width, height, false);
 			if (camera instanceof OrthographicCamera) {
@@ -997,10 +1004,7 @@ export function createSceneViewport(
 			);
 			camera.updateMatrixWorld();
 			raycaster.setFromCamera(pointer, camera);
-			hover?.update(
-				raycaster.ray,
-				visibleHeight() / Math.max(element.clientHeight, 1),
-			);
+			hover?.update(raycaster.ray, visibleHeight() / elementSize.height);
 			const previous = selected;
 			selected = hover?.getTarget() ?? null;
 			if (
@@ -1164,7 +1168,7 @@ export function createSceneViewport(
 				return true;
 			},
 		};
-		resize(Math.max(element.clientWidth, 1), Math.max(element.clientHeight, 1));
+		resize(elementSize.width, elementSize.height);
 		view(topView ? "top" : "iso");
 		setProjection(projection);
 		// Start compiling view aid shaders before the first frame needs them.
@@ -1179,16 +1183,11 @@ export function createSceneViewport(
 				controls.target.z + offset,
 			);
 			camera.zoom = 1;
-			setOrthographicBounds(
-				camera,
-				Math.max(element.clientHeight, 1) / initialCamera.scale,
-			);
+			setOrthographicBounds(camera, elementSize.height / initialCamera.scale);
 			schedule();
 		} else if (topView && initialCamera) {
 			const distance =
-				Math.max(element.clientHeight, 1) /
-				initialCamera.scale /
-				(2 * halfFovTangent);
+				elementSize.height / initialCamera.scale / (2 * halfFovTangent);
 			controls.target.set(initialCamera.x, initialCamera.y, controls.target.z);
 			camera.position.set(
 				initialCamera.x,

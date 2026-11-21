@@ -9,12 +9,18 @@ import {
 	DynamicDrawUsage,
 	EqualStencilFunc,
 	Group,
+	InstancedBufferAttribute,
+	InstancedBufferGeometry,
+	type Intersection,
+	Material,
+	Matrix4,
 	Mesh,
 	MeshBasicMaterial,
 	MeshStandardMaterial,
 	NormalBlending,
 	type Object3D,
 	PlaneGeometry,
+	type Raycaster,
 	ReplaceStencilOp,
 	type Scene,
 	Sphere,
@@ -42,7 +48,7 @@ import {
 	pickThroughHoles,
 } from "#/engine/planar-holes.ts";
 import { PlanarOutline } from "#/engine/planar-outline.ts";
-import type { PlanarWalls } from "#/engine/planar-walls.ts";
+import { instancedRegions, type PlanarWalls } from "#/engine/planar-walls.ts";
 import type { Bounds, PlanarObject } from "#/engine/types.ts";
 
 const geometries = new WeakMap<Object3D, PlanarGeometry>();
@@ -53,6 +59,7 @@ export const getPlanarGeometry = (object: Object3D) => geometries.get(object);
 const WALL_SHADE = 0.6;
 const SHEET_OPACITY = 0.15;
 const SHEET_RENDER_ORDER = 3;
+const INSTANCES_RENDER_ORDER = 0.5;
 
 function placeSheet(sheet: Object3D, bounds: Bounds, z: number) {
 	sheet.position.set(
@@ -68,7 +75,11 @@ function placeSheet(sheet: Object3D, bounds: Bounds, z: number) {
 }
 
 function setBounds(geometry: BufferGeometry, positions: Float32Array) {
-	if (!positions.length) return;
+	if (!positions.length) {
+		geometry.boundingBox = new Box3(new Vector3(), new Vector3());
+		geometry.boundingSphere = new Sphere(new Vector3(), 0);
+		return;
+	}
 	let minX = Infinity,
 		minY = Infinity,
 		minZ = Infinity,
@@ -104,18 +115,192 @@ function setBounds(geometry: BufferGeometry, positions: Float32Array) {
 const cameraPosition = new Vector3();
 const layerPosition = new Vector3();
 
+function biasTowardCamera(
+	mesh: Mesh<BufferGeometry, MeshBasicMaterial>,
+	camera: Camera,
+) {
+	const bias: number = mesh.userData.depthBias ?? 0;
+	if (!bias) return;
+	const side = Math.sign(
+		camera.getWorldPosition(cameraPosition).z -
+			mesh.getWorldPosition(layerPosition).z,
+	);
+	mesh.material.polygonOffsetFactor = -bias * (side || 1);
+	mesh.material.polygonOffsetUnits = -bias * (side || 1);
+}
+
 class PlanarFillMesh extends Mesh<BufferGeometry, MeshBasicMaterial> {
 	onBeforeRender(renderer: WebGLRenderer, _scene: Scene, camera: Camera) {
 		if (this.material.stencilWrite) renderer.clearStencil();
-		const bias: number = this.userData.depthBias ?? 0;
-		if (!bias) return;
-		const side = Math.sign(
-			camera.getWorldPosition(cameraPosition).z -
-				this.getWorldPosition(layerPosition).z,
-		);
-		this.material.polygonOffsetFactor = -bias * (side || 1);
-		this.material.polygonOffsetUnits = -bias * (side || 1);
+		biasTowardCamera(this, camera);
 	}
+}
+
+const emptyGeometry = new BufferGeometry();
+const emptyMaterial = new MeshBasicMaterial();
+const probe = new Mesh<BufferGeometry, Material>(emptyGeometry, emptyMaterial);
+const probeHits: Intersection[] = [];
+const probeSphere = new Sphere();
+const offsetMatrix = new Matrix4();
+
+const shapes = new WeakMap<BufferGeometry, BufferGeometry>();
+
+function offsetGeometry(shape: BufferGeometry, offsets: Float32Array) {
+	const geometry = new InstancedBufferGeometry();
+	for (const [name, attribute] of Object.entries(shape.attributes))
+		geometry.setAttribute(name, attribute);
+	geometry.setAttribute(
+		"instanceOffset",
+		new InstancedBufferAttribute(offsets, 2),
+	);
+	geometry.instanceCount = offsets.length / 2;
+	setInstancedBounds(geometry, shape, offsets);
+	shapes.set(geometry, shape);
+	return geometry;
+}
+
+class OffsetInstances<TMaterial extends Material = Material> extends Mesh<
+	InstancedBufferGeometry,
+	TMaterial
+> {
+	onBeforeRender(_renderer: WebGLRenderer, _scene: Scene, _camera: Camera) {
+		offsetInstances(this.material);
+	}
+
+	raycast(raycaster: Raycaster, intersects: Intersection[]) {
+		const sphere = this.geometry.boundingSphere;
+		if (
+			!sphere ||
+			!raycaster.ray.intersectsSphere(
+				probeSphere.copy(sphere).applyMatrix4(this.matrixWorld),
+			)
+		)
+			return;
+		const shape = shapes.get(this.geometry);
+		if (!shape) return;
+		const offsets = this.geometry.getAttribute("instanceOffset");
+		probe.geometry = shape;
+		probe.material = this.material;
+		probe.layers.mask = this.layers.mask;
+		for (let index = 0; index < this.geometry.instanceCount; index++) {
+			probe.matrixWorld.multiplyMatrices(
+				this.matrixWorld,
+				offsetMatrix.makeTranslation(
+					offsets.getX(index),
+					offsets.getY(index),
+					0,
+				),
+			);
+			probe.raycast(raycaster, probeHits);
+			for (const hit of probeHits) {
+				hit.object = this;
+				hit.instanceId = index;
+				intersects.push(hit);
+			}
+			probeHits.length = 0;
+		}
+		probe.geometry = emptyGeometry;
+		probe.material = emptyMaterial;
+	}
+}
+
+class PlanarFillInstances extends OffsetInstances<MeshBasicMaterial> {
+	onBeforeRender(renderer: WebGLRenderer, scene: Scene, camera: Camera) {
+		super.onBeforeRender(renderer, scene, camera);
+		biasTowardCamera(this, camera);
+	}
+}
+
+const offsetMaterials = new WeakSet<Material>();
+
+function offsetInstances(material: Material) {
+	if (offsetMaterials.has(material)) return;
+	offsetMaterials.add(material);
+	const compile = material.onBeforeCompile;
+	const cacheKey = material.customProgramCacheKey;
+	material.defines = { ...material.defines, PLANAR_INSTANCE_OFFSET: "" };
+	material.onBeforeCompile = (shader, renderer) => {
+		compile.call(material, shader, renderer);
+		shader.vertexShader = shader.vertexShader
+			.replace(
+				"#include <common>",
+				"#include <common>\nattribute vec2 instanceOffset;",
+			)
+			.replace(
+				"#include <begin_vertex>",
+				"#include <begin_vertex>\ntransformed.xy += instanceOffset;",
+			);
+	};
+	material.customProgramCacheKey = () =>
+		cacheKey === Material.prototype.customProgramCacheKey
+			? "planar-instance-offset"
+			: `${cacheKey.call(material)}+planar-instance-offset`;
+	material.needsUpdate = true;
+}
+
+function setInstancedBounds(
+	geometry: BufferGeometry,
+	prototype: BufferGeometry,
+	offsets: Float32Array,
+) {
+	const box = prototype.boundingBox;
+	const sphere = prototype.boundingSphere;
+	if (!box || !sphere || !offsets.length) return;
+	let minX = Infinity,
+		minY = Infinity,
+		maxX = -Infinity,
+		maxY = -Infinity;
+	for (let index = 0; index < offsets.length; index += 2) {
+		minX = Math.min(minX, offsets[index]);
+		maxX = Math.max(maxX, offsets[index]);
+		minY = Math.min(minY, offsets[index + 1]);
+		maxY = Math.max(maxY, offsets[index + 1]);
+	}
+	const bounds = new Box3(
+		new Vector3(box.min.x + minX, box.min.y + minY, box.min.z),
+		new Vector3(box.max.x + maxX, box.max.y + maxY, box.max.z),
+	);
+	const center = bounds.getCenter(new Vector3());
+	let farthest = 0;
+	for (let index = 0; index < offsets.length; index += 2) {
+		const x = sphere.center.x + offsets[index] - center.x,
+			y = sphere.center.y + offsets[index + 1] - center.y,
+			z = sphere.center.z - center.z;
+		farthest = Math.max(farthest, x * x + y * y + z * z);
+	}
+	geometry.boundingBox = bounds;
+	geometry.boundingSphere = new Sphere(
+		center,
+		Math.sqrt(farthest) + sphere.radius,
+	);
+}
+
+function plainPositions({ positions, regions, instances }: PlanarGeometry) {
+	if (!instances?.length) return positions;
+	const drawn = instancedRegions(regions.length, instances);
+	let count = 0;
+	regions.forEach((region, index) => {
+		if (!drawn[index]) count += region.count;
+	});
+	const plain = new Float32Array(count * 3);
+	let offset = 0;
+	regions.forEach((region, index) => {
+		if (drawn[index]) return;
+		plain.set(
+			positions.subarray(region.start * 3, (region.start + region.count) * 3),
+			offset,
+		);
+		offset += region.count * 3;
+	});
+	return plain;
+}
+
+function meshGeometry(positions: Float32Array, normals?: Float32Array) {
+	const geometry = new BufferGeometry();
+	geometry.setAttribute("position", new BufferAttribute(positions, 3));
+	if (normals) geometry.setAttribute("normal", new BufferAttribute(normals, 3));
+	setBounds(geometry, positions);
+	return geometry;
 }
 
 /** Builds actual triangle meshes and contour geometry, with no texture maps. */
@@ -137,13 +322,12 @@ export function createPlanarObject3D(
 	object.userData.planarBounds = source.bounds;
 	geometries.set(object, compiled);
 	try {
+		const instances = rewritten ? undefined : compiled.instances;
+		const positions = rewritten ? compiled.positions : plainPositions(compiled);
 		const geometry = new BufferGeometry();
-		geometry.setAttribute(
-			"position",
-			new BufferAttribute(compiled.positions, 3),
-		);
+		geometry.setAttribute("position", new BufferAttribute(positions, 3));
 		geometry.computeVertexNormals();
-		setBounds(geometry, compiled.positions);
+		setBounds(geometry, positions);
 		const material = new MeshBasicMaterial({
 			color: source.color,
 			transparent: true,
@@ -157,21 +341,21 @@ export function createPlanarObject3D(
 		});
 		const fill = new PlanarFillMesh(geometry, material);
 		fill.userData.planarPart = "fill";
+		fill.frustumCulled = !instances?.length;
 		object.add(fill);
-		if (walls) {
-			const wallGeometry = new BufferGeometry();
-			wallGeometry.setAttribute(
-				"position",
-				new BufferAttribute(walls.positions, 3),
+		for (const instance of instances ?? []) {
+			const prototype = meshGeometry(instance.positions);
+			prototype.computeVertexNormals();
+			const copies = new PlanarFillInstances(
+				offsetGeometry(prototype, instance.offsets),
+				material.clone(),
 			);
-			setBounds(wallGeometry, walls.positions);
-			if (walls.normals)
-				wallGeometry.setAttribute(
-					"normal",
-					new BufferAttribute(walls.normals, 3),
-				);
-			const wallMesh = new Mesh(
-				wallGeometry,
+			copies.userData.planarPart = "fill-instances";
+			copies.renderOrder = INSTANCES_RENDER_ORDER;
+			object.add(copies);
+		}
+		if (walls) {
+			const wallMaterial =
 				extrude === "barrel"
 					? new MeshStandardMaterial({
 							color: source.color,
@@ -181,11 +365,29 @@ export function createPlanarObject3D(
 							polygonOffset: true,
 							polygonOffsetUnits: -4,
 						})
-					: new MeshBasicMaterial({ color: source.color, side: DoubleSide }),
+					: new MeshBasicMaterial({ color: source.color, side: DoubleSide });
+			const wallMesh = new Mesh(
+				meshGeometry(walls.positions, walls.normals),
+				wallMaterial,
 			);
 			wallMesh.userData.planarPart = "walls";
+			wallMesh.userData.planarEmpty = walls.positions.length === 0;
 			wallMesh.visible = false;
 			object.add(wallMesh);
+			walls.instances?.forEach((wall, index) => {
+				const instance = instances?.[index];
+				if (!instance) return;
+				const copies = new OffsetInstances(
+					offsetGeometry(
+						meshGeometry(wall.positions, wall.normals),
+						instance.offsets,
+					),
+					wallMaterial.clone(),
+				);
+				copies.userData.planarPart = "walls-instances";
+				copies.visible = false;
+				object.add(copies);
+			});
 		}
 		if (rewritten)
 			object.traverse((part) => {
@@ -349,8 +551,9 @@ export function stylePlanarObject3D(
 		: NormalBlending;
 	object.traverse((part) => {
 		if (!(part instanceof Mesh)) return;
+		const role = part.userData.planarPart;
 		if (
-			part.userData.planarPart === "fill" &&
+			(role === "fill" || role === "fill-instances") &&
 			part.material instanceof MeshBasicMaterial
 		) {
 			part.visible = !barrel;
@@ -368,12 +571,12 @@ export function stylePlanarObject3D(
 			part.updateMatrix();
 			cutHoles(part.material, part.matrix, xray ? undefined : holes);
 		} else if (
-			part.userData.planarPart === "walls" &&
+			(role === "walls" || role === "walls-instances") &&
 			(part.material instanceof MeshStandardMaterial ||
 				part.material instanceof MeshBasicMaterial)
 		) {
 			const thickness = stack?.thickness ?? 0;
-			part.visible = barrel || slab;
+			part.visible = (barrel || slab) && part.userData.planarEmpty !== true;
 			part.scale.z = thickness || 1;
 			part.position.z = slab
 				? (-(Math.sign(stack?.z ?? 0) || 1) * thickness) / 2

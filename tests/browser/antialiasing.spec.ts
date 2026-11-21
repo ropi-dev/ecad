@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./seeded-project";
-import { drawingPoint } from "./symbol-items";
+import { drawingPoint, waitForFrame } from "./symbol-items";
 
 const canvasAntialias = (page: Page) =>
 	page
@@ -30,6 +30,7 @@ test("the antialiasing setting applies to open canvases, keeps their view and is
 	await page.goto("/tests/browser/editor.html");
 	expect(await canvasAntialias(page)).toBe(false);
 	await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+	await waitForFrame(page);
 	let origin = await drawingPoint(page, { x: 0, y: 0 });
 	await expect
 		.poll(async () => {

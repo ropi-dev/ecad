@@ -195,9 +195,9 @@ function parsePdf(bytes: Uint8Array): ParsedPdf {
 	};
 }
 
-test("a sheet export is one page the size of the sheet, with the drawing's text searchable", () => {
+test("a sheet export is one page the size of the sheet, with the drawing's text searchable", async () => {
 	const original = JSON.stringify(fixture);
-	const pdf = parsePdf(exportDrawingPdf(fixture.shapes, options));
+	const pdf = parsePdf(await exportDrawingPdf(fixture.shapes, options));
 	assert.match(
 		pdf.page.dictionary,
 		new RegExp(`/MediaBox \\[0 0 ${points(420)} ${points(297)}\\]`),
@@ -216,16 +216,16 @@ test("a sheet export is one page the size of the sheet, with the drawing's text 
 	);
 });
 
-test("a drawing-only export prints at 1:1 in millimetres, and a page past 200 inches shrinks to fit", () => {
+test("a drawing-only export prints at 1:1 in millimetres, and a page past 200 inches shrinks to fit", async () => {
 	const empty = parsePdf(
-		exportDrawingPdf([], { ...options, area: "drawing", title: "empty" }),
+		await exportDrawingPdf([], { ...options, area: "drawing", title: "empty" }),
 	);
 	assert.match(
 		empty.page.dictionary,
 		new RegExp(`/MediaBox \\[0 0 ${points(16)} ${points(16)}\\]`),
 	);
 	const wide = parsePdf(
-		exportDrawingPdf([], {
+		await exportDrawingPdf([], {
 			...options,
 			sheet: { width: 10_160, height: 297 },
 			title: "wide",
@@ -243,7 +243,7 @@ test("a board export puts each layer with items on its own page, the same size, 
 		"F.Cu",
 	).shapes;
 	const pdf = parsePdf(
-		exportDrawingPdf(shapes, {
+		await exportDrawingPdf(shapes, {
 			...options,
 			area: "drawing",
 			title: design.name,
@@ -318,10 +318,14 @@ test("a board export draws each zone as its fill, with clearances cut out, in pl
 	const shapes = boardExportShapes(design.board);
 	const exported = { ...options, area: "drawing" as const, layers: true };
 	const pdf = parsePdf(
-		exportDrawingPdf(shapes, { ...exported, title: design.name, zoneFills }),
+		await exportDrawingPdf(shapes, {
+			...exported,
+			title: design.name,
+			zoneFills,
+		}),
 	);
 	const bare = parsePdf(
-		exportDrawingPdf(shapes, { ...exported, title: design.name }),
+		await exportDrawingPdf(shapes, { ...exported, title: design.name }),
 	);
 	const n = (value: number) => String(Math.round(value * 1e4) / 1e4);
 	const layerRings = (content: string, color: string) =>

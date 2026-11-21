@@ -225,6 +225,85 @@ export const hitsHollowInterior = (
 
 const boxArea = (shape: EditorShape) => shape.width * shape.height;
 
+function rotatedBox(
+	center: Point,
+	width: number,
+	height: number,
+	rotation: number,
+	padding: number,
+): Bounds {
+	const cos = Math.abs(Math.cos(rotation));
+	const sin = Math.abs(Math.sin(rotation));
+	const halfWidth = (width * cos + height * sin) / 2 + padding;
+	const halfHeight = (width * sin + height * cos) / 2 + padding;
+	return {
+		minX: center.x - halfWidth,
+		maxX: center.x + halfWidth,
+		minY: center.y - halfHeight,
+		maxY: center.y + halfHeight,
+	};
+}
+
+const union = (a: Bounds, b: Bounds): Bounds => ({
+	minX: Math.min(a.minX, b.minX),
+	minY: Math.min(a.minY, b.minY),
+	maxX: Math.max(a.maxX, b.maxX),
+	maxY: Math.max(a.maxY, b.maxY),
+});
+
+const hitReaches = new WeakMap<EditorShape, Bounds>();
+
+function hitReach(shape: EditorShape): Bounds {
+	let reach = hitReaches.get(shape);
+	if (reach) return reach;
+	const stroke = (Math.abs(shape.lineWidth ?? 0) / 2) * Math.SQRT2;
+	const width = Math.abs(shape.width);
+	const height = Math.abs(shape.height);
+	const center = shapeCenter(shape);
+	reach =
+		shape.kind === "circle" || shape.kind === "pin"
+			? rotatedBox(
+					center,
+					Math.max(width, height),
+					Math.max(width, height),
+					0,
+					stroke,
+				)
+			: rotatedBox(center, width, height, shape.rotation, stroke);
+	if (shape.kind === "pin" && (shape.length ?? 0) > 0)
+		reach = union(reach, hitReach(pinLeadShape(shape)));
+	if (isPolygonZone(shape))
+		for (const corner of zoneOutlinePoints(shape))
+			reach = union(reach, rotatedBox(corner, 0, 0, 0, stroke));
+	if (shape.kind === "symbol") {
+		const frame = symbolSelectionFrame(shape);
+		reach = union(
+			reach,
+			rotatedBox(frame, frame.width, frame.height, frame.rotation, 0),
+		);
+		for (const child of symbolTextShapes(shape))
+			reach = union(reach, hitReach(child));
+		for (const child of symbolShapes(shape))
+			reach = union(reach, hitReach(child));
+		for (const child of symbolChildren(shape))
+			reach = union(reach, hitReach(symbolChildWorld(shape, child.shape)));
+	}
+	hitReaches.set(shape, reach);
+	return reach;
+}
+
+const outOfReach = (shape: EditorShape, point: Point, tolerance: number) => {
+	if (shape.kind === "triangle" && isHollowBoardShape(shape)) return false;
+	const reach = hitReach(shape);
+	const margin = Math.max(tolerance, 0) * Math.SQRT2 + 1e-6;
+	return (
+		point.x < reach.minX - margin ||
+		point.x > reach.maxX + margin ||
+		point.y < reach.minY - margin ||
+		point.y > reach.maxY + margin
+	);
+};
+
 export function shapeAt<T extends EditorShape>(
 	shapes: readonly T[],
 	at: Point | ((shape: T) => Point | null),
@@ -236,7 +315,7 @@ export function shapeAt<T extends EditorShape>(
 		const shape = shapes[index];
 		if (!selectable(shape)) continue;
 		const point = typeof at === "function" ? at(shape) : at;
-		if (!point) continue;
+		if (!point || outOfReach(shape, point, tolerance)) continue;
 		if (isHollowBoardShape(shape)) {
 			const hit = hitHollowBoardShape(shape, point, tolerance);
 			if (hit === "stroke") return shape;

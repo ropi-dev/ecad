@@ -125,6 +125,28 @@ const opaqueOrder = (a: Item, b: Item) =>
 const transparentOrder = (a: Item, b: Item) =>
 	a.groupOrder - b.groupOrder || a.renderOrder - b.renderOrder;
 
+const pageOf = (item: Item) => item.entry?.texture.id ?? 0;
+
+const groupTextByPage = (items: Item[]) => {
+	let start = 0;
+	for (let end = 1; end <= items.length; end++) {
+		const first = items[start];
+		const next = items[end];
+		if (
+			next?.kind === "text" &&
+			first.kind === "text" &&
+			transparentOrder(first, next) === 0
+		)
+			continue;
+		if (end - start > 1 && first.kind === "text") {
+			const run = items.slice(start, end).sort((a, b) => pageOf(a) - pageOf(b));
+			for (const [offset, item] of run.entries()) items[start + offset] = item;
+		}
+		start = end;
+	}
+	return items;
+};
+
 const triangleVertex = /* glsl */ `
 attribute float batchMode;
 attribute vec2 roundPoint;
@@ -446,7 +468,7 @@ export function createDrawBatcher() {
 	const blank = new DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
 	blank.needsUpdate = true;
 	let pages: Page[] = [];
-	let entries = new WeakMap<Texture, AtlasEntry>();
+	let entries = new WeakMap<Texture, AtlasEntry[]>();
 	const pending = new Set<Texture>();
 	let allocated = 0;
 	let atlas = 0;
@@ -478,7 +500,12 @@ export function createDrawBatcher() {
 
 	const atlasEntry = (texture: Texture): AtlasEntry => {
 		const existing = entries.get(texture);
-		if (existing?.version === texture.version) return existing;
+		const copies = existing?.[0].version === texture.version ? existing : [];
+		const last = pages.at(-1);
+		const current = copies.find(
+			(copy) => copy.area === 0 || copy.texture === last?.texture,
+		);
+		if (current) return current;
 		const image = texture.image as HTMLCanvasElement;
 		const { width, height } = image;
 		const cellWidth = aligned(width + ATLAS_GUTTER);
@@ -490,7 +517,7 @@ export function createDrawBatcher() {
 			area: 0,
 		};
 		if (cellWidth <= pageSize && cellHeight <= pageSize) {
-			let page = pages.at(-1);
+			let page = last;
 			const slot = atlasSlot(page, cellWidth, cellHeight);
 			if (page && slot) Object.assign(page, slot);
 			else
@@ -517,7 +544,7 @@ export function createDrawBatcher() {
 				area: cellWidth * cellHeight,
 			};
 		}
-		entries.set(texture, entry);
+		entries.set(texture, [...copies, entry]);
 		return entry;
 	};
 
@@ -649,7 +676,10 @@ export function createDrawBatcher() {
 		subtrees = next;
 		const opaque = all.filter((item) => !item.material.transparent);
 		const transparent = all.filter((item) => item.material.transparent);
-		return [...opaque.sort(opaqueOrder), ...transparent.sort(transparentOrder)];
+		return [
+			...opaque.sort(opaqueOrder),
+			...groupTextByPage(transparent.sort(transparentOrder)),
+		];
 	};
 
 	const boxOf = (item: Item) => {

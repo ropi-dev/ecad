@@ -6,6 +6,9 @@ import { pinTerminals } from "#/drawing/terminals.ts";
 import type { Point } from "#/drawing/types.ts";
 import { unionFind } from "#/lib/union-find.ts";
 
+const BUCKET = normalizationTolerance * 10;
+const bucketOf = (value: number) => Math.floor(value / BUCKET);
+
 export function normalizeWireSegments(
 	shapes: EditorShape[],
 	preferredIds: ReadonlySet<number> = new Set(),
@@ -39,35 +42,37 @@ export function normalizeWireSegments(
 		];
 	});
 	const sets = unionFind(wires.length);
+	const lines = new Map<string, number[]>();
+	const lineKey = (page: number, vertical: boolean, bucket: number) =>
+		`${page}:${vertical ? "v" : "h"}:${bucket}`;
+	for (const [index, wire] of wires.entries()) {
+		const key = lineKey(wire.page, wire.vertical, bucketOf(wire.coordinate));
+		const entries = lines.get(key);
+		if (entries) entries.push(index);
+		else lines.set(key, [index]);
+	}
+	const near = (
+		page: number,
+		vertical: boolean,
+		coordinate: number,
+		visit: (index: number) => void,
+	) => {
+		const bucket = bucketOf(coordinate);
+		for (let offset = -1; offset <= 1; offset++)
+			for (const index of lines.get(lineKey(page, vertical, bucket + offset)) ??
+				[])
+				visit(index);
+	};
 	// Wires on different pages never meet.
 	const junctions: (Point & { page: number })[] = shapes.flatMap((shape) => {
 		const page = pageKey(shape);
 		return pinTerminals(shape).map((point) => ({ ...point, page }));
 	});
-	for (let first = 0; first < wires.length; first++) {
-		for (let second = first + 1; second < wires.length; second++) {
-			const a = wires[first];
+	for (const [first, a] of wires.entries()) {
+		near(a.page, a.vertical, a.coordinate, (second) => {
+			if (second <= first) return;
 			const b = wires[second];
-			if (a.page !== b.page) continue;
-			if (a.vertical !== b.vertical) {
-				const horizontal = a.vertical ? b : a;
-				const vertical = a.vertical ? a : b;
-				const x = vertical.coordinate;
-				const y = horizontal.coordinate;
-				if (
-					x >= horizontal.min - normalizationTolerance &&
-					x <= horizontal.max + normalizationTolerance &&
-					y >= vertical.min - normalizationTolerance &&
-					y <= vertical.max + normalizationTolerance &&
-					(Math.abs(x - horizontal.min) <= normalizationTolerance ||
-						Math.abs(x - horizontal.max) <= normalizationTolerance ||
-						Math.abs(y - vertical.min) <= normalizationTolerance ||
-						Math.abs(y - vertical.max) <= normalizationTolerance)
-				)
-					junctions.push({ x, y, page: a.page });
-			}
 			if (
-				a.vertical === b.vertical &&
 				a.shape.lineWidth === b.shape.lineWidth &&
 				(a.shape.locked ?? false) === (b.shape.locked ?? false) &&
 				Math.abs(a.coordinate - b.coordinate) <= normalizationTolerance &&
@@ -75,8 +80,46 @@ export function normalizeWireSegments(
 				b.min <= a.max + normalizationTolerance
 			)
 				sets.union(second, first);
-		}
+		});
+		// A crossing joins only where one wire ends on the other.
+		for (const end of [a.min, a.max])
+			near(a.page, !a.vertical, end, (other) => {
+				const b = wires[other];
+				if (
+					Math.abs(b.coordinate - end) <= normalizationTolerance &&
+					a.coordinate >= b.min - normalizationTolerance &&
+					a.coordinate <= b.max + normalizationTolerance
+				)
+					junctions.push(
+						a.vertical
+							? { x: a.coordinate, y: b.coordinate, page: a.page }
+							: { x: b.coordinate, y: a.coordinate, page: a.page },
+					);
+			});
 	}
+	const junctionLines = new Map<string, (Point & { page: number })[]>();
+	for (const point of junctions)
+		for (const vertical of [true, false]) {
+			const key = lineKey(
+				point.page,
+				vertical,
+				bucketOf(vertical ? point.x : point.y),
+			);
+			const entries = junctionLines.get(key);
+			if (entries) entries.push(point);
+			else junctionLines.set(key, [point]);
+		}
+	const junctionsNear = (
+		page: number,
+		vertical: boolean,
+		coordinate: number,
+	) => {
+		const bucket = bucketOf(coordinate);
+		return [-1, 0, 1].flatMap(
+			(offset) =>
+				junctionLines.get(lineKey(page, vertical, bucket + offset)) ?? [],
+		);
+	};
 	const clusters = new Map<number, typeof wires>();
 	for (const [index, wire] of wires.entries()) {
 		const key = sets.find(index);
@@ -93,9 +136,12 @@ export function normalizeWireSegments(
 		const min = Math.min(...cluster.map((wire) => wire.min));
 		const max = Math.max(...cluster.map((wire) => wire.max));
 		// Pin terminals and wire endpoints create junctions. Bare crossings stay separate.
-		const cuts = junctions
+		const cuts = junctionsNear(
+			survivor.page,
+			survivor.vertical,
+			survivor.coordinate,
+		)
 			.flatMap((point) => {
-				if (point.page !== survivor.page) return [];
 				const along = survivor.vertical ? point.y : point.x;
 				const across = survivor.vertical ? point.x : point.y;
 				return Math.abs(across - survivor.coordinate) <=

@@ -141,7 +141,9 @@ function exportPdf(
 			),
 		async () => {
 			const { exportDrawingPdf } = await import("#/drawing/export-pdf.ts");
-			return pdfBlob(exportDrawingPdf(shapes, { ...options, measureText }));
+			return pdfBlob(
+				await exportDrawingPdf(shapes, { ...options, measureText }),
+			);
 		},
 	);
 }

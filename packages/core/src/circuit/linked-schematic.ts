@@ -217,19 +217,21 @@ function synchronize(
 		previous === undefined &&
 		(file.circuit.components.length > 0 || file.circuit.nets.length > 0);
 	const base = previous ?? file;
+	const labels = circuitNetLabels(file.circuit);
 	const context: SyncContext = {
 		file,
 		previous: base,
 		definitions: indexDefinitions(definitions),
-		labels: circuitNetLabels(file.circuit),
-		previousLabels: circuitNetLabels(base.circuit),
+		labels,
+		previousLabels:
+			base.circuit === file.circuit ? labels : circuitNetLabels(base.circuit),
 		measureText: environment.measureText ?? estimateLabelTextWidth,
 		newId: environment.newId ?? (() => globalThis.crypto.randomUUID()),
 		isSymbolUnavailable: environment.isSymbolUnavailable ?? (() => false),
 	};
 	const bound = bindNetLabels(shapes, context);
 	if (imported) {
-		const drawn = structuredClone(file.circuit);
+		const drawn = cloneJson(file.circuit);
 		extractCircuitFromSchematic(drawn, bound, context);
 		if (jsonEqual(drawn, file.circuit)) imported = false;
 	}
@@ -238,7 +240,7 @@ function synchronize(
 	);
 	const circuitChanged =
 		imported || !jsonEqual(file.circuit, base.circuit) || unplaced;
-	const circuit = structuredClone(file.circuit);
+	const circuit = cloneJson(file.circuit);
 	let noConnectMarks: NoConnectMarks | undefined;
 	let linked: EditorShape[];
 	if (circuitChanged)
@@ -261,23 +263,67 @@ function synchronize(
 	const ids = new Set(
 		[...circuit.components, ...circuit.nets].map((entity) => entity.id),
 	);
+	const positions = file.graph.positions.filter((position) =>
+		ids.has(position.id),
+	);
+	const collapsedComponentIds = file.graph.collapsedComponentIds?.filter((id) =>
+		ids.has(id),
+	);
+	const graphKept =
+		positions.length === file.graph.positions.length &&
+		collapsedComponentIds?.length === file.graph.collapsedComponentIds?.length;
+	const unchanged = jsonEqual(circuit, file.circuit);
 	const result: LinkedSchematic = {
-		file: circuitFileSchema.parse({
+		file:
+			unchanged && graphKept && isValidated(file.circuit, file.graph)
+				? remember(file.circuit, { circuit, graph: cloneJson(file.graph) })
+				: validatedFile(file, {
+						circuit,
+						graph: { ...file.graph, positions, collapsedComponentIds },
+					}),
+		shapes: refreshLabels(
 			circuit,
-			graph: {
-				...file.graph,
-				positions: file.graph.positions.filter((position) =>
-					ids.has(position.id),
-				),
-				collapsedComponentIds: file.graph.collapsedComponentIds?.filter((id) =>
-					ids.has(id),
-				),
-			},
-		}),
-		shapes: refreshLabels(circuit, linked, context.measureText),
+			linked,
+			context.measureText,
+			unchanged ? labels : circuitNetLabels(circuit),
+		),
 		source: circuitChanged ? "circuit" : "schematic",
 	};
 	return { linked: result, noConnectMarks };
+}
+
+const validatedPairs = new WeakMap<Circuit, WeakSet<CircuitFile["graph"]>>();
+
+const isValidated = (circuit: Circuit, graph: CircuitFile["graph"]) =>
+	validatedPairs.get(circuit)?.has(graph) ?? false;
+
+function markValidated(
+	circuits: readonly Circuit[],
+	graphs: readonly CircuitFile["graph"][],
+) {
+	for (const circuit of circuits) {
+		let graphsOfCircuit = validatedPairs.get(circuit);
+		if (!graphsOfCircuit) {
+			graphsOfCircuit = new WeakSet();
+			validatedPairs.set(circuit, graphsOfCircuit);
+		}
+		for (const graph of graphs) graphsOfCircuit.add(graph);
+	}
+}
+
+function remember(input: Circuit, file: CircuitFile): CircuitFile {
+	markValidated([file.circuit, input], [file.graph]);
+	return file;
+}
+
+function validatedFile(input: CircuitFile, candidate: unknown): CircuitFile {
+	const parsed = circuitFileSchema.parse(candidate);
+	const circuits = [parsed.circuit];
+	const graphs = [parsed.graph];
+	if (jsonEqual(parsed.circuit, input.circuit)) circuits.push(input.circuit);
+	if (jsonEqual(parsed.graph, input.graph)) graphs.push(input.graph);
+	markValidated(circuits, graphs);
+	return parsed;
 }
 
 function bindNetLabels(
@@ -979,7 +1025,7 @@ function extractComponents(
 				texts: shape.texts,
 				description: "",
 			},
-			components,
+			[],
 		);
 		component.id = group?.id ?? old?.id ?? `${circuit.id}:s${shape.id}`;
 		if (
@@ -987,7 +1033,10 @@ function extractComponents(
 			(old.part.id === component.part.id ||
 				(!shape.library && shape.definitionId.startsWith(fallbackPrefix)))
 		)
-			component.part = structuredClone(old.part);
+			component.part = {
+				...old.part,
+				...(old.part.library ? { library: { ...old.part.library } } : {}),
+			};
 		const oldPins = new Map<string | undefined, CircuitPin>();
 		for (const pin of old?.pins ?? [])
 			if (
@@ -1200,10 +1249,10 @@ function refreshLabels(
 	circuit: Circuit,
 	shapes: readonly EditorShape[],
 	measureText: MeasureText,
+	labels: ReadonlyMap<string, string>,
 ): EditorShape[] {
 	const nets = firstById(circuit.nets);
 	const pinSets = new PinSets();
-	const labels = circuitNetLabels(circuit);
 	return shapes.flatMap((shape) => {
 		if (shape.kind !== "text" || !shape.circuitNet) return [shape];
 		const net = nets.get(shape.circuitNet.id);
@@ -1689,6 +1738,15 @@ function groupBy<T, K>(items: readonly T[], key: (item: T) => K): Map<K, T[]> {
 
 function stringsEqual(a: readonly string[], b: readonly string[]): boolean {
 	return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+function cloneJson<T>(value: T): T {
+	if (typeof value !== "object" || value === null) return value;
+	if (Array.isArray(value)) return value.map(cloneJson) as T;
+	const copy: Record<string, unknown> = {};
+	for (const key in value)
+		if (Object.hasOwn(value, key)) copy[key] = cloneJson(value[key]);
+	return copy as T;
 }
 
 function jsonEqual(a: unknown, b: unknown): boolean {

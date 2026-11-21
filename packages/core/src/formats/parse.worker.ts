@@ -11,6 +11,16 @@ self.onmessage = (
 		mesh?.edges,
 		walls?.positions,
 		walls?.normals,
+		...(mesh?.instances ?? []).flatMap((instance) => [
+			instance.positions,
+			instance.edges,
+			instance.offsets,
+			instance.regions,
+		]),
+		...(walls?.instances ?? []).flatMap((instance) => [
+			instance.positions,
+			instance.normals,
+		]),
 	].flatMap((array) => (array ? [array.buffer] : []));
 	self.postMessage({ id, ...reply }, { transfer: buffers });
 };
