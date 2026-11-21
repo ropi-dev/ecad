@@ -6,16 +6,20 @@ import {
 	drawShape,
 	type EditorShape,
 	type EditorSymbol,
+	type FillableShape,
+	type LineShape,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import { symbolShapes } from "@ecad/drawing-core/drawing/symbol-instances.ts";
 import { synchronizePcb } from "#/circuit/linked-schematic.ts";
 import {
 	boardSelectionFromComponents,
+	boardSelectionFromNet,
 	circuitSelectionFromComponents,
 	circuitSelectionFromSchematic,
 	componentsOfBoardSelection,
 	componentsOfCircuitSelection,
 	componentsOfSchematicSelection,
+	netOfBoardSelection,
 	schematicSelectionFromCircuit,
 	schematicSelectionFromComponents,
 } from "#/circuit/selection-sync.ts";
@@ -264,5 +268,111 @@ test("PCB footprints select the same components in the schematic and circuit", (
 	assert.deepEqual(circuitSelectionFromComponents([a.id, b.id]), {
 		item: null,
 		checkedPins: [],
+	});
+});
+
+test("PCB tracks, vias and zones sync their net, while footprints take precedence", () => {
+	const { file, symbolOf, net } = linkedPair();
+	const [a, b] = file.circuit.components;
+	const withTwoNets = applyCircuitCommand(file, {
+		type: "connect",
+		pinIds: [a.pins[1].id, b.pins[1].id],
+	});
+	const otherNet = required(
+		withTwoNets.circuit.nets.find((entry) => entry.id !== net.id),
+	);
+	const footprint: EditorShape = {
+		...symbolOf(0),
+		id: 1,
+		footprint: { library: "builtin", id: "R_0603" },
+		component: a.id,
+	};
+	const track: LineShape = {
+		kind: "line",
+		id: 10,
+		x: 2.5,
+		y: 0,
+		width: 5,
+		height: 0.25,
+		rotation: 0,
+		lineWidth: 0.25,
+		layer: "F.Cu",
+		net: net.id,
+	};
+	const via: FillableShape = {
+		kind: "circle",
+		id: 11,
+		x: 5,
+		y: 0,
+		width: 0.6,
+		height: 0.6,
+		rotation: 0,
+		lineWidth: 0.1,
+		layer: "F.Cu",
+		via: { drill: 0.3 },
+		net: net.id,
+	};
+	const zone: FillableShape = {
+		kind: "rectangle",
+		id: 12,
+		x: 5,
+		y: 5,
+		width: 10,
+		height: 10,
+		rotation: 0,
+		lineWidth: 0.1,
+		layer: "F.Cu",
+		zone: {
+			clearance: 0.2,
+			padConnection: "thermal",
+			thermalGap: 0.3,
+			thermalSpokeWidth: 0.3,
+		},
+		net: net.id,
+	};
+	const otherTrack: LineShape = {
+		kind: "line",
+		id: 13,
+		x: 2.5,
+		y: 2,
+		width: 5,
+		height: 0.25,
+		rotation: 0,
+		lineWidth: 0.25,
+		layer: "F.Cu",
+		net: otherNet.id,
+	};
+	const board = [footprint, track, via, zone, otherTrack];
+	assert.equal(
+		netOfBoardSelection(board, withTwoNets.circuit, {
+			shapeIds: [],
+			childKey: null,
+		}),
+		null,
+	);
+	assert.equal(
+		netOfBoardSelection(board, withTwoNets.circuit, {
+			shapeIds: [10, 11, 12],
+			childKey: null,
+		}),
+		net.id,
+	);
+	assert.equal(
+		netOfBoardSelection(board, withTwoNets.circuit, {
+			shapeIds: [10, 1],
+			childKey: null,
+		}),
+		null,
+	);
+	assert.equal(
+		netOfBoardSelection(board, withTwoNets.circuit, {
+			shapeIds: [10, 13],
+			childKey: null,
+		}),
+		null,
+	);
+	assert.deepEqual(boardSelectionFromNet(board, net.id), {
+		shapeIds: [10, 11, 12],
+		childKey: null,
 	});
 });

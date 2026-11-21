@@ -26,8 +26,10 @@ export type {
 	BoardDocument,
 	CircuitDocument,
 	DrawingDocument,
+	EditorView,
 	EditorViews,
 	SymbolDocument,
+	SyncedViewSelection,
 } from "#/projects/ProjectSession.ts";
 
 interface ProjectContextState {
@@ -78,6 +80,7 @@ export const useProjectEditor = () =>
 			editorDrawing,
 			editorCircuit,
 			editorViews,
+			splitViews,
 			openingCircuit,
 			selectedAsset,
 		}) => ({
@@ -90,6 +93,7 @@ export const useProjectEditor = () =>
 			editorDrawing,
 			editorCircuit,
 			editorViews,
+			splitViews,
 			openingCircuit,
 			selectedAsset,
 		}),
@@ -112,6 +116,7 @@ export const useProjectActions = () =>
 			editorDrawing: _editorDrawing,
 			editorCircuit: _editorCircuit,
 			editorViews: _editorViews,
+			splitViews: _splitViews,
 			openingCircuit: _openingCircuit,
 			selectedAsset: _selectedAsset,
 			...actions

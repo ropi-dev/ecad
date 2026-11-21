@@ -30,6 +30,9 @@ export function FloatingPanel(props: {
 				"ui-panel absolute flex min-h-0 flex-col overflow-hidden bg-raised",
 				props.raised ? "z-5" : "z-2",
 				props.narrow ? "w-56" : "w-72",
+				props.position === "top-right" || !props.position
+					? "max-w-[calc(100%-var(--chrome-gap)-var(--chrome-right))]"
+					: "max-w-[calc(100%-2*var(--chrome-gap))]",
 				positionClassName[props.position ?? "top-right"],
 			]}
 			aria-label={props.label}

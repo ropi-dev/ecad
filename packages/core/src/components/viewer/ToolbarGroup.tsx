@@ -181,6 +181,7 @@ export function ToolbarGroup(props: {
 		shownHost();
 		return null;
 	});
+	const [maxWidth, setMaxWidth] = createSignal<number | null>(null);
 
 	createEffect(shownHost, () => {
 		const host = panel?.parentElement;
@@ -190,12 +191,18 @@ export function ToolbarGroup(props: {
 			const box = panel?.getBoundingClientRect();
 			if (!button || !box) return;
 			const bounds = host.getBoundingClientRect();
-			const margin = 12;
-			const centered = button.left + button.width / 2 - box.width / 2;
-			const clamped = Math.max(
-				margin,
-				Math.min(centered, innerWidth - margin - box.width),
+			const splitPane = host.closest<HTMLElement>(
+				'[data-editor-pane][data-split="true"]',
 			);
+			const paneBounds = splitPane?.getBoundingClientRect();
+			const areaLeft = paneBounds ? paneBounds.left : 0;
+			const areaRight = paneBounds ? paneBounds.right : innerWidth;
+			setMaxWidth(paneBounds ? Math.max(120, paneBounds.width - 24) : null);
+			const margin = 12;
+			const minLeft = areaLeft + margin;
+			const maxLeft = Math.max(minLeft, areaRight - margin - box.width);
+			const centered = button.left + button.width / 2 - box.width / 2;
+			const clamped = Math.max(minLeft, Math.min(centered, maxLeft));
 			setLeft(clamped - bounds.left);
 		};
 		place();
@@ -304,6 +311,9 @@ export function ToolbarGroup(props: {
 							style={{
 								left: `${left() ?? 0}px`,
 								visibility: left() === null ? "hidden" : undefined,
+								...(maxWidth() !== null
+									? { "max-width": `${maxWidth()}px` }
+									: {}),
 							}}
 							class={`absolute bottom-[calc(100%+0.5rem)] z-20 flex w-max max-w-[calc(100vw-1.5rem)] items-center gap-0.5 overflow-x-auto overscroll-contain p-1 outline-none [scrollbar-width:thin] ${toolbarPopoverClassName}`}
 							onClick={(event) => {

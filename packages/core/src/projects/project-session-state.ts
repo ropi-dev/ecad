@@ -17,13 +17,17 @@ import type {
 	BoardDocument,
 	CircuitDocument,
 	DrawingDocument,
+	EditorView,
 	EditorViews,
 	FootprintDocument,
 	ProjectContextValue,
 	SymbolDocument,
+	SyncedViewSelection,
 } from "#/projects/ProjectSession.ts";
 import type { ProjectStorage } from "#/projects/storage.ts";
 import type { ConfiguredSymbolLibrary } from "#/symbol-library/config.ts";
+
+export const editorViewOrder = ["schematic", "circuit", "pcb"] as const;
 
 /**
  * The mutable state a project session shares between its modules. Values the
@@ -67,12 +71,16 @@ export function createProjectSessionState(rawStorage: ProjectStorage) {
 		editorBoard: null as BoardDocument | null,
 		editorDrawing: null as DrawingDocument | null,
 		editorViews: null as EditorViews | null,
+		splitViews: [] as readonly EditorView[],
 		symbols: [] as SymbolLibrary,
 		libraries: [] as readonly ConfiguredSymbolLibrary[],
 		epoch: 0,
 		generation: 0,
 		circuitLayout: undefined as AbortController | undefined,
 		editorSelection: 0,
+		selectionVersion: 0,
+		selectionListeners: new Set<() => void>(),
+		syncedSelection: null as SyncedViewSelection | null,
 		viewSelection: null as ViewSelection | null,
 		selectionOrigins: new WeakSet<object>(),
 		selectionHandoff: null as {
@@ -109,6 +117,10 @@ export function createProjectSessionState(rawStorage: ProjectStorage) {
 			state.notificationPending = false;
 			for (const listener of listeners) listener();
 		});
+	}
+
+	function publishSelection() {
+		for (const listener of state.selectionListeners) listener();
 	}
 
 	const setSelectedAsset = (next: ProjectAsset | null, reload = false) => {
@@ -170,6 +182,18 @@ export function createProjectSessionState(rawStorage: ProjectStorage) {
 		)
 			return;
 		state.editorViews = next;
+		publish();
+	};
+	const setSplitViews = (next: readonly EditorView[]) => {
+		const normalized = editorViewOrder.filter((view) => next.includes(view));
+		const canonical: readonly EditorView[] =
+			normalized.length >= 2 ? normalized : [];
+		if (
+			canonical.length === state.splitViews.length &&
+			canonical.every((view, index) => view === state.splitViews[index])
+		)
+			return;
+		state.splitViews = canonical;
 		publish();
 	};
 	const setEpoch = (next: number) => {
@@ -256,6 +280,7 @@ export function createProjectSessionState(rawStorage: ProjectStorage) {
 
 	return Object.assign(state, {
 		publish,
+		publishSelection,
 		setSelectedAsset,
 		setProject,
 		setStore,
@@ -266,6 +291,7 @@ export function createProjectSessionState(rawStorage: ProjectStorage) {
 		setEditorBoard,
 		setEditorDrawing,
 		setEditorViews,
+		setSplitViews,
 		setEpoch,
 		setBusy,
 		setDirty,

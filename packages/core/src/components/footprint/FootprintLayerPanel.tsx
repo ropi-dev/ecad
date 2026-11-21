@@ -6,6 +6,7 @@ import {
 } from "@ecad/drawing-core/footprint/layers.ts";
 import {
 	type Accessor,
+	createEffect,
 	createMemo,
 	createSignal,
 	createUniqueId,
@@ -91,10 +92,25 @@ export function FootprintLayerPanel(props: {
 	itemCounts: ReadonlyMap<FootprintLayer, number>;
 	onSelect: (layer: FootprintLayer) => void;
 	onToggle: (layer: FootprintLayer) => void;
+	compact?: boolean;
 	realistic?: { shown: boolean; onToggle: () => void };
 	models?: { shown: boolean; onToggle: () => void };
 }) {
-	const [collapsed, setCollapsed] = createSignal(false);
+	const [collapsed, setCollapsed] = createSignal(Boolean(props.compact));
+	let beforeCompact: boolean | undefined;
+	createEffect(
+		() => Boolean(props.compact),
+		(compact, previous) => {
+			if (previous === undefined || compact === previous) return;
+			if (compact) {
+				beforeCompact = collapsed();
+				setCollapsed(true);
+			} else {
+				setCollapsed(beforeCompact ?? false);
+				beforeCompact = undefined;
+			}
+		},
+	);
 	const theme = useSchematicTheme();
 	const listId = createUniqueId();
 	const focusNoteId = createUniqueId();

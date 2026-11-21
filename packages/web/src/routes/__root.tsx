@@ -8,15 +8,31 @@ import { AppWorkspace } from "#/projects/AppProjects.tsx";
 
 const themeScript = `(()=>{let t;try{t=JSON.parse(localStorage.getItem(${JSON.stringify(SETTINGS_STORAGE_KEY)})).theme}catch{}document.documentElement.dataset.theme=t==="light"||t==="dark"?t:matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"})()`;
 
+const validSplitViews = new Set(["schematic", "circuit", "pcb"]);
+const splitViewOrder = ["schematic", "circuit", "pcb"] as const;
+
+function normalizeSplit(value: unknown): string | undefined {
+	if (typeof value !== "string") return undefined;
+	const picked = new Set(
+		value
+			.split(",")
+			.map((part) => part.trim())
+			.filter((part) => validSplitViews.has(part)),
+	);
+	const ordered = splitViewOrder.filter((view) => picked.has(view));
+	return ordered.length >= 2 ? ordered.join(",") : undefined;
+}
+
 export const Route = createRootRoute({
 	validateSearch: (
 		search: Record<string, unknown>,
-	): { file?: string; view?: "circuit" | "pcb" } => ({
+	): { file?: string; view?: "circuit" | "pcb"; split?: string } => ({
 		file: typeof search.file === "string" ? search.file : undefined,
 		view:
 			search.view === "circuit" || search.view === "pcb"
 				? search.view
 				: undefined,
+		split: normalizeSplit(search.split),
 	}),
 	head: () => ({
 		meta: [

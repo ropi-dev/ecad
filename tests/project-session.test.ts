@@ -529,3 +529,69 @@ test("undoing the removal of inner copper gives the board its copper layers back
 	assert.equal(board.rules.get().copperLayers, 6);
 	stop();
 });
+
+test("split view loads circuit views together, focuses panes, broadcasts selection, and clears on file open", async () => {
+	const initial = snapshot();
+	const { session } = fixture({
+		...initial,
+		manifest: { ...initial.manifest, circuits: [{ circuit: "main.ecaddraw" }] },
+		circuits: [createCircuit("Main", primaryPcbId)],
+	});
+	const stop = session.connect();
+	await loaded(session);
+	const project = () => session.getSnapshot();
+	await project().setSplitEditorViews(
+		["pcb", "schematic", "circuit"],
+		"circuit",
+	);
+	assert.deepEqual(project().splitViews, ["schematic", "circuit", "pcb"]);
+	const views = required(project().editorViews);
+	assert.equal(views.schematic, "main");
+	assert.ok(views.circuit);
+	assert.ok(views.board);
+	assert.equal(project().editorCircuit, views.circuit);
+	assert.equal(project().editorBoard, null);
+
+	let notifications = 0;
+	const stopSelection = project().subscribeViewSelection(() => {
+		notifications++;
+	});
+	const schematicSelection = {
+		view: "schematic" as const,
+		store: project().store,
+		selection: { shapeIds: [1], childKey: null },
+	};
+	project().rememberViewSelection(schematicSelection);
+	assert.equal(notifications, 1);
+	const firstSynced = required(project().getViewSelection());
+	assert.equal(firstSynced.version, 1);
+	assert.equal(firstSynced.circuitId, primaryPcbId);
+	assert.equal(firstSynced.source, schematicSelection);
+	// Handoff echoes with origin must not overwrite the live synced selection.
+	project().rememberViewSelection({
+		view: "pcb",
+		store: required(views.board).store,
+		selection: { shapeIds: [2], childKey: null },
+		origin: schematicSelection,
+	});
+	assert.equal(notifications, 1);
+	assert.equal(project().getViewSelection()?.version, 1);
+
+	project().focusSplitView("pcb");
+	assert.deepEqual(project().splitViews, ["schematic", "circuit", "pcb"]);
+	assert.equal(project().editorBoard, views.board);
+	assert.equal(project().editorCircuit, null);
+
+	await project().setSplitEditorViews(["pcb"]);
+	assert.deepEqual(project().splitViews, []);
+	assert.equal(project().editorBoard, views.board);
+
+	await project().setSplitEditorViews(["schematic", "circuit"]);
+	assert.deepEqual(project().splitViews, ["schematic", "circuit"]);
+	project().selectEditorFile("main.ecaddraw");
+	assert.deepEqual(project().splitViews, []);
+	assert.equal(project().getViewSelection(), null);
+
+	stopSelection();
+	stop();
+});

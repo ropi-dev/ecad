@@ -35,9 +35,18 @@ import type { ProjectStorage } from "#/projects/storage.ts";
 import type { ProjectSettings } from "#/settings/schema.ts";
 import type { SymbolLibraryStorage } from "#/symbol-library/storage.ts";
 
+export { editorViewOrder } from "#/projects/project-session-state.ts";
+
 export interface RestoredAssets {
 	files: File[];
 	problems: string[];
+}
+
+export interface SyncedViewSelection {
+	readonly version: number;
+	readonly circuitId: string;
+	readonly generation: number;
+	readonly source: ViewSelection;
 }
 
 export interface ProjectContextValue {
@@ -54,6 +63,7 @@ export interface ProjectContextValue {
 	editorDrawing: DrawingDocument | null;
 	editorCircuit: CircuitDocument | null;
 	editorViews: EditorViews | null;
+	splitViews: readonly EditorView[];
 	/** Identifies the circuit being opened, or null when none is. */
 	openingCircuit: number | null;
 	selectEditorFile(path?: string): boolean | Promise<boolean>;
@@ -61,11 +71,20 @@ export interface ProjectContextValue {
 	/** Opens the PCB view of the drawing at `path`. */
 	openBoard(path: string): boolean | Promise<boolean>;
 	switchEditorView(view: EditorView): Promise<void>;
+	setSplitEditorViews(
+		views: readonly EditorView[],
+		focus?: EditorView,
+	): Promise<void>;
+	focusSplitView(view: EditorView): void;
 	preloadEditorViews(): Promise<void>;
 	rememberViewSelection(selection: ViewSelection): void;
 	takeSelectionHandoff(
 		view: ViewSelection["view"],
 	): { source: ViewSelection; circuit: Circuit | undefined } | null;
+	subscribeViewSelection(listener: () => void): () => void;
+	getViewSelection(): SyncedViewSelection | null;
+	circuitForViewSelection(circuitId: string): Circuit | undefined;
+	circuitIdForView(view: EditorView, store: object): string | undefined;
 	createCircuit(name: string): Promise<string>;
 	importCircuit(file: CircuitFile): Promise<string>;
 	mode: ProjectStorage["mode"];
@@ -180,6 +199,7 @@ export function createProjectSession(
 		setEditorBoard,
 		setEditorDrawing,
 		setEditorViews,
+		setSplitViews,
 		setEpoch,
 		setBusy,
 		setDirty,
@@ -201,9 +221,15 @@ export function createProjectSession(
 		openCircuit,
 		openBoard,
 		switchEditorView,
+		setSplitEditorViews,
+		focusSplitView,
 		preloadEditorViews,
 		rememberViewSelection,
 		takeSelectionHandoff,
+		subscribeViewSelection,
+		getViewSelection,
+		circuitForViewSelection,
+		circuitIdForView,
 		selectEditorFile,
 		subscribeMain,
 		stopMain,
@@ -214,6 +240,9 @@ export function createProjectSession(
 		state.editorSelection++;
 		state.circuitLayout?.abort();
 		state.viewSelection = null;
+		state.syncedSelection = null;
+		state.selectionVersion = 0;
+		state.publishSelection();
 		state.selectionHandoff = null;
 		state.selectionOrigins = new WeakSet();
 		linkedAssembler.invalidate();
@@ -224,6 +253,7 @@ export function createProjectSession(
 		setEditorBoard(null);
 		setEditorDrawing(null);
 		setEditorViews(null);
+		setSplitViews([]);
 		update(snapshot);
 		setSelectedAsset(null);
 		state.symbols = snapshot.symbols;
@@ -366,13 +396,20 @@ export function createProjectSession(
 		editorDrawing: state.editorDrawing,
 		editorCircuit: state.editorCircuit,
 		editorViews: state.editorViews,
+		splitViews: state.splitViews,
 		openingCircuit: state.openingCircuit,
 		openCircuit,
 		openBoard,
 		switchEditorView,
+		setSplitEditorViews,
+		focusSplitView,
 		preloadEditorViews,
 		rememberViewSelection,
 		takeSelectionHandoff,
+		subscribeViewSelection,
+		getViewSelection,
+		circuitForViewSelection,
+		circuitIdForView,
 		selectEditorFile,
 		mode: storage.mode,
 		busy: state.busy,
@@ -458,6 +495,7 @@ export function createProjectSession(
 						editorDrawing: _editorDrawing,
 						editorCircuit: _editorCircuit,
 						editorViews: _editorViews,
+						splitViews: _splitViews,
 						openingCircuit: _openingCircuit,
 						selectedAsset: _selectedAsset,
 						...actions

@@ -60,6 +60,8 @@ export const CircleDot = icon("circle-dot", lucide.CircleDot);
 export const CirclePlus = icon("circle-plus", lucide.CirclePlus);
 export const CircleSmall = icon("circle-small", lucide.CircleSmall);
 export const CircuitBoard = icon("circuit-board", lucide.CircuitBoard);
+export const Columns2 = icon("columns2", lucide.Columns2);
+export const Columns3 = icon("columns3", lucide.Columns3);
 export const Component = icon("component", lucide.Component);
 export const Cpu = icon("cpu", lucide.Cpu);
 export const Diff = icon("diff", lucide.Diff);
@@ -84,11 +86,16 @@ export const House = icon("house", lucide.House);
 export const ImageDown = icon("image-down", lucide.ImageDown);
 export const Info = icon("info", lucide.Info);
 export const Layers = icon("layers", lucide.Layers);
+export const LayoutPanelLeft = icon(
+	"layout-panel-left",
+	lucide.LayoutPanelLeft,
+);
 export const Library = icon("library", lucide.Library);
 export const LoaderCircle = icon("loader-circle", lucide.LoaderCircle);
 export const Lock = icon("lock", lucide.Lock);
 export const LockOpen = icon("lock-open", lucide.LockOpen);
 export const MapPin = icon("map-pin", lucide.MapPin);
+export const Maximize2 = icon("maximize2", lucide.Maximize2);
 export const Minus = icon("minus", lucide.Minus);
 export const Monitor = icon("monitor", lucide.Monitor);
 export const MousePointer2 = icon("mouse-pointer2", lucide.MousePointer2);
@@ -105,6 +112,7 @@ export const Redo2 = icon("redo2", lucide.Redo2);
 export const RefreshCw = icon("refresh-cw", lucide.RefreshCw);
 export const RotateCcw = icon("rotate-ccw", lucide.RotateCcw);
 export const RotateCw = icon("rotate-cw", lucide.RotateCw);
+export const Rows2 = icon("rows2", lucide.Rows2);
 export const Save = icon("save", lucide.Save);
 export const Scan = icon("scan", lucide.Scan);
 export const Search = icon("search", lucide.Search);

@@ -6,6 +6,7 @@ import {
 import { snapCircuitPoint } from "@ecad/drawing-core/circuit/grid.ts";
 import type { CircuitCommand } from "@ecad/drawing-core/circuit/store.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
+import { Dynamic } from "@solidjs/web";
 import {
 	createEffect,
 	createMemo,
@@ -100,6 +101,7 @@ function CircuitDocumentBar(props: {
 export function CircuitEditor(props: {
 	document: CircuitDocument;
 	active?: boolean;
+	splitPane?: boolean;
 }) {
 	const active = () => props.active ?? true;
 	const project = useProjectSelection(({ dirty, error, libraryErrors }) => ({
@@ -592,12 +594,16 @@ export function CircuitEditor(props: {
 			aria-label="Circuit editor"
 			onKeyDown={onKeyDown}
 		>
-			<h1 class="sr-only">{circuit().name}</h1>
-			<CircuitDocumentBar
-				name={circuit().name}
-				id={circuit().id}
-				active={active()}
-			/>
+			<Dynamic component={props.splitPane ? "h2" : "h1"} class="sr-only">
+				{circuit().name}
+			</Dynamic>
+			<Show when={!props.splitPane}>
+				<CircuitDocumentBar
+					name={circuit().name}
+					id={circuit().id}
+					active={active()}
+				/>
+			</Show>
 			{circuitMessages().length > 0 && (
 				<div
 					role="alert"

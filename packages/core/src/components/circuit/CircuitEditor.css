@@ -1,7 +1,7 @@
 .circuit-editor {
 	position: relative;
-	height: 100dvh;
-	min-height: 360px;
+	height: 100%;
+	min-height: 0;
 	overflow: hidden;
 	color: var(--color-fg);
 	font-size: var(--text-sm);

@@ -52,7 +52,7 @@ export function PageBar(props: {
 	 * Places itself at the top centre of the canvas. Otherwise the document
 	 * bar lays it out.
 	 */
-	floating?: boolean;
+	floating?: boolean | "pane";
 	onSelect: (page: number) => void;
 	onEdit: PageEdit;
 }) {
@@ -154,9 +154,11 @@ export function PageBar(props: {
 			aria-label="Schematic pages"
 			class={[
 				"flex h-[var(--chrome-control)] items-center gap-0.5 p-1",
-				props.floating
-					? "absolute top-10 left-1/2 z-3 max-w-[min(40rem,calc(100%-5rem))] -translate-x-1/2 max-[600px]:top-22"
-					: "relative max-w-[40rem] min-w-0",
+				props.floating === "pane"
+					? "absolute top-[var(--chrome-top)] left-1/2 z-3 max-w-[calc(100%-2*var(--chrome-gap))] -translate-x-1/2"
+					: props.floating
+						? "absolute top-10 left-1/2 z-3 max-w-[min(40rem,calc(100%-5rem))] -translate-x-1/2 max-[600px]:top-22"
+						: "relative max-w-[40rem] min-w-0",
 				toolbarSurfaceClassName,
 			]}
 			onPointerDown={(event) => event.stopPropagation()}

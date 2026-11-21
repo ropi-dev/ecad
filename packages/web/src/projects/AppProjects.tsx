@@ -7,6 +7,7 @@ import {
 import { ProjectFilesSidebar } from "@ecad/core/projects/ProjectFilesSidebar.tsx";
 import type { ProjectLinkProps } from "@ecad/core/projects/ProjectLink.tsx";
 import {
+	type EditorView,
 	ProjectProvider,
 	useProject,
 } from "@ecad/core/projects/ProjectProvider.tsx";
@@ -89,12 +90,17 @@ function useProjectFileUrl() {
 	const pathname = useLocation({ select: (location) => location.pathname });
 	const file = useSearch({ from: "__root__", select: (search) => search.file });
 	const view = useSearch({ from: "__root__", select: (search) => search.view });
+	const split = useSearch({
+		from: "__root__",
+		select: (search) => search.split,
+	});
 	const navigate = useNavigate();
 	const navigating = useRouterState({
 		select: (state) => state.status !== "idle" || state.isLoading,
 	});
 	let previous: { href: string; session: number } | null = null;
-	let pending: { id: string } | null = null;
+	let pending: { id: string; split?: string } | null = null;
+	let pendingSplit: { target: string | undefined } | null = null;
 	const [failedRestoration, setFailedRestoration] = createSignal<{
 		id: string;
 	} | null>(null);
@@ -105,10 +111,19 @@ function useProjectFileUrl() {
 			location: { href: href(), pathname: pathname() },
 			file: file(),
 			view: view(),
+			split: split(),
 			navigating: navigating(),
 			failedRestoration: failedRestoration(),
 		}),
-		({ context, location, file, view, navigating, failedRestoration }) => {
+		({
+			context,
+			location,
+			file,
+			view,
+			split,
+			navigating,
+			failedRestoration,
+		}) => {
 			if (!context?.project || context.busy || navigating) return;
 			const {
 				project,
@@ -117,12 +132,14 @@ function useProjectFileUrl() {
 				editorSymbol,
 				editorFootprint,
 				editorBoard,
+				splitViews,
 			} = context;
 			const { manifest } = project;
 			const path = location.pathname;
 			if (path !== "/editor" && path !== "/step" && path !== "/gerber") {
 				previous = null;
 				pending = null;
+				pendingSplit = null;
 				return;
 			}
 			const selections = projectFileSelections(project);
@@ -144,6 +161,10 @@ function useProjectFileUrl() {
 						? `asset:${context.selectedAsset.path}`
 						: undefined;
 			const active = selections.find((entry) => entry.id === activeId);
+			const activeSplit =
+				path === "/editor" && splitViews.length >= 2
+					? splitViews.join(",")
+					: undefined;
 			const requested = file
 				? selections.find(
 						(entry) =>
@@ -160,19 +181,35 @@ function useProjectFileUrl() {
 				: undefined;
 			const restorationFailed =
 				pending !== null && pending === failedRestoration;
-			if (restorationFailed) pending = null;
+			if (restorationFailed) {
+				pending = null;
+				pendingSplit = null;
+			}
 			const changedLocation = previous?.href !== location.href;
 			const changedProject = previous?.session !== context.session;
 			const initial = previous === null || changedProject;
 			previous = { href: location.href, session: context.session };
+			const applySplit = (targetSplit: string | undefined) => {
+				const token = { target: targetSplit };
+				pendingSplit = token;
+				const wanted: EditorView[] = targetSplit
+					? (targetSplit.split(",") as EditorView[])
+					: [active?.view ?? "schematic"];
+				const focus: EditorView =
+					requested?.view ?? active?.view ?? "schematic";
+				void context.setSplitEditorViews(wanted, focus).finally(() => {
+					if (pendingSplit === token) pendingSplit = null;
+				});
+			};
 			if (changedLocation || changedProject) {
 				pending = null;
+				pendingSplit = null;
 				if (!file && path !== "/editor" && context.selectedAsset) {
 					context.selectAsset(null);
 					return;
 				}
 				if (requested && requested.id !== active?.id) {
-					const request = { id: requested.id };
+					const request = { id: requested.id, split };
 					pending = request;
 					if (path === "/editor") {
 						const selection =
@@ -195,16 +232,44 @@ function useProjectFileUrl() {
 					}
 					return;
 				}
+				if (
+					path === "/editor" &&
+					active &&
+					!active.id.startsWith("symbol:") &&
+					!active.id.startsWith("footprint:") &&
+					!active.id.startsWith("asset:") &&
+					split !== activeSplit
+				) {
+					applySplit(split);
+					return;
+				}
 			}
 			if (pending && pending.id !== active?.id) return;
+			if (pending?.split) {
+				const targetSplit = pending.split;
+				pending = null;
+				if (targetSplit !== activeSplit && path === "/editor") {
+					applySplit(targetSplit);
+					return;
+				}
+			}
 			pending = null;
-			if (active?.file !== file || active?.view !== view) {
+			if (pendingSplit !== null) {
+				if (pendingSplit.target === activeSplit) pendingSplit = null;
+				else return;
+			}
+			if (
+				active?.file !== file ||
+				active?.view !== view ||
+				activeSplit !== split
+			) {
 				void navigate({
 					to: path,
 					search: (previous) => ({
 						...previous,
 						file: active?.file,
 						view: active?.view,
+						split: activeSplit,
 					}),
 					replace:
 						initial ||
