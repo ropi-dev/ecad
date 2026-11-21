@@ -514,6 +514,8 @@ export function createProjectEditorFiles(
 	const focusSplitView = (view: EditorView) => {
 		if (!state.splitViews.includes(view) || !state.editorViews) return;
 		applyPrimaryView(view, state.editorViews);
+		if (view === "pcb" && state.needsSave && !state.conflict)
+			void autosave(true).catch(() => undefined);
 	};
 	const circuitIdForView = (view: EditorView, store: object) => {
 		if (view === "circuit") {
